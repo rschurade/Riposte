@@ -156,15 +156,22 @@
     ed.renameLayer(id, value);
   }
 
-  // ---- asset drop → new image layer ---------------------------------------------
+  // ---- asset drop → new image / sequence layer -----------------------------------
   function onDragOver(ev: DragEvent): void {
-    if (ev.dataTransfer?.types.includes('text/riposte-asset')) {
+    const types = ev.dataTransfer?.types ?? [];
+    if (types.includes('text/riposte-asset') || types.includes('text/riposte-sequence')) {
       ev.preventDefault();
-      ev.dataTransfer.dropEffect = 'copy';
+      ev.dataTransfer!.dropEffect = 'copy';
     }
   }
 
   function onDrop(ev: DragEvent): void {
+    const seq = ev.dataTransfer?.getData('text/riposte-sequence');
+    if (seq) {
+      ev.preventDefault();
+      ed.addSequenceLayer(JSON.parse(seq) as string[]);
+      return;
+    }
     const file = ev.dataTransfer?.getData('text/riposte-asset');
     if (!file) return;
     ev.preventDefault();

@@ -248,6 +248,42 @@ class EditorState {
     await this.createScene(name, doc);
   }
 
+  /** Create an image-sequence layer from a dragged sequence group: the
+   * layer's span is exactly one timeline frame per image. */
+  addSequenceLayer(files: string[]): void {
+    const scene = this.scene;
+    if (!scene || files.length === 0) return;
+    const comp = scene.composition;
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth || 200;
+      const h = img.naturalHeight || 200;
+      const id = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+      this.mutate('add image sequence', (s) => {
+        s.composition.layers.push({
+          id,
+          startFrame: 0,
+          duration: files.length,
+          element: {
+            id: `${id}-el`,
+            type: 'imageSequence',
+            frames: [...files],
+            style: {
+              x: { value: Math.round(comp.width / 2) },
+              y: { value: Math.round(comp.height / 2) },
+              width: { value: w },
+              height: { value: h },
+            },
+          },
+        });
+      });
+      this.selectLayer(id);
+      this.flash(`added sequence (${files.length} frames)`);
+    };
+    img.onerror = () => this.flash(`could not load ${files[0]}`);
+    img.src = this.assetBase + files[0];
+  }
+
   /** Create a fresh element layer (toolbar "+ text" etc.) — topmost, full span. */
   addElementLayer(type: 'text' | 'rectangle' | 'ellipse' | 'imageLoader'): void {
     const comp = this.scene?.composition;
