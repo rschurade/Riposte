@@ -14,11 +14,18 @@
     return Math.round(propNumber(p, ed.frame, fallback) * 100) / 100;
   }
 
-  function setStyleNumber(prop: string, raw: string): void {
-    const v = Number(raw);
+  function setStyleNumber(prop: string, raw: string, pct?: boolean): void {
+    let v = Number(raw);
     if (!Number.isFinite(v) || !layer) return;
+    if (pct) v /= 100;
     // animated: upsert a keyframe at the playhead; static: set the value
     ed.setValueAtPlayhead('el', prop, v);
+  }
+
+  /** Display value: percent-style props (scale, opacity, filters) show ×100. */
+  function dispAt(p: StyleProperty | undefined, def: PropDef): number {
+    const v = propNumber(p, ed.frame, def.fallback) * (def.pct ? 100 : 1);
+    return Math.round(v * 100) / 100;
   }
 
   function hasKfAtPlayhead(prop: string): boolean {
@@ -115,15 +122,41 @@
     });
   }
 
-  const NUM_PROPS: { prop: string; label: string; fallback: number }[] = [
+  interface PropDef {
+    prop: string;
+    label: string;
+    fallback: number;
+    /** stored 0–1 / ×1, shown as % */
+    pct?: boolean;
+  }
+
+  const TRANSFORM_PROPS: PropDef[] = [
     { prop: 'x', label: 'X', fallback: 0 },
     { prop: 'y', label: 'Y', fallback: 0 },
+    { prop: 'scaleX', label: 'Scale X %', fallback: 1, pct: true },
+    { prop: 'scaleY', label: 'Scale Y %', fallback: 1, pct: true },
+    { prop: 'rotation', label: 'Rotation °', fallback: 0 },
     { prop: 'width', label: 'W', fallback: 0 },
     { prop: 'height', label: 'H', fallback: 0 },
-    { prop: 'rotation', label: 'Rot', fallback: 0 },
-    { prop: 'opacity', label: 'Opacity', fallback: 1 },
+    { prop: 'opacity', label: 'Opacity %', fallback: 1, pct: true },
     { prop: 'fontSize', label: 'Font size', fallback: 24 },
   ];
+
+  const FILTER_DEFS: PropDef[] = [
+    { prop: 'filterBlur', label: 'Blur px', fallback: 0 },
+    { prop: 'filterBrightness', label: 'Brightness %', fallback: 1, pct: true },
+    { prop: 'filterContrast', label: 'Contrast %', fallback: 1, pct: true },
+    { prop: 'filterGrayscale', label: 'Grayscale %', fallback: 0, pct: true },
+    { prop: 'filterHueRotate', label: 'Hue rotate °', fallback: 0 },
+    { prop: 'filterInvert', label: 'Invert %', fallback: 0, pct: true },
+    { prop: 'filterOpacity', label: 'Filter opacity %', fallback: 1, pct: true },
+    { prop: 'filterSaturate', label: 'Saturate %', fallback: 1, pct: true },
+    { prop: 'filterSepia', label: 'Sepia %', fallback: 0, pct: true },
+  ];
+
+  let filtersOpen = $state(false);
+  /** auto-open the Filter group when the element actually uses filters */
+  const hasFilterData = $derived(!!el && FILTER_DEFS.some((d) => el.style[d.prop]));
 </script>
 
 <aside>
@@ -131,29 +164,48 @@
     <h2>{layerLabel(layer)}</h2>
     <p class="type">{el.type}</p>
 
+    {#snippet propRow(np: PropDef)}
+      <label for="in-{np.prop}">{np.label}</label>
+      <input
+        id="in-{np.prop}"
+        type="number"
+        step="1"
+        value={dispAt(el!.style[np.prop], np)}
+        onchange={(e) => setStyleNumber(np.prop, (e.currentTarget as HTMLInputElement).value, np.pct)}
+      />
+      <button
+        class="kfbtn"
+        class:on={hasKfAtPlayhead(np.prop)}
+        class:animated={isAnimated(el!.style[np.prop])}
+        title={hasKfAtPlayhead(np.prop)
+          ? `Remove ${np.label} keyframe @${ed.frame}`
+          : `Add ${np.label} keyframe @${ed.frame}`}
+        onclick={() => ed.toggleKeyframe('el', np.prop, np.fallback)}
+      >◆</button>
+    {/snippet}
+
+    <h3>Transform</h3>
     <div class="grid three">
-      {#each NUM_PROPS as np (np.prop)}
+      {#each TRANSFORM_PROPS as np (np.prop)}
         {#if np.prop !== 'fontSize' || el.type === 'text'}
-          <label for="in-{np.prop}">{np.label}</label>
-          <input
-            id="in-{np.prop}"
-            type="number"
-            step="1"
-            value={numAt(el.style[np.prop], np.fallback)}
-            onchange={(e) => setStyleNumber(np.prop, (e.currentTarget as HTMLInputElement).value)}
-          />
-          <button
-            class="kfbtn"
-            class:on={hasKfAtPlayhead(np.prop)}
-            class:animated={isAnimated(el.style[np.prop])}
-            title={hasKfAtPlayhead(np.prop)
-              ? `Remove ${np.label} keyframe @${ed.frame}`
-              : `Add ${np.label} keyframe @${ed.frame}`}
-            onclick={() => ed.toggleKeyframe('el', np.prop, np.fallback)}
-          >◆</button>
+          {@render propRow(np)}
         {/if}
       {/each}
     </div>
+
+    <h3>
+      <button class="linkish" onclick={() => (filtersOpen = !filtersOpen)}>
+        {filtersOpen || hasFilterData ? '▾' : '▸'} Filter
+        {#if hasFilterData}<span class="dim">in use</span>{/if}
+      </button>
+    </h3>
+    {#if filtersOpen || hasFilterData}
+      <div class="grid three">
+        {#each FILTER_DEFS as np (np.prop)}
+          {@render propRow(np)}
+        {/each}
+      </div>
+    {/if}
     <div class="grid">
       <label for="in-key">Key</label>
       <input
@@ -412,6 +464,17 @@
   .type { color: #676c76; font-size: 11px; margin: 2px 0 10px; }
   .grid { display: grid; grid-template-columns: 70px 1fr; gap: 5px 8px; align-items: center; }
   .grid.three { grid-template-columns: 62px 1fr 22px; margin-bottom: 6px; }
+  .linkish {
+    background: none;
+    border: none;
+    color: #8a8f98;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 11px;
+    padding: 0;
+    cursor: pointer;
+  }
+  .linkish:hover { color: #cfd3da; }
   .kfbtn {
     background: none;
     border: none;
