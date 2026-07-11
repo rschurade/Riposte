@@ -82,11 +82,17 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
 
   // Visibility bindings: index by update key, apply initial states.
   const visByKey = new Map<string, BoundVisibility[]>();
+  const applyBinding = (b: BoundVisibility, value: string | undefined): void => {
+    const visible = evaluateVisibility(b.binding, value);
+    b.handle.setVisible(visible);
+    // design-time hidden layer: the binding lifts/re-applies the wrapper
+    if (b.hiddenLayerNode) b.hiddenLayerNode.style.visibility = visible ? '' : 'hidden';
+  };
   for (const b of built.boundVisibility) {
     const list = visByKey.get(b.binding.bindKey) ?? [];
     list.push(b);
     visByKey.set(b.binding.bindKey, list);
-    b.handle.setVisible(evaluateVisibility(b.binding, undefined));
+    applyBinding(b, undefined);
   }
 
   const compositionApi: CompositionApi = {
@@ -155,7 +161,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     chain(
       mws,
       () => {
-        for (const b of visByKey.get(key) ?? []) b.handle.setVisible(evaluateVisibility(b.binding, value));
+        for (const b of visByKey.get(key) ?? []) applyBinding(b, value);
         const el = built.byKey.get(key);
         if (!el) return;
         if (el.type === 'text') el.setContent(value);

@@ -59,6 +59,13 @@ export interface ElementHandle {
 export interface BoundVisibility {
   binding: VisibilityBinding;
   handle: ElementHandle;
+  /**
+   * Set when the layer is design-time hidden (Loopic isVisible=false): the
+   * binding must also lift the wrapper's visibility, since Loopic's hidden
+   * is CSS visibility and the old show/hide scripts pierced it (that's how
+   * the LiveScore white lights work — hidden layer, shown by data).
+   */
+  hiddenLayerNode?: HTMLElement;
 }
 
 export interface LayerHandle {
@@ -167,10 +174,12 @@ function buildLayer(
   });
   rootEl.appendChild(layerEl);
 
-  if (layer.hidden) {
-    layerEl.style.display = 'none';
-  } else {
-    // Layer in/out visibility over time
+  // Hidden (Loopic isVisible=false) = CSS visibility, NOT display: a
+  // visibility binding on the layer's element can lift it (white lights).
+  if (layer.hidden) layerEl.style.visibility = 'hidden';
+  {
+    // Layer in/out over time — applies to hidden layers too, so a
+    // binding-shown element still respects its span and opacity fades.
     const start = layer.startFrame;
     const end = layer.startFrame + layer.duration;
     dynamics.push({
@@ -191,7 +200,13 @@ function buildLayer(
   if (handle) {
     byId.set(layer.element.id, handle);
     if (layer.element.key) byKey.set(layer.element.key, handle);
-    if (layer.element.visibility) boundVisibility.push({ binding: layer.element.visibility, handle });
+    if (layer.element.visibility) {
+      boundVisibility.push({
+        binding: layer.element.visibility,
+        handle,
+        ...(layer.hidden ? { hiddenLayerNode: layerEl } : {}),
+      });
+    }
   }
   return layerEl;
 }
