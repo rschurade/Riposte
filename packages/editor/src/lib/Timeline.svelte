@@ -20,6 +20,14 @@
   /** Display top-first, like a layer panel (scene array is bottom-first). */
   const displayLayers = $derived(comp ? [...comp.layers].slice().reverse() : []);
 
+  /** Loopic imports are full of literal "New layer" names — the key says more. */
+  function layerLabel(layer: Layer): { main: string; key?: string } {
+    const key = layer.element.key;
+    if (key && /^(copy of )*new layer\s*\d*$/i.test(layer.name.trim())) return { main: key };
+    if (key && key !== layer.name) return { main: layer.name, key };
+    return { main: layer.name };
+  }
+
   interface PropRow {
     targetKey: string;
     label: string;
@@ -259,14 +267,15 @@
                   {@attach (node) => { (node as HTMLInputElement).focus(); (node as HTMLInputElement).select(); }}
                 />
               {:else}
+                {@const lbl = layerLabel(layer)}
                 <span
                   role="button"
                   tabindex="-1"
-                  title="double-click to rename"
+                  title="{layer.name}{layer.element.key ? ` · ${layer.element.key}` : ''} — double-click to rename"
                   ondblclick={() => (renamingLayer = { id: layer.id, value: layer.name })}
                 >
                   {#if kfFrames.length > 0}<span class="animind" title="{kfFrames.length} keyframes">◆</span>{/if}
-                  {layer.isGuide ? '▦ ' : ''}{layer.hidden ? '∅ ' : ''}{layer.name}
+                  {layer.isGuide ? '▦ ' : ''}{layer.hidden ? '∅ ' : ''}{lbl.main}{#if lbl.key}<span class="dim"> · {lbl.key}</span>{/if}
                 </span>
               {/if}
             </div>
