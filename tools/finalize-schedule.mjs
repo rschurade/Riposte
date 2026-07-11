@@ -13,7 +13,9 @@
  */
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
 
-const file = process.argv[2] ?? 'projects/FIE_2026/scenes/FIE_2026_HD_Schedule_ext.json';
+// note: after import from the _ext html the file is ..._Schedule_ext.json —
+// pass that path, or rename first; the deployed scene is FIE_2026_HD_Schedule
+const file = process.argv[2] ?? 'projects/FIE_2026/scenes/FIE_2026_HD_Schedule.json';
 const LOGO_SRC = 'D:/projects/tristan/tv-grafik/TV-Grafik/abz/_FIE-Broadcast2026/files/Logos/logo_HK_white.png';
 const LOGO_ASSET = 'assets/logo_HK_white.png';
 
