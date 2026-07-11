@@ -208,6 +208,13 @@
       <button onclick={() => { ed.playing = false; ed.frame = ed.firstPauseFrame(); }} title="to pause marker">⇥ pause</button>
       <span class="frame">{ed.frame} / {comp.duration - 1}</span>
       <span class="dim">{comp.fps} fps</span>
+      <span class="spacer"></span>
+      <span class="dim">add:</span>
+      <button title="Add text element" onclick={() => ed.addElementLayer('text')}>T text</button>
+      <button title="Add rectangle" onclick={() => ed.addElementLayer('rectangle')}>▬ rect</button>
+      <button title="Add ellipse" onclick={() => ed.addElementLayer('ellipse')}>● ellipse</button>
+      <button title="Add image loader (dynamic image via update)" onclick={() => ed.addElementLayer('imageLoader')}>▣ loader</button>
+      <span class="dim">— drag an asset here for a static image</span>
     </div>
     <div class="rows" bind:this={rowsEl}>
       <div class="row head">
@@ -353,6 +360,7 @@
     cursor: pointer;
   }
   .frame { font: 12px Consolas, monospace; color: #d9a441; min-width: 80px; }
+  .spacer { flex: 1; }
   .dim { color: #676c76; font-size: 11px; }
   .rows { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   .scroll { overflow-y: auto; flex: 1; }

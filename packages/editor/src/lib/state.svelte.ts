@@ -175,15 +175,15 @@ class EditorState {
     this.flash(`saved ${this.sceneFile}`);
   }
 
-  /** Remove a scene from the set — frees its exclusive assets for cleanup. */
+  /** Delete a scene: out of the set AND off the disk (after confirmation). */
   async removeScene(file: string): Promise<void> {
     if (!this.setRef) return;
     const name = file.replace(/^scenes\//, '').replace(/\.json$/, '');
-    if (!confirm(`Remove scene "${name}" from the set?\n(The scene file is kept on disk; assets used only by it become "unused".)`)) return;
+    if (!confirm(`Delete scene "${name}"?\nThe file is deleted from disk; assets used only by it become "unused".`)) return;
     await fetch('/api/scene/remove', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, file, deleteFile: false }),
+      body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, file, deleteFile: true }),
     });
     this.setRef.scenes = this.setRef.scenes.filter((s) => s !== file);
     delete this.allScenes[file];
@@ -195,7 +195,91 @@ class EditorState {
       this.dirty = false;
       this.version++;
     }
-    this.flash(`removed ${name} from set`);
+    this.flash(`deleted ${name}`);
+  }
+
+  /** Register a fresh scene doc on the server and open it. */
+  private async createScene(name: string, doc: SceneDoc): Promise<void> {
+    const file = `scenes/${name}.json`;
+    const r = await this.post('/api/scene/create', { file, doc });
+    if (!r || !this.setRef) return;
+    this.setRef.scenes = [...this.setRef.scenes, file];
+    this.allScenes = { ...this.allScenes, [file]: doc };
+    this.openScene(file);
+    this.flash(`created ${name}`);
+  }
+
+  /** New empty scene — canvas size/fps borrowed from the set's other scenes. */
+  async newScene(): Promise<void> {
+    if (!this.setRef) return;
+    const name = prompt('Name for the new scene:', '')?.trim();
+    if (!name) return;
+    if (!/^[\w .()-]+$/.test(name)) {
+      this.flash('invalid scene name');
+      return;
+    }
+    const donor = Object.values(this.allScenes).find((d) => d)?.composition;
+    await this.createScene(name, {
+      formatVersion: 1,
+      name,
+      composition: {
+        width: donor?.width ?? 1920,
+        height: donor?.height ?? 1080,
+        fps: donor?.fps ?? 50,
+        duration: 100,
+        markers: [{ frame: 50, type: 'pause' }],
+        layers: [],
+      },
+    });
+  }
+
+  async duplicateScene(file: string): Promise<void> {
+    const src = this.sceneFile === file && this.scene ? this.scene : this.allScenes[file];
+    if (!src) return;
+    const base = file.replace(/^scenes\//, '').replace(/\.json$/, '');
+    const name = prompt('Name for the copy:', `${base}_copy`)?.trim();
+    if (!name || name === base) return;
+    if (!/^[\w .()-]+$/.test(name)) {
+      this.flash('invalid scene name');
+      return;
+    }
+    const doc = JSON.parse(JSON.stringify(src)) as SceneDoc;
+    doc.name = name;
+    await this.createScene(name, doc);
+  }
+
+  /** Create a fresh element layer (toolbar "+ text" etc.) — topmost, full span. */
+  addElementLayer(type: 'text' | 'rectangle' | 'ellipse' | 'imageLoader'): void {
+    const comp = this.scene?.composition;
+    if (!comp) return;
+    const id = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    const cx = Math.round(comp.width / 2);
+    const cy = Math.round(comp.height / 2);
+    const style = (w: number, h: number) => ({
+      x: { value: cx },
+      y: { value: cy },
+      width: { value: w },
+      height: { value: h },
+    });
+    const element =
+      type === 'text'
+        ? {
+            id: `${id}-el`,
+            type,
+            content: 'Text',
+            fontFamily: this.setRef?.fonts[0]?.family,
+            textAlign: 'center' as const,
+            style: { ...style(400, 60), fontSize: { value: 40 }, color: { value: '#ffffff', unit: 'color' as const } },
+          }
+        : type === 'rectangle'
+          ? { id: `${id}-el`, type, fill: '#3a6ea5', style: style(300, 100) }
+          : type === 'ellipse'
+            ? { id: `${id}-el`, type, fill: '#3a6ea5', style: style(200, 200) }
+            : { id: `${id}-el`, type, fit: 'contain' as const, style: style(400, 300) };
+    this.mutate(`add ${type}`, (s) => {
+      s.composition.layers.push({ id, startFrame: 0, duration: s.composition.duration, element });
+    });
+    this.selectLayer(id);
   }
 
   /** POST an api call with the set ref mixed in; flashes errors, null on failure. */

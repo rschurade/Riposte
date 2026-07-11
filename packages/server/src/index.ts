@@ -63,6 +63,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/set') return apiSetBundle(url, res);
   if (path === '/api/assets') return apiAssets(url, res);
   if (path === '/api/scene' && req.method === 'PUT') return apiSaveScene(req, res);
+  if (path === '/api/scene/create' && req.method === 'POST') return apiCreateScene(req, res);
   if (path === '/api/scene/remove' && req.method === 'POST') return apiRemoveScene(req, res);
   if (path === '/api/scene/rename' && req.method === 'POST') return apiRenameScene(req, res);
   if (path === '/api/assets/delete' && req.method === 'POST') return apiDeleteAssets(req, res);
@@ -153,6 +154,26 @@ async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<voi
   }
   const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode } : {});
   return json(res, result);
+}
+
+/** Create a scene file (new or duplicate) and register it in set.json. */
+async function apiCreateScene(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; file: string; doc: unknown };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  if (!SCENE_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
+  try {
+    await stat(join(dir, body.file));
+    throw Object.assign(new Error(`"${body.file}" already exists`), { status: 409 });
+  } catch (err) {
+    if ((err as { status?: number }).status === 409) throw err;
+  }
+  await writeFile(join(dir, body.file), JSON.stringify(body.doc, null, 2) + '\n', 'utf8');
+  const setPath = join(dir, 'set.json');
+  const set = JSON.parse(await readFile(setPath, 'utf8')) as { scenes: string[] };
+  if (!set.scenes.includes(body.file)) set.scenes.push(body.file);
+  await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
+  return json(res, { ok: true, file: body.file });
 }
 
 /** Remove a scene from the set (and optionally delete its file). */

@@ -11,15 +11,26 @@
   }
 
   let assetFilter = $state('');
+  const FONT_RE = /\.(ttf|otf|woff2?)$/i;
+  type AssetKind = 'images' | 'fonts' | 'all';
+  let assetKind = $state<AssetKind>((localStorage.getItem('riposte.assetKind') as AssetKind) ?? 'images');
+
+  function setKind(k: AssetKind): void {
+    assetKind = k;
+    localStorage.setItem('riposte.assetKind', k);
+  }
 
   const usage = $derived(ed.assetUsage);
   const unused = $derived(ed.unusedAssets);
   const unusedMb = $derived((unused.reduce((s, a) => s + a.size, 0) / 1024 / 1024).toFixed(1));
-  const filteredAssets = $derived(
-    assetFilter.trim() === ''
-      ? ed.assets
-      : ed.assets.filter((a) => a.file.toLowerCase().includes(assetFilter.trim().toLowerCase())),
-  );
+  const filteredAssets = $derived.by(() => {
+    const q = assetFilter.trim().toLowerCase();
+    return ed.assets.filter((a) => {
+      if (assetKind === 'images' && FONT_RE.test(a.file)) return false;
+      if (assetKind === 'fonts' && !FONT_RE.test(a.file)) return false;
+      return q === '' || a.file.toLowerCase().includes(q);
+    });
+  });
 
   function sceneName(file: string): string {
     return file.replace(/^scenes\//, '').replace(/\.json$/, '');
@@ -85,10 +96,11 @@
   {/if}
 
   {#if ed.setRef}
-    <h2>
+    <h2 class="hrow">
       <button class="linkish" onclick={() => toggle('scenes')}>
         {collapsed.scenes ? '▸' : '▾'} Scenes <span class="dim">({ed.setRef.scenes.length})</span>
       </button>
+      <button class="hbtn" title="New scene" onclick={() => ed.newScene()}>+</button>
     </h2>
     {#if !collapsed.scenes}
       <ul class="scenes">
@@ -105,7 +117,8 @@
               >
                 {sceneName(file)}
               </button>
-              <button class="remove" title="Remove scene from set" onclick={() => ed.removeScene(file)}>✕</button>
+              <button class="rowbtn" title="Duplicate scene" onclick={() => ed.duplicateScene(file)}>⧉</button>
+              <button class="rowbtn remove" title="Delete scene (file included)" onclick={() => ed.removeScene(file)}>✕</button>
             {/if}
           </li>
         {/each}
@@ -152,6 +165,11 @@
           Delete {unused.length} unused ({unusedMb} MB)
         </button>
       {/if}
+      <div class="kinds">
+        {#each ['images', 'fonts', 'all'] as k (k)}
+          <button class="kind" class:on={assetKind === k} onclick={() => setKind(k as AssetKind)}>{k}</button>
+        {/each}
+      </div>
       <input class="filter" type="search" placeholder="filter assets…" bind:value={assetFilter} />
       <ul class="assets">
         {#each filteredAssets as a (a.file)}
@@ -227,16 +245,45 @@
   .sets { flex: none; max-height: 20vh; overflow-y: auto; }
   .scenes { flex: 0 1 auto; min-height: 60px; overflow-y: auto; }
   .scene-row { display: flex; align-items: center; }
-  .scene-row .remove {
+  .scene-row .rowbtn {
     display: none;
     flex: none;
     width: 22px;
     padding: 2px;
-    color: #a55;
+    color: #8a8f98;
     text-align: center;
   }
-  .scene-row:hover .remove { display: block; }
+  .scene-row:hover .rowbtn { display: block; }
+  .scene-row .rowbtn:hover { color: #cfd3da; background: #23262e; }
+  .scene-row .remove { color: #a55; }
   .scene-row .remove:hover { color: #e07777; background: #2a2020; }
+  .hrow { display: flex; align-items: center; }
+  .hrow .linkish { flex: 1; }
+  .hbtn {
+    flex: none;
+    background: #23262e;
+    border: 1px solid #383c46;
+    color: #cfd3da;
+    border-radius: 4px;
+    width: 20px;
+    height: 18px;
+    line-height: 1;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+  }
+  .hbtn:hover { background: #2c4a75; }
+  .kinds { display: flex; gap: 3px; margin: 2px 0; flex: none; }
+  .kind {
+    background: #23262e;
+    border: 1px solid #383c46;
+    color: #8a8f98;
+    border-radius: 4px;
+    padding: 1px 8px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .kind.on { background: #2c4a75; color: #fff; }
   .filter {
     flex: none;
     background: #23262e;

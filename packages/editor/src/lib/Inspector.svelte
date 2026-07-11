@@ -194,12 +194,19 @@
       ></textarea>
       <div class="grid">
         <label for="in-font">Font</label>
-        <input
+        <select
           id="in-font"
-          type="text"
           value={el.fontFamily ?? ''}
-          onchange={(e) => setElementField('fontFamily', (e.currentTarget as HTMLInputElement).value)}
-        />
+          onchange={(e) => setElementField('fontFamily', (e.currentTarget as HTMLSelectElement).value || undefined)}
+        >
+          {#if el.fontFamily && !(ed.setRef?.fonts ?? []).some((f) => f.family === el.fontFamily)}
+            <option value={el.fontFamily}>{el.fontFamily} (missing)</option>
+          {/if}
+          <option value="">(default)</option>
+          {#each ed.setRef?.fonts ?? [] as f (f.family)}
+            <option value={f.family}>{f.family}</option>
+          {/each}
+        </select>
         <label for="in-align">Align</label>
         <select
           id="in-align"
