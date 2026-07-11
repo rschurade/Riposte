@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Riposte Bench</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, sans-serif;
+      background: #16181d; color: #e6e6e6;
+      display: grid; grid-template-columns: 1fr 320px; grid-template-rows: auto 1fr;
+      height: 100vh; gap: 10px; padding: 10px;
+    }
+    header { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    header h1 { font-size: 15px; letter-spacing: 0.25em; font-weight: 400; margin: 0 10px 0 0; text-transform: uppercase; color: #d9a441; }
+    select, button, input[type=text] {
+      background: #23262e; color: #e6e6e6; border: 1px solid #383c46;
+      border-radius: 5px; padding: 6px 12px; font-size: 13px;
+    }
+    button { cursor: pointer; }
+    button:hover { border-color: #d9a441; }
+    button.primary { background: #2c4a75; }
+    #stageWrap {
+      position: relative; background:
+        repeating-conic-gradient(#1c1f26 0% 25%, #22252d 0% 50%) 0 0 / 24px 24px;
+      border: 1px solid #383c46; border-radius: 6px; overflow: hidden; align-self: stretch;
+    }
+    #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+    aside { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+    aside h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: #8a8f98; margin: 8px 0 2px; }
+    .kv { display: grid; grid-template-columns: 90px 1fr; gap: 4px 8px; align-items: center; }
+    .kv label { font-size: 12px; color: #aab; overflow: hidden; text-overflow: ellipsis; }
+    .kv input { width: 100%; padding: 4px 8px; }
+    textarea {
+      background: #23262e; color: #e6e6e6; border: 1px solid #383c46; border-radius: 5px;
+      font: 12px/1.4 Consolas, monospace; min-height: 110px; padding: 6px; width: 100%;
+    }
+    #frameRow { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
+    #frameSlider { flex: 1; }
+    #frameNum { font: 13px Consolas, monospace; color: #d9a441; min-width: 70px; text-align: right; }
+    .row { display: flex; gap: 6px; }
+    .row button { flex: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Riposte</h1>
+    <select id="sceneSelect"></select>
+    <button id="btnPlay" class="primary">Play</button>
+    <button id="btnNext">Next</button>
+    <button id="btnStop">Stop</button>
+    <button id="btnReset">Reset</button>
+    <div id="frameRow">
+      <input type="range" id="frameSlider" min="0" max="149" value="0" />
+      <span id="frameNum">0 / 0</span>
+    </div>
+  </header>
+  <div id="stageWrap"><div id="stage"></div></div>
+  <aside>
+    <h2>Data (keys found in scene)</h2>
+    <div class="kv" id="dataForm"></div>
+    <div class="row"><button id="btnSendForm" class="primary">Update (JSON)</button></div>
+    <h2>Raw payload (JSON or templateData XML)</h2>
+    <textarea id="rawData" spellcheck="false"></textarea>
+    <div class="row"><button id="btnSendRaw">Send raw</button></div>
+  </aside>
+  <script src="/runtime.js"></script>
+  <script src="/bench.js"></script>
+</body>
+</html>

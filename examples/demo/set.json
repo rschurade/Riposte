@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "demo",
+  "scenes": ["scenes/Schedule.json"],
+  "export": {
+    "mode": "external",
+    "preloadAssets": true
+  }
+}

@@ -6,6 +6,7 @@
   "types": "src/index.ts",
   "scripts": {
     "check": "tsc -p .",
+    "test": "node --test \"test/*.test.ts\"",
     "build": "esbuild src/index.ts --bundle --format=iife --global-name=riposte --outfile=dist/riposte.js"
   },
   "dependencies": {

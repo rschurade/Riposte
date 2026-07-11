@@ -1,0 +1,502 @@
+{
+  "formatVersion": 1,
+  "name": "Schedule",
+  "composition": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "duration": 150,
+    "markers": [
+      { "frame": 60, "type": "pause" },
+      { "frame": 110, "type": "outro" }
+    ],
+    "layers": [
+      {
+        "id": "l-frame",
+        "name": "frame",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "frame",
+          "type": "image",
+          "asset": "assets/frame.svg",
+          "style": {
+            "x": { "value": 960 },
+            "y": { "value": 510 },
+            "width": { "value": 900 },
+            "height": { "value": 620 },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 0, "value": 0 },
+                { "frame": 12, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 128, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-title",
+        "name": "title",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "title",
+          "type": "text",
+          "key": "_title",
+          "content": "SCHEDULE",
+          "fontFamily": "Arial, sans-serif",
+          "fontWeight": 700,
+          "textAlign": "center",
+          "autoSqueeze": true,
+          "style": {
+            "x": { "value": 960 },
+            "y": {
+              "value": 285,
+              "keyframes": [
+                { "frame": 5, "value": 320, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
+                { "frame": 22, "value": 285 }
+              ]
+            },
+            "width": { "value": 700 },
+            "height": { "value": 70 },
+            "fontSize": { "value": 56 },
+            "letterSpacing": { "value": 10 },
+            "color": { "value": "#ffffff", "unit": "color" },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 5, "value": 0 },
+                { "frame": 20, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 124, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-bar1",
+        "name": "bar 1",
+        "startFrame": 0,
+        "duration": 150,
+        "masks": [
+          {
+            "id": "bar1-mask",
+            "type": "rectangle",
+            "style": {
+              "x": {
+                "value": 960,
+                "keyframes": [
+                  { "frame": 15, "value": 550, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
+                  { "frame": 35, "value": 960 }
+                ]
+              },
+              "y": { "value": 420 },
+              "width": {
+                "value": 820,
+                "keyframes": [
+                  { "frame": 15, "value": 0, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
+                  { "frame": 35, "value": 820 }
+                ]
+              },
+              "height": { "value": 74 }
+            }
+          }
+        ],
+        "element": {
+          "id": "bar1",
+          "type": "image",
+          "asset": "assets/bar.svg",
+          "style": {
+            "x": { "value": 960 },
+            "y": { "value": 420 },
+            "width": { "value": 820 },
+            "height": { "value": 70 },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 110, "value": 1 },
+                { "frame": 122, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-bar2",
+        "name": "bar 2",
+        "startFrame": 0,
+        "duration": 150,
+        "masks": [
+          {
+            "id": "bar2-mask",
+            "type": "rectangle",
+            "style": {
+              "x": {
+                "value": 960,
+                "keyframes": [
+                  { "frame": 21, "value": 550, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
+                  { "frame": 41, "value": 960 }
+                ]
+              },
+              "y": { "value": 505 },
+              "width": {
+                "value": 820,
+                "keyframes": [
+                  { "frame": 21, "value": 0, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
+                  { "frame": 41, "value": 820 }
+                ]
+              },
+              "height": { "value": 74 }
+            }
+          }
+        ],
+        "element": {
+          "id": "bar2",
+          "type": "image",
+          "asset": "assets/bar.svg",
+          "style": {
+            "x": { "value": 960 },
+            "y": { "value": 505 },
+            "width": { "value": 820 },
+            "height": { "value": 70 },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 110, "value": 1 },
+                { "frame": 122, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-bar3",
+        "name": "bar 3",
+        "startFrame": 0,
+        "duration": 150,
+        "masks": [
+          {
+            "id": "bar3-mask",
+            "type": "rectangle",
+            "style": {
+              "x": {
+                "value": 960,
+                "keyframes": [
+                  { "frame": 27, "value": 550, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
+                  { "frame": 47, "value": 960 }
+                ]
+              },
+              "y": { "value": 590 },
+              "width": {
+                "value": 820,
+                "keyframes": [
+                  { "frame": 27, "value": 0, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
+                  { "frame": 47, "value": 820 }
+                ]
+              },
+              "height": { "value": 74 }
+            }
+          }
+        ],
+        "element": {
+          "id": "bar3",
+          "type": "image",
+          "asset": "assets/bar.svg",
+          "style": {
+            "x": { "value": 960 },
+            "y": { "value": 590 },
+            "width": { "value": 820 },
+            "height": { "value": 70 },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 110, "value": 1 },
+                { "frame": 122, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-flag1",
+        "name": "flag 1",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "flag1",
+          "type": "imageLoader",
+          "key": "_flag1",
+          "fit": "contain",
+          "style": {
+            "x": { "value": 625 },
+            "y": { "value": 420 },
+            "width": { "value": 100 },
+            "height": { "value": 56 },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 30, "value": 0 },
+                { "frame": 40, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-name1",
+        "name": "name 1",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "name1",
+          "type": "text",
+          "key": "_name1",
+          "content": "Name One",
+          "fontFamily": "Arial, sans-serif",
+          "fontWeight": 600,
+          "textAlign": "left",
+          "autoSqueeze": true,
+          "style": {
+            "x": { "value": 950 },
+            "y": { "value": 420 },
+            "width": { "value": 480 },
+            "height": { "value": 60 },
+            "fontSize": { "value": 34 },
+            "color": { "value": "#ffffff", "unit": "color" },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 30, "value": 0 },
+                { "frame": 40, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-noc1",
+        "name": "noc 1",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "noc1",
+          "type": "text",
+          "key": "_noc1",
+          "content": "NOC",
+          "fontFamily": "Arial, sans-serif",
+          "fontWeight": 700,
+          "textAlign": "center",
+          "style": {
+            "x": { "value": 1290 },
+            "y": { "value": 420 },
+            "width": { "value": 140 },
+            "height": { "value": 60 },
+            "fontSize": { "value": 30 },
+            "color": { "value": "#d9a441", "unit": "color" },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 30, "value": 0 },
+                { "frame": 40, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-flag2",
+        "name": "flag 2",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "flag2",
+          "type": "imageLoader",
+          "key": "_flag2",
+          "fit": "contain",
+          "style": {
+            "x": { "value": 625 },
+            "y": { "value": 505 },
+            "width": { "value": 100 },
+            "height": { "value": 56 },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 36, "value": 0 },
+                { "frame": 46, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-name2",
+        "name": "name 2",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "name2",
+          "type": "text",
+          "key": "_name2",
+          "content": "Name Two",
+          "fontFamily": "Arial, sans-serif",
+          "fontWeight": 600,
+          "textAlign": "left",
+          "autoSqueeze": true,
+          "style": {
+            "x": { "value": 950 },
+            "y": { "value": 505 },
+            "width": { "value": 480 },
+            "height": { "value": 60 },
+            "fontSize": { "value": 34 },
+            "color": { "value": "#ffffff", "unit": "color" },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 36, "value": 0 },
+                { "frame": 46, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-noc2",
+        "name": "noc 2",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "noc2",
+          "type": "text",
+          "key": "_noc2",
+          "content": "NOC",
+          "fontFamily": "Arial, sans-serif",
+          "fontWeight": 700,
+          "textAlign": "center",
+          "style": {
+            "x": { "value": 1290 },
+            "y": { "value": 505 },
+            "width": { "value": 140 },
+            "height": { "value": 60 },
+            "fontSize": { "value": 30 },
+            "color": { "value": "#d9a441", "unit": "color" },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 36, "value": 0 },
+                { "frame": 46, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-flag3",
+        "name": "flag 3",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "flag3",
+          "type": "imageLoader",
+          "key": "_flag3",
+          "fit": "contain",
+          "style": {
+            "x": { "value": 625 },
+            "y": { "value": 590 },
+            "width": { "value": 100 },
+            "height": { "value": 56 },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 42, "value": 0 },
+                { "frame": 52, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-name3",
+        "name": "name 3",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "name3",
+          "type": "text",
+          "key": "_name3",
+          "content": "Name Three",
+          "fontFamily": "Arial, sans-serif",
+          "fontWeight": 600,
+          "textAlign": "left",
+          "autoSqueeze": true,
+          "style": {
+            "x": { "value": 950 },
+            "y": { "value": 590 },
+            "width": { "value": 480 },
+            "height": { "value": 60 },
+            "fontSize": { "value": 34 },
+            "color": { "value": "#ffffff", "unit": "color" },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 42, "value": 0 },
+                { "frame": 52, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-noc3",
+        "name": "noc 3",
+        "startFrame": 0,
+        "duration": 150,
+        "element": {
+          "id": "noc3",
+          "type": "text",
+          "key": "_noc3",
+          "content": "NOC",
+          "fontFamily": "Arial, sans-serif",
+          "fontWeight": 700,
+          "textAlign": "center",
+          "style": {
+            "x": { "value": 1290 },
+            "y": { "value": 590 },
+            "width": { "value": 140 },
+            "height": { "value": 60 },
+            "fontSize": { "value": 30 },
+            "color": { "value": "#d9a441", "unit": "color" },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                { "frame": 42, "value": 0 },
+                { "frame": 52, "value": 1 },
+                { "frame": 110, "value": 1 },
+                { "frame": 120, "value": 0 }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}
