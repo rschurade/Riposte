@@ -15,13 +15,25 @@ import type { LooDoc, LooResource } from './loo-format.ts';
 import { AssetPool, decodeContent } from './assets.ts';
 import { convertComposition, type AssetResolver } from './convert.ts';
 
+export interface LooImportOptions {
+  /**
+   * Import every composition in the project file. Default: only the ACTIVE
+   * composition plus compositions it (transitively) embeds via COMPOSITION
+   * elements — .loo files accumulate old copies and test comps that were
+   * never part of the exported template.
+   */
+  allCompositions?: boolean;
+}
+
 export interface LooImportResult {
   scenes: string[];
+  /** Compositions skipped as unreferenced baggage (name per skip). */
+  skipped: string[];
   warnings: string[];
   assetReport: AssetPool['report'];
 }
 
-export async function importLoo(looPath: string, setDir: string): Promise<LooImportResult> {
+export async function importLoo(looPath: string, setDir: string, opts: LooImportOptions = {}): Promise<LooImportResult> {
   const doc = JSON.parse(await readFile(looPath, 'utf8')) as LooDoc;
   const pool = await AssetPool.open(setDir);
   const warnings: string[] = [];
@@ -83,9 +95,11 @@ export async function importLoo(looPath: string, setDir: string): Promise<LooImp
     }
   }
 
+  const { keep, skipped } = selectCompositions(doc, opts.allCompositions ?? false);
+
   const sceneFiles: string[] = [];
   await mkdir(join(setDir, 'scenes'), { recursive: true });
-  for (const comp of doc.compositions) {
+  for (const comp of keep) {
     const { scene, warnings: w } = await convertComposition(comp, resolver);
     warnings.push(...w.map((msg) => `${comp.name}: ${msg}`));
     const file = `scenes/${sanitizeDir(comp.name)}.json`;
@@ -94,7 +108,31 @@ export async function importLoo(looPath: string, setDir: string): Promise<LooImp
   }
 
   await updateSetDoc(setDir, sceneFiles, fonts);
-  return { scenes: sceneFiles, warnings, assetReport: pool.report };
+  return { scenes: sceneFiles, skipped, warnings, assetReport: pool.report };
+}
+
+/** Active composition + everything it transitively embeds; the rest is baggage. */
+function selectCompositions(doc: LooDoc, all: boolean): { keep: LooDoc['compositions']; skipped: string[] } {
+  if (all || doc.compositions.length < 2) return { keep: doc.compositions, skipped: [] };
+  const byId = new Map(doc.compositions.map((c) => [c.id, c]));
+  const active = byId.get(doc.activeCompositionId ?? '') ?? doc.compositions[0]!;
+  const keptIds = new Set([active.id]);
+  const queue = [active];
+  while (queue.length > 0) {
+    const comp = queue.pop()!;
+    for (const layer of comp.layers) {
+      const el = layer.element as { type: string; compositionId?: string };
+      if (el.type === 'COMPOSITION' && el.compositionId && !keptIds.has(el.compositionId)) {
+        keptIds.add(el.compositionId);
+        const target = byId.get(el.compositionId);
+        if (target) queue.push(target);
+      }
+    }
+  }
+  return {
+    keep: doc.compositions.filter((c) => keptIds.has(c.id)),
+    skipped: doc.compositions.filter((c) => !keptIds.has(c.id)).map((c) => c.name),
+  };
 }
 
 async function updateSetDoc(setDir: string, newScenes: string[], newFonts: SetFont[]): Promise<void> {
