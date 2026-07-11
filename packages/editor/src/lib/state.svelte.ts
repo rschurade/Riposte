@@ -267,6 +267,14 @@ class EditorState {
     this.flash(`renamed asset${changed ? ` — ${changed} file(s) updated` : ''}`);
   }
 
+  /** Timeline eye toggle — same flag as the inspector's Hidden checkbox. */
+  setLayerHidden(id: string, hidden: boolean): void {
+    this.mutate(hidden ? 'hide layer' : 'show layer', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === id);
+      if (l) l.hidden = hidden || undefined;
+    });
+  }
+
   renameLayer(id: string, name: string): void {
     name = name.trim();
     if (!name) return;

@@ -269,14 +269,28 @@
               {:else}
                 {@const lbl = layerLabel(layer)}
                 <span
+                  class="ltext"
                   role="button"
                   tabindex="-1"
                   title="{layer.name}{layer.element.key ? ` · ${layer.element.key}` : ''} — double-click to rename"
                   ondblclick={() => (renamingLayer = { id: layer.id, value: layer.name })}
                 >
                   {#if kfFrames.length > 0}<span class="animind" title="{kfFrames.length} keyframes">◆</span>{/if}
-                  {layer.isGuide ? '▦ ' : ''}{layer.hidden ? '∅ ' : ''}{lbl.main}{#if lbl.key}<span class="dim"> · {lbl.key}</span>{/if}
+                  {layer.isGuide ? '▦ ' : ''}{lbl.main}{#if lbl.key}<span class="dim"> · {lbl.key}</span>{/if}
                 </span>
+                <button
+                  class="eye"
+                  class:off={layer.hidden}
+                  title={layer.hidden ? 'Hidden — click to show' : 'Visible — click to hide'}
+                  onpointerdown={(e) => e.stopPropagation()}
+                  onclick={() => ed.setLayerHidden(layer.id, !layer.hidden)}
+                >
+                  {#if layer.hidden}
+                    <svg viewBox="0 0 16 16" width="13" height="13"><path d="M2 8s2.2-3.5 6-3.5c.8 0 1.5.15 2.2.4M14 8s-2.2 3.5-6 3.5c-.8 0-1.5-.15-2.2-.4M3 13 13 3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                  {:else}
+                    <svg viewBox="0 0 16 16" width="13" height="13"><path d="M2 8s2.2-3.5 6-3.5S14 8 14 8s-2.2 3.5-6 3.5S2 8 2 8Z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.7" fill="currentColor"/></svg>
+                  {/if}
+                </button>
               {/if}
             </div>
             <div class="track">
@@ -356,14 +370,29 @@
   .label {
     width: 180px;
     flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
     font-size: 11px;
     color: #aab;
-    padding: 3px 8px;
+    padding: 3px 4px 3px 8px;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
     border-right: 1px solid #23262e;
   }
+  .ltext { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .eye {
+    flex: none;
+    background: none;
+    border: none;
+    padding: 0 2px;
+    cursor: pointer;
+    color: #4a4e58;
+    line-height: 0;
+  }
+  .row:hover .eye, .eye.off { color: #8a8f98; }
+  .eye.off { color: #e0a34e; }
+  .eye:hover { color: #cfd3da; }
   .track { position: relative; flex: 1; overflow: hidden; }
   .ruler { cursor: ew-resize; }
   .tick {
