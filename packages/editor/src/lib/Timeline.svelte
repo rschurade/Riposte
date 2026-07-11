@@ -46,6 +46,17 @@
     return rows;
   }
 
+  /** All keyframe frames of a layer (element + masks) — the at-a-glance marks. */
+  function allKfFrames(layer: Layer): number[] {
+    const frames = new Set<number>();
+    const collect = (style: ElementStyle) => {
+      for (const p of Object.values(style)) for (const k of p?.keyframes ?? []) frames.add(k.frame);
+    };
+    collect(layer.element.style);
+    for (const m of layer.masks ?? []) collect(m.style);
+    return [...frames];
+  }
+
   // ---- keyframe diamond interaction -----------------------------------------
   let dragKf: { targetKey: string; prop: string; from: number; current: number } | null = $state(null);
 
@@ -149,6 +160,7 @@
       </div>
       <div class="scroll">
         {#each displayLayers as layer (layer.id)}
+          {@const kfFrames = allKfFrames(layer)}
           <div
             class="row"
             class:selected={ed.selectedLayerId === layer.id}
@@ -158,6 +170,7 @@
             }}
           >
             <div class="label" class:dim={layer.hidden || layer.isGuide}>
+              {#if kfFrames.length > 0}<span class="animind" title="{kfFrames.length} keyframes">◆</span>{/if}
               {layer.isGuide ? '▦ ' : ''}{layer.hidden ? '∅ ' : ''}{layer.name}
             </div>
             <div class="track">
@@ -165,6 +178,9 @@
                 class="bar"
                 style="left:{layer.startFrame * pxPerFrame}px;width:{layer.duration * pxPerFrame}px"
               ></div>
+              {#each kfFrames as f (f)}
+                <span class="kfmark" style="left:{f * pxPerFrame}px"></span>
+              {/each}
               <span class="playhead faint" style="left:{ed.frame * pxPerFrame}px"></span>
             </div>
           </div>
@@ -252,6 +268,18 @@
     background: #2c4a75;
     border-radius: 3px;
     opacity: 0.85;
+  }
+  .animind { color: #d9a441; font-size: 8px; margin-right: 3px; vertical-align: 1px; }
+  .kfmark {
+    position: absolute;
+    top: 9px;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    background: #d9a441;
+    opacity: 0.65;
+    transform: rotate(45deg);
+    pointer-events: none;
   }
   .row.proprow { height: 18px; background: #1b1e25; }
   .label.prop { padding-left: 24px; color: #8a8f98; font-size: 10px; }
