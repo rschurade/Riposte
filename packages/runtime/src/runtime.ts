@@ -91,8 +91,10 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
 
   function runAction(source: string): void {
     try {
+      // `this` = composition (Loopic frame-action semantics), `loopic` = runtime.
+      // `runtime` is initialized by the time any action can fire.
       // eslint-disable-next-line no-new-func
-      new Function(source).call(compositionApi);
+      new Function('loopic', source).call(compositionApi, runtime);
     } catch (err) {
       console.error('riposte: action failed', err);
     }
@@ -197,10 +199,12 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
   };
 
   // Composition action runs once on load (globals, middleware registration).
+  // The runtime is passed as BOTH `runtime` and `loopic`: imported Loopic
+  // composition actions call loopic.useOnUpdate(...) etc. and must run as-is.
   if (comp.action) {
     try {
       // eslint-disable-next-line no-new-func
-      new Function('runtime', comp.action).call(compositionApi, runtime);
+      new Function('loopic', 'runtime', comp.action).call(compositionApi, runtime, runtime);
     } catch (err) {
       console.error('riposte: composition action failed', err);
     }

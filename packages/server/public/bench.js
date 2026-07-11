@@ -20,16 +20,37 @@ async function listScenes() {
   for (const s of sets) {
     for (const scenePath of s.scenes) {
       const name = scenePath.replace(/^scenes\//, '').replace(/\.json$/, '');
-      options.push({ set: s.name, scene: name, label: `${s.name} / ${name}` });
+      options.push({
+        root: s.root, set: s.name, scene: name, fonts: s.fonts,
+        label: `${s.name} / ${name}`, value: `${s.root}/${s.name}/${name}`,
+      });
     }
   }
   return options;
 }
 
-async function load(setName, sceneName) {
+const injectedFonts = new Set();
+
+async function injectFonts(baseUrl, fonts) {
+  for (const f of fonts || []) {
+    if (injectedFonts.has(f.family)) continue;
+    injectedFonts.add(f.family);
+    const face = new FontFace(f.family, `url("${baseUrl}${f.file}")`);
+    try {
+      await face.load();
+      document.fonts.add(face);
+    } catch (err) {
+      console.warn('font load failed', f.family, err);
+    }
+  }
+}
+
+async function load(opt) {
   if (rt) { rt.destroy(); rt = null; }
-  scene = await (await fetch(`/examples/${setName}/scenes/${sceneName}.json`)).json();
-  rt = riposte.createRuntime(scene, $('stage'), { assetBase: `/examples/${setName}/` });
+  const base = `/${opt.root}/${opt.set}/`;
+  await injectFonts(base, opt.fonts);
+  scene = await (await fetch(`${base}scenes/${opt.scene}.json`)).json();
+  rt = riposte.createRuntime(scene, $('stage'), { assetBase: base });
   window.rt = rt; // debugging convenience
 
   const comp = scene.composition;
@@ -44,6 +65,10 @@ async function load(setName, sceneName) {
 
 function fitStage() {
   if (!scene) return;
+  if (params.has('bare')) {
+    $('stage').style.transform = '';
+    return;
+  }
   const wrap = $('stageWrap');
   const comp = scene.composition;
   const scale = Math.min(wrap.clientWidth / comp.width, wrap.clientHeight / comp.height);
@@ -98,32 +123,31 @@ function tickFrameUi() {
 let sliderHeld = false;
 
 async function main() {
+  if (params.has('bare')) document.body.classList.add('bare');
   const options = await listScenes();
   const select = $('sceneSelect');
   for (const o of options) {
     const opt = document.createElement('option');
-    opt.value = `${o.set}/${o.scene}`;
+    opt.value = o.value;
     opt.textContent = o.label;
     select.append(opt);
   }
+  const byValue = (v) => options.find((o) => o.value === v);
 
-  const wantSet = params.get('set') ?? (options[0] && options[0].set);
-  const wantScene = params.get('scene') ?? (options[0] && options[0].scene);
-  if (!wantSet || !wantScene) return;
-  select.value = `${wantSet}/${wantScene}`;
-  await load(wantSet, wantScene);
+  const want = options.find(
+    (o) =>
+      (!params.get('set') || o.set === params.get('set')) &&
+      (!params.get('scene') || o.scene === params.get('scene')),
+  ) ?? options[0];
+  if (!want) return;
+  select.value = want.value;
+  await load(want);
 
-  select.addEventListener('change', () => {
-    const [s, sc] = select.value.split('/');
-    void load(s, sc);
-  });
+  select.addEventListener('change', () => void load(byValue(select.value)));
   $('btnPlay').addEventListener('click', () => rt.play());
   $('btnNext').addEventListener('click', () => rt.next());
   $('btnStop').addEventListener('click', () => rt.stop());
-  $('btnReset').addEventListener('click', () => {
-    const [s, sc] = select.value.split('/');
-    void load(s, sc);
-  });
+  $('btnReset').addEventListener('click', () => void load(byValue(select.value)));
   $('btnSendForm').addEventListener('click', sendForm);
   $('btnSendRaw').addEventListener('click', () => rt.update($('rawData').value));
   const slider = $('frameSlider');
@@ -145,6 +169,18 @@ async function main() {
     rt.composition.goTo(Number(params.get('frame')));
     await (document.fonts ? document.fonts.ready : Promise.resolve());
     await new Promise((r) => setTimeout(r, 400)); // let images decode
+    if (params.has('probe')) {
+      const el = document.querySelector(`[data-key="${params.get('probe')}"]`);
+      const pre = document.createElement('pre');
+      pre.id = 'probe';
+      pre.style.cssText = 'position:fixed;left:0;top:0;visibility:hidden';
+      pre.textContent = JSON.stringify({
+        rect: el ? el.getBoundingClientRect() : null,
+        inner: [innerWidth, innerHeight],
+        dpr: devicePixelRatio,
+      });
+      document.body.appendChild(pre);
+    }
     window.__benchReady = true;
   }
 }

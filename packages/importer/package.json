@@ -8,7 +8,8 @@
     "riposte-import": "src/cli.ts"
   },
   "scripts": {
-    "check": "tsc -p ."
+    "check": "tsc -p .",
+    "test": "node --test \"test/*.test.ts\""
   },
   "dependencies": {
     "@riposte/shared": "*"

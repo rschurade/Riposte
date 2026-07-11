@@ -47,6 +47,8 @@ export interface Layer {
   duration: number;
   /** Guide layers render in the editor but are skipped on export. */
   isGuide?: boolean;
+  /** Hidden layers exist in the scene but never render (Loopic isVisible=false). */
+  hidden?: boolean;
   /** Mask elements clip this layer's element (rectangle or path shapes). */
   masks?: SceneElement[];
   element: SceneElement;
@@ -126,8 +128,13 @@ export interface TextElement extends BaseElement {
   content: string;
   fontFamily?: string;
   fontWeight?: number | string;
+  fontStyle?: string;
   textAlign?: 'left' | 'center' | 'right';
   verticalAlign?: 'top' | 'middle' | 'bottom';
+  textTransform?: string;
+  textDecoration?: string;
+  /** CSS padding [top, right, bottom, left] in px. */
+  padding?: [number, number, number, number];
   multiline?: boolean;
   /** Auto-size box to content (disables width/height). */
   autoSize?: boolean;

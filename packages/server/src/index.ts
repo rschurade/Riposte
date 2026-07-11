@@ -1,11 +1,12 @@
 /**
  * @riposte/server — local Node server (Node ≥ 24, runs TypeScript natively).
  *
- * Phase 1 surface:
+ * Surface:
  *   /                → preview bench (public/)
  *   /runtime.js      → @riposte/runtime IIFE build
- *   /examples/**     → example set projects (scene JSON + shared assets)
- *   /api/sets        → list example sets and their scenes
+ *   /examples/**     → example set projects (committed demos)
+ *   /projects/**     → user set projects (gitignored, e.g. imported sets)
+ *   /api/sets        → list sets from both roots
  *
  * Later: project open/save API, asset upload with content-hash dedup, export.
  */
@@ -20,6 +21,7 @@ const serverRoot = resolve(here, '..');
 const repoRoot = resolve(serverRoot, '..', '..');
 const publicDir = join(serverRoot, 'public');
 const examplesDir = join(repoRoot, 'examples');
+const projectsDir = join(repoRoot, 'projects');
 const runtimeJs = join(repoRoot, 'packages', 'runtime', 'dist', 'riposte.js');
 
 const MIME: Record<string, string> = {
@@ -51,9 +53,10 @@ async function handle(rawUrl: string, res: import('node:http').ServerResponse): 
   const url = new URL(rawUrl, 'http://localhost');
   const path = decodeURIComponent(url.pathname);
 
-  if (path === '/api/sets') return json(res, await listSets());
+  if (path === '/api/sets') return json(res, [...(await listSets(examplesDir, 'examples')), ...(await listSets(projectsDir, 'projects'))]);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
+  if (path.startsWith('/projects/')) return file(res, safeJoin(projectsDir, path.slice('/projects/'.length)));
 
   const rel = path === '/' ? 'index.html' : path.replace(/^\//, '');
   return file(res, safeJoin(publicDir, rel));
@@ -84,24 +87,31 @@ function json(res: import('node:http').ServerResponse, value: unknown): void {
 }
 
 interface SetInfo {
+  /** URL root the set is served under: 'examples' or 'projects'. */
+  root: string;
   name: string;
   scenes: string[];
+  fonts: { family: string; file: string }[];
 }
 
-async function listSets(): Promise<SetInfo[]> {
+async function listSets(dir: string, root: string): Promise<SetInfo[]> {
   const out: SetInfo[] = [];
   let entries: string[] = [];
   try {
-    entries = await readdir(examplesDir);
+    entries = await readdir(dir);
   } catch {
     return out;
   }
   for (const entry of entries) {
-    const setFile = join(examplesDir, entry, 'set.json');
+    const setFile = join(dir, entry, 'set.json');
     try {
       if (!(await stat(setFile)).isFile()) continue;
-      const doc = JSON.parse(await readFile(setFile, 'utf8')) as { name?: string; scenes?: string[] };
-      out.push({ name: entry, scenes: doc.scenes ?? [] });
+      const doc = JSON.parse(await readFile(setFile, 'utf8')) as {
+        name?: string;
+        scenes?: string[];
+        fonts?: { family: string; file: string }[];
+      };
+      out.push({ root, name: entry, scenes: doc.scenes ?? [], fonts: doc.fonts ?? [] });
     } catch {
       // not a set folder — skip
     }

@@ -36,6 +36,10 @@
       background: #23262e; color: #e6e6e6; border: 1px solid #383c46; border-radius: 5px;
       font: 12px/1.4 Consolas, monospace; min-height: 110px; padding: 6px; width: 100%;
     }
+    /* bare mode: naked 1:1 stage for A/B pixel comparison (?bare=1) */
+    body.bare { display: block; padding: 0; background: #fff; color-scheme: light; }
+    body.bare header, body.bare aside { display: none; }
+    body.bare #stageWrap { position: fixed; inset: 0; border: none; border-radius: 0; background: transparent; }
     #frameRow { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 260px; }
     #frameSlider { flex: 1; }
     #frameNum { font: 13px Consolas, monospace; color: #d9a441; min-width: 70px; text-align: right; }

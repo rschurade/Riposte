@@ -15,7 +15,16 @@ export interface SetDoc {
   name: string;
   /** Scene files relative to the set root, e.g. "scenes/Schedule.json". */
   scenes: string[];
+  /** Fonts shared by the set's scenes; renderers emit @font-face for each. */
+  fonts?: SetFont[];
   export: ExportSettings;
+}
+
+export interface SetFont {
+  /** CSS font-family name scenes reference (Loopic: the resource name). */
+  family: string;
+  /** Font file relative to the set root, e.g. "assets/fonts/League Spartan Bold.ttf". */
+  file: string;
 }
 
 export interface ExportSettings {

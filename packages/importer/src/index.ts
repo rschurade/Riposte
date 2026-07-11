@@ -1,26 +1,15 @@
 /**
- * @riposte/importer — converts Loopic single-file HTML exports into Riposte
- * set projects (phase 2).
- *
- * Approach: Loopic exports construct the scene via readable
- * `new Composition/Layer/…` calls. Stub those classes, evaluate the
- * composition block in a sandbox, capture the object graph, translate it to
- * the Riposte scene format. Base64 assets are extracted to files and
- * content-hash deduplicated into the target set's shared assets folder.
+ * @riposte/importer — converts Loopic projects (.loo, primary) and Loopic
+ * HTML exports (fallback, planned) into Riposte set projects.
  *
  * Asset identity = content hash; filenames are labels only. Same bytes under
  * different names dedup to one canonical file; same name with different
  * bytes is never overwritten (hash-suffixed + reported). A pixel-level
- * near-duplicate report flags visually-identical-but-byte-different assets
- * for manual merging — it never auto-merges.
+ * near-duplicate report for visually-identical-but-byte-different assets is
+ * planned; it will flag, never auto-merge.
  */
 
-export interface ImportResult {
-  sceneFile: string;
-  /** Assets written (or dedup-skipped) in the set's shared pool. */
-  assets: { path: string; deduplicated: boolean }[];
-}
-
-export function importLoopicTemplate(_html: string, _setDir: string): Promise<ImportResult> {
-  throw new Error('not implemented yet (phase 2)');
-}
+export { importLoo, type LooImportResult } from './import-loo.ts';
+export { convertComposition, type AssetResolver } from './convert.ts';
+export { AssetPool, decodeContent } from './assets.ts';
+export type * from './loo-format.ts';

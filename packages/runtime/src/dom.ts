@@ -120,14 +120,18 @@ function buildLayer(
   });
   rootEl.appendChild(layerEl);
 
-  // Layer in/out visibility over time
-  const start = layer.startFrame;
-  const end = layer.startFrame + layer.duration;
-  dynamics.push({
-    apply(frame) {
-      layerEl.style.display = frame >= start && frame < end ? '' : 'none';
-    },
-  });
+  if (layer.hidden) {
+    layerEl.style.display = 'none';
+  } else {
+    // Layer in/out visibility over time
+    const start = layer.startFrame;
+    const end = layer.startFrame + layer.duration;
+    dynamics.push({
+      apply(frame) {
+        layerEl.style.display = frame >= start && frame < end ? '' : 'none';
+      },
+    });
+  }
 
   // Masks: each mask nests a clipping wrapper + inverse-offset inner div so
   // the element keeps composition-space coordinates.
@@ -205,6 +209,10 @@ function buildElement(
         textAlign: el.textAlign ?? 'center',
         fontFamily: el.fontFamily ?? 'sans-serif',
         fontWeight: el.fontWeight != null ? String(el.fontWeight) : '',
+        fontStyle: el.fontStyle ?? '',
+        textTransform: el.textTransform ?? '',
+        textDecoration: el.textDecoration ?? '',
+        padding: el.padding ? el.padding.map((p) => `${p}px`).join(' ') : '',
       });
       if (el.autoSqueeze && !el.multiline) {
         const align = el.textAlign ?? 'center';
@@ -376,8 +384,25 @@ const CSS_PROPS: Record<string, { css: string; px?: boolean }> = {
   color: { css: 'color' },
   backgroundColor: { css: 'backgroundColor' },
   letterSpacing: { css: 'letterSpacing', px: true },
-  lineHeight: { css: 'lineHeight', px: true },
+  lineHeight: { css: 'lineHeight' }, // unitless multiplier (Loopic semantics)
+  borderRadius: { css: 'borderRadius', px: true },
 };
+
+/** Style props composed into the CSS `filter` string. [css function, default, unit] */
+const FILTER_PROPS: Record<string, { fn: string; def: number; unit: string }> = {
+  filterBlur: { fn: 'blur', def: 0, unit: 'px' },
+  filterBrightness: { fn: 'brightness', def: 1, unit: '' },
+  filterContrast: { fn: 'contrast', def: 1, unit: '' },
+  filterGrayscale: { fn: 'grayscale', def: 0, unit: '' },
+  filterHueRotate: { fn: 'hue-rotate', def: 0, unit: 'deg' },
+  filterInvert: { fn: 'invert', def: 0, unit: '' },
+  filterOpacity: { fn: 'opacity', def: 1, unit: '' },
+  filterSaturate: { fn: 'saturate', def: 1, unit: '' },
+  filterSepia: { fn: 'sepia', def: 0, unit: '' },
+};
+
+/** Drop-shadow / text-shadow style props (importer emits shadowX/Y/Blur/Color). */
+const SHADOW_PROPS = ['shadowX', 'shadowY', 'shadowBlur', 'shadowColor'] as const;
 
 function bindStyle(el: SceneElement, node: HTMLElement, dynamics: DynamicBinding[]): void {
   const s = el.style;
@@ -413,5 +438,41 @@ function bindStyle(el: SceneElement, node: HTMLElement, dynamics: DynamicBinding
     };
     if (sp.keyframes?.length) dynamics.push({ apply });
     else apply(0);
+  }
+
+  // CSS filter chain — only bound when any filter prop is present.
+  const filterKeys = Object.keys(FILTER_PROPS).filter((k) => s[k]);
+  if (filterKeys.length > 0) {
+    const applyFilters = (frame: number) => {
+      const parts: string[] = [];
+      for (const k of filterKeys) {
+        const def = FILTER_PROPS[k]!;
+        const v = numberAtFrame(s[k], frame, def.def);
+        if (v !== def.def) parts.push(`${def.fn}(${v}${def.unit})`);
+      }
+      node.style.filter = parts.join(' ');
+    };
+    if (filterKeys.some((k) => s[k]?.keyframes?.length)) dynamics.push({ apply: applyFilters });
+    else applyFilters(0);
+  }
+
+  // Drop shadow (text elements get text-shadow, others a drop-shadow filter
+  // appended after the filter chain — beware ordering if both animate).
+  if (SHADOW_PROPS.some((k) => s[k])) {
+    const applyShadow = (frame: number) => {
+      const x = numberAtFrame(s['shadowX'], frame, 0);
+      const y = numberAtFrame(s['shadowY'], frame, 0);
+      const blur = numberAtFrame(s['shadowBlur'], frame, 0);
+      const color = s['shadowColor'] ? String(valueAtFrame(s['shadowColor'], frame)) : '#000';
+      const css = x || y || blur ? `${x}px ${y}px ${blur}px ${color}` : '';
+      if (el.type === 'text') {
+        node.style.textShadow = css;
+      } else {
+        const base = node.style.filter.replace(/ ?drop-shadow\([^)]*\)/, '');
+        node.style.filter = css ? `${base} drop-shadow(${css})`.trim() : base;
+      }
+    };
+    if (SHADOW_PROPS.some((k) => s[k]?.keyframes?.length)) dynamics.push({ apply: applyShadow });
+    else applyShadow(0);
   }
 }

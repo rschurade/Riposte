@@ -1,0 +1,132 @@
+/**
+ * Import a Loopic .loo project into a Riposte set folder.
+ *
+ * - every composition becomes scenes/<name>.json
+ * - image/font/sequence resources land in the set's SHARED assets pool,
+ *   content-hash deduplicated across all imports into that set
+ * - fonts are registered in set.json (family = Loopic resource name)
+ */
+
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join, basename } from 'node:path';
+import type { SceneDoc, SetDoc, SetFont } from '@riposte/shared';
+import { SET_FORMAT_VERSION } from '@riposte/shared';
+import type { LooDoc, LooResource } from './loo-format.ts';
+import { AssetPool, decodeContent } from './assets.ts';
+import { convertComposition, type AssetResolver } from './convert.ts';
+
+export interface LooImportResult {
+  scenes: string[];
+  warnings: string[];
+  assetReport: AssetPool['report'];
+}
+
+export async function importLoo(looPath: string, setDir: string): Promise<LooImportResult> {
+  const doc = JSON.parse(await readFile(looPath, 'utf8')) as LooDoc;
+  const pool = await AssetPool.open(setDir);
+  const warnings: string[] = [];
+
+  // Index resources and lazily materialize them into the pool on first use,
+  // so unreferenced resources don't bloat the set.
+  const resources = new Map<string, LooResource>();
+  for (const r of doc.resources?.resources ?? []) resources.set(r.id, r);
+
+  const imagePaths = new Map<string, string>();
+  const resolver: AssetResolver = {
+    async image(resourceId) {
+      const cached = imagePaths.get(resourceId);
+      if (cached) return cached;
+      const r = resources.get(resourceId);
+      if (!r?.content) {
+        warnings.push(`missing image resource ${resourceId}`);
+        return '';
+      }
+      const rel = await pool.store(decodeContent(r.content), withExt(r.name, r.fileType));
+      imagePaths.set(resourceId, rel);
+      return rel;
+    },
+    async sequenceFrames(resourceId, imageIds) {
+      const seq = resources.get(resourceId);
+      if (!seq?.images) {
+        warnings.push(`missing image sequence resource ${resourceId}`);
+        return [];
+      }
+      const byId = new Map(seq.images.map((img) => [img.id, img]));
+      const frames: string[] = [];
+      for (const id of imageIds) {
+        const img = byId.get(id);
+        if (!img?.content) {
+          warnings.push(`sequence ${seq.name}: missing frame ${id}`);
+          continue;
+        }
+        const key = `${resourceId}/${id}`;
+        let rel = imagePaths.get(key);
+        if (!rel) {
+          // Loopic names most sequences just "Image Sequence" — suffix with the
+          // resource id so different sequences get distinct folders.
+          const subdir = `${sanitizeDir(seq.name)}_${resourceId.slice(0, 4)}`;
+          rel = await pool.store(decodeContent(img.content), withExt(img.name, img.fileType), subdir);
+          imagePaths.set(key, rel);
+        }
+        frames.push(rel);
+      }
+      return frames;
+    },
+  };
+
+  // Fonts: materialize all (they're small and set-wide by nature).
+  const fonts: SetFont[] = [];
+  for (const r of resources.values()) {
+    if (r.fileResourceType === 'FONT' && r.content) {
+      const rel = await pool.store(decodeContent(r.content), withExt(r.name, r.fileType ?? 'ttf'), 'fonts');
+      fonts.push({ family: r.name, file: rel });
+    }
+  }
+
+  const sceneFiles: string[] = [];
+  await mkdir(join(setDir, 'scenes'), { recursive: true });
+  for (const comp of doc.compositions) {
+    const { scene, warnings: w } = await convertComposition(comp, resolver);
+    warnings.push(...w.map((msg) => `${comp.name}: ${msg}`));
+    const file = `scenes/${sanitizeDir(comp.name)}.json`;
+    await writeFile(join(setDir, file), JSON.stringify(scene, null, 2) + '\n', 'utf8');
+    sceneFiles.push(file);
+  }
+
+  await updateSetDoc(setDir, sceneFiles, fonts);
+  return { scenes: sceneFiles, warnings, assetReport: pool.report };
+}
+
+async function updateSetDoc(setDir: string, newScenes: string[], newFonts: SetFont[]): Promise<void> {
+  const setPath = join(setDir, 'set.json');
+  let set: SetDoc;
+  try {
+    set = JSON.parse(await readFile(setPath, 'utf8')) as SetDoc;
+  } catch {
+    set = {
+      formatVersion: SET_FORMAT_VERSION,
+      name: basename(setDir),
+      scenes: [],
+      export: { mode: 'external', preloadAssets: true },
+    };
+  }
+  for (const s of newScenes) if (!set.scenes.includes(s)) set.scenes.push(s);
+  const fonts = set.fonts ?? [];
+  for (const f of newFonts) {
+    const existing = fonts.find((x) => x.family === f.family);
+    if (!existing) fonts.push(f);
+    else if (existing.file !== f.file) existing.file = f.file; // same family, newer file wins
+  }
+  if (fonts.length > 0) set.fonts = fonts;
+  await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
+}
+
+function withExt(name: string, fileType: string | undefined): string {
+  if (!fileType) return name;
+  const ext = fileType.includes('/') ? fileType.split('/')[1]! : fileType;
+  return name.toLowerCase().endsWith(`.${ext.toLowerCase()}`) ? name : `${name}.${ext}`;
+}
+
+function sanitizeDir(name: string): string {
+  return name.replace(/[<>:"/\\|?*\s]/g, '_');
+}
