@@ -20,12 +20,10 @@
   /** Display top-first, like a layer panel (scene array is bottom-first). */
   const displayLayers = $derived(comp ? [...comp.layers].slice().reverse() : []);
 
-  /** Loopic imports are full of literal "New layer" names — the key says more. */
-  function layerLabel(layer: Layer): { main: string; key?: string } {
-    const key = layer.element.key;
-    if (key && /^(copy of )*new layer\s*\d*$/i.test(layer.name.trim())) return { main: key };
-    if (key && key !== layer.name) return { main: layer.name, key };
-    return { main: layer.name };
+  /** The key IS the layer's identity — show it whenever it exists; the
+   * imported "Copy of Copy of…" names only appear in the tooltip. */
+  function layerLabel(layer: Layer): string {
+    return layer.element.key ?? layer.name;
   }
 
   interface PropRow {
@@ -267,7 +265,6 @@
                   {@attach (node) => { (node as HTMLInputElement).focus(); (node as HTMLInputElement).select(); }}
                 />
               {:else}
-                {@const lbl = layerLabel(layer)}
                 <span
                   class="ltext"
                   role="button"
@@ -276,7 +273,7 @@
                   ondblclick={() => (renamingLayer = { id: layer.id, value: layer.name })}
                 >
                   {#if kfFrames.length > 0}<span class="animind" title="{kfFrames.length} keyframes">◆</span>{/if}
-                  {layer.isGuide ? '▦ ' : ''}{lbl.main}{#if lbl.key}<span class="dim"> · {lbl.key}</span>{/if}
+                  {layer.isGuide ? '▦ ' : ''}{layerLabel(layer)}
                 </span>
                 <button
                   class="eye"
