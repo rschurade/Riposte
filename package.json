@@ -1,0 +1,26 @@
+{
+  "name": "riposte",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Riposte — local template studio for CasparCG HTML graphics",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "npm run check --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev": "npm run dev --workspace @riposte/editor",
+    "server": "npm run dev --workspace @riposte/server"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true
+  }
+}

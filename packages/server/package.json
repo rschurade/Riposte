@@ -1,0 +1,15 @@
+{
+  "name": "@riposte/server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "check": "tsc -p .",
+    "dev": "node --watch src/index.ts"
+  },
+  "dependencies": {
+    "@riposte/exporter": "*",
+    "@riposte/importer": "*",
+    "@riposte/shared": "*"
+  }
+}

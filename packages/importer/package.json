@@ -1,0 +1,16 @@
+{
+  "name": "@riposte/importer",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "bin": {
+    "riposte-import": "src/cli.ts"
+  },
+  "scripts": {
+    "check": "tsc -p ."
+  },
+  "dependencies": {
+    "@riposte/shared": "*"
+  }
+}

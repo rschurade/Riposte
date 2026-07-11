@@ -1,0 +1,14 @@
+{
+  "name": "@riposte/runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "check": "tsc -p .",
+    "build": "esbuild src/index.ts --bundle --format=iife --global-name=riposte --outfile=dist/riposte.js"
+  },
+  "dependencies": {
+    "@riposte/shared": "*"
+  }
+}
