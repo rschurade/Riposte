@@ -414,6 +414,53 @@ class EditorState {
     }
   }
 
+  /** First unused variant of a key: _lamp → _lamp2 → _lamp3 … */
+  private freeKey(base: string): string {
+    const keys = new Set(this.scene?.composition.layers.map((l) => l.element.key).filter(Boolean));
+    if (!keys.has(base)) return base;
+    const m = /^(.*?)(\d+)$/.exec(base);
+    const stem = m ? m[1]! : base;
+    let n = m ? Number(m[2]) + 1 : 2;
+    while (keys.has(`${stem}${n}`)) n++;
+    return `${stem}${n}`;
+  }
+
+  /** Duplicate a layer directly above the original; a bound copy gets the
+   * next free key so the two never fight over updates. */
+  duplicateLayer(id: string): void {
+    const scene = this.scene;
+    if (!scene) return;
+    const idx = scene.composition.layers.findIndex((l) => l.id === id);
+    if (idx < 0) return;
+    const copy = JSON.parse(JSON.stringify(scene.composition.layers[idx])) as Layer;
+    const nid = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    copy.id = nid;
+    copy.element.id = `${nid}-el`;
+    copy.masks?.forEach((m, i) => (m.id = `${nid}-mask${i}`));
+    let note = '';
+    if (copy.element.key) {
+      copy.element.key = this.freeKey(copy.element.key);
+      note = ` as ${copy.element.key}`;
+    }
+    this.mutate('duplicate layer', (s) => {
+      s.composition.layers.splice(idx + 1, 0, copy);
+    });
+    this.selectLayer(nid);
+    this.flash(`duplicated${note}`);
+  }
+
+  deleteLayer(id: string): void {
+    const layer = this.scene?.composition.layers.find((l) => l.id === id);
+    if (!layer) return;
+    const label = layer.element.key ?? layer.name ?? layer.element.type;
+    this.mutate('delete layer', (s) => {
+      const i = s.composition.layers.findIndex((l) => l.id === id);
+      if (i >= 0) s.composition.layers.splice(i, 1);
+    });
+    if (this.selectedLayerId === id) this.selectLayer(null);
+    this.flash(`deleted ${label} (Ctrl+Z restores)`);
+  }
+
   /** Change an element's update key — refuses duplicates, announces the change. */
   setElementKey(id: string, key: string): void {
     key = key.trim();

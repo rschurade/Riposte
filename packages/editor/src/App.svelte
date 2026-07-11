@@ -85,6 +85,12 @@
       ed.redo();
       return;
     }
+    if (ev.ctrlKey && ev.key.toLowerCase() === 'd') {
+      if (isTyping() || !ed.selectedLayerId) return;
+      ev.preventDefault();
+      ed.duplicateLayer(ed.selectedLayerId);
+      return;
+    }
     if (isTyping() || !ed.scene) return;
     const dur = ed.scene.composition.duration;
     switch (ev.key) {
@@ -93,6 +99,9 @@
         if (ed.selectedKf) {
           ev.preventDefault();
           ed.deleteSelectedKeyframe();
+        } else if (ed.selectedLayerId) {
+          ev.preventDefault();
+          ed.deleteLayer(ed.selectedLayerId);
         }
         break;
       case ' ':

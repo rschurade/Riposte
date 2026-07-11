@@ -285,6 +285,18 @@
                   {layer.isGuide ? '▦ ' : ''}{layerLabel(layer)}
                 </span>
                 <button
+                  class="rowbtn"
+                  title="Duplicate layer (Ctrl+D)"
+                  onpointerdown={(e) => e.stopPropagation()}
+                  onclick={() => ed.duplicateLayer(layer.id)}
+                >⧉</button>
+                <button
+                  class="rowbtn del"
+                  title="Delete layer (Del)"
+                  onpointerdown={(e) => e.stopPropagation()}
+                  onclick={() => ed.deleteLayer(layer.id)}
+                >✕</button>
+                <button
                   class="eye"
                   class:off={layer.hidden}
                   title={layer.hidden ? 'Hidden — click to show' : 'Visible — click to hide'}
@@ -400,6 +412,20 @@
   .row:hover .eye, .eye.off { color: #8a8f98; }
   .eye.off { color: #e0a34e; }
   .eye:hover { color: #cfd3da; }
+  .rowbtn {
+    flex: none;
+    display: none;
+    background: none;
+    border: none;
+    padding: 0 2px;
+    cursor: pointer;
+    color: #8a8f98;
+    font-size: 11px;
+    line-height: 1;
+  }
+  .row:hover .rowbtn { display: block; }
+  .rowbtn:hover { color: #cfd3da; }
+  .rowbtn.del:hover { color: #e07777; }
   .track { position: relative; flex: 1; overflow: hidden; }
   .ruler { cursor: ew-resize; }
   .tick {
