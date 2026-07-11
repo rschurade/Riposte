@@ -327,6 +327,49 @@ class EditorState {
     }
   }
 
+  // ---- scene-level editing ---------------------------------------------------
+
+  setCompositionNumber(field: 'fps' | 'duration' | 'width' | 'height', v: number): void {
+    if (!Number.isFinite(v) || v <= 0) return;
+    this.mutate(`set ${field}`, (scene) => {
+      scene.composition[field] = Math.round(v);
+    });
+  }
+
+  /** Composition action: JS run once at template load (middleware, globals). */
+  setCompositionAction(code: string): void {
+    this.mutate('edit composition action', (scene) => {
+      if (code.trim() === '') delete scene.composition.action;
+      else scene.composition.action = code;
+    });
+  }
+
+  addMarker(type: 'pause' | 'outro' | 'action'): void {
+    const frame = this.frame;
+    this.mutate(`add ${type} marker`, (scene) => {
+      const markers = scene.composition.markers;
+      if (type === 'action') markers.push({ frame, type, source: '' });
+      else if (!markers.some((m) => m.frame === frame && m.type === type)) markers.push({ frame, type });
+      markers.sort((a, b) => a.frame - b.frame);
+    });
+  }
+
+  updateMarker(index: number, patch: { frame?: number; source?: string }): void {
+    this.mutate('edit marker', (scene) => {
+      const m = scene.composition.markers[index];
+      if (!m) return;
+      if (patch.frame !== undefined && Number.isFinite(patch.frame)) m.frame = Math.max(0, Math.round(patch.frame));
+      if (patch.source !== undefined && m.type === 'action') m.source = patch.source;
+      scene.composition.markers.sort((a, b) => a.frame - b.frame);
+    });
+  }
+
+  removeMarker(index: number): void {
+    this.mutate('remove marker', (scene) => {
+      scene.composition.markers.splice(index, 1);
+    });
+  }
+
   async exportSet(): Promise<void> {
     if (!this.setRef) return;
     const remembered = localStorage.getItem('riposte.exportDir') ?? '';

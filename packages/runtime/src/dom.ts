@@ -38,6 +38,8 @@ export interface ElementHandle {
   readonly key: string | undefined;
   readonly type: string;
   readonly node: HTMLElement;
+  /** Loopic API alias for `node` — imported scripts use element.domNode. */
+  readonly domNode: HTMLElement;
   /** Text elements: set content (HTML allowed, Loopic setContent parity). */
   setContent(html: string): void;
   /** Image loaders: point at a new image URL/path. */
@@ -376,6 +378,7 @@ function buildElement(
     key: el.key,
     type: el.type,
     node,
+    domNode: node,
     setContent(html) {
       if (contentTarget) {
         contentTarget.innerHTML = html;

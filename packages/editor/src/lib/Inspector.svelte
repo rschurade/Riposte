@@ -204,6 +204,54 @@
       animated properties write a keyframe at the playhead. Stage drags move the
       whole curve (and masks). Select diamonds in the timeline to retime or ease.
     </p>
+  {:else if ed.scene}
+    {@const comp = ed.scene.composition}
+    <h2>{ed.scene.name}</h2>
+    <p class="type">scene · {comp.layers.length} layers</p>
+
+    <h3>Composition</h3>
+    <div class="grid">
+      <label for="sc-size">Size</label>
+      <span class="ro">{comp.width} × {comp.height}</span>
+      <label for="sc-fps">FPS</label>
+      <input id="sc-fps" type="number" value={comp.fps}
+        onchange={(e) => ed.setCompositionNumber('fps', Number((e.currentTarget as HTMLInputElement).value))} />
+      <label for="sc-dur">Duration</label>
+      <input id="sc-dur" type="number" value={comp.duration}
+        onchange={(e) => ed.setCompositionNumber('duration', Number((e.currentTarget as HTMLInputElement).value))} />
+    </div>
+
+    <h3>Markers</h3>
+    {#each comp.markers as m, i (i)}
+      <div class="marker-row">
+        <span class="mtype {m.type}">{m.type}</span>
+        <input type="number" value={m.frame}
+          onchange={(e) => ed.updateMarker(i, { frame: Number((e.currentTarget as HTMLInputElement).value) })} />
+        <button class="remove" title="Remove marker" onclick={() => ed.removeMarker(i)}>✕</button>
+      </div>
+      {#if m.type === 'action'}
+        <textarea class="code small" rows="3" spellcheck="false" value={m.source}
+          onchange={(e) => ed.updateMarker(i, { source: (e.currentTarget as HTMLTextAreaElement).value })}
+        ></textarea>
+      {/if}
+    {/each}
+    <div class="row3">
+      <button class="minor" onclick={() => ed.addMarker('pause')}>+ pause @{ed.frame}</button>
+      <button class="minor" onclick={() => ed.addMarker('outro')}>+ outro @{ed.frame}</button>
+      <button class="minor" onclick={() => ed.addMarker('action')}>+ action @{ed.frame}</button>
+    </div>
+
+    <h3>Composition action <span class="dim">runs once at load</span></h3>
+    <textarea class="code" rows="14" spellcheck="false" value={comp.action ?? ''}
+      placeholder={'// middleware & custom code, e.g.\n// loopic.useOnUpdate("_key", (key, value, next) => { ... });'}
+      onchange={(e) => ed.setCompositionAction((e.currentTarget as HTMLTextAreaElement).value)}
+    ></textarea>
+    <p class="hint">
+      Scripts run in the bench and on air (not in the editor preview). API:
+      loopic.useOnPlay/useOnUpdate/useOnStop/useOnInvoke, this = composition
+      (play, pause, goTo, findElementByKey…). Frame-action markers run when the
+      playhead crosses their frame.
+    </p>
   {:else}
     <p class="empty">Nothing selected</p>
   {/if}
@@ -262,6 +310,27 @@
   input[type='checkbox'] { width: auto; justify-self: start; }
   textarea { margin-bottom: 6px; font-family: inherit; }
   .asset { font: 11px Consolas, monospace; color: #aab; word-break: break-all; }
+  .ro { font-size: 12px; color: #aab; }
+  .dim { color: #676c76; font-size: 10px; text-transform: none; letter-spacing: 0; }
+  .code {
+    font: 11px/1.5 Consolas, monospace;
+    width: 100%;
+    background: #14161b;
+    color: #cfe0b8;
+    border: 1px solid #383c46;
+    border-radius: 4px;
+    padding: 6px;
+    white-space: pre;
+  }
+  .code.small { margin: 2px 0 6px; }
+  .marker-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .marker-row input { width: 70px; }
+  .marker-row .remove { background: none; border: none; color: #a55; cursor: pointer; }
+  .mtype { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; width: 52px; }
+  .mtype.pause { color: #4ea1e0; }
+  .mtype.outro { color: #e05555; }
+  .mtype.action { color: #8a62d0; }
+  .row3 { display: flex; gap: 4px; margin-top: 4px; }
   .hint { color: #676c76; font-size: 11px; margin-top: 16px; }
   .empty { color: #676c76; text-align: center; margin-top: 40px; }
 </style>
