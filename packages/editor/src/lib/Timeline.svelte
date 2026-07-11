@@ -11,7 +11,7 @@
   $effect(() => {
     if (!rowsEl) return;
     const ro = new ResizeObserver(() => {
-      trackWidth = (rowsEl?.clientWidth ?? 620) - 180; // minus label column
+      trackWidth = (rowsEl?.clientWidth ?? 620) - 280; // minus label column
     });
     ro.observe(rowsEl);
     return () => ro.disconnect();
@@ -368,7 +368,7 @@
   .row.head { height: 26px; border-bottom: 1px solid #23262e; }
   .row.selected { background: #222d40; }
   .label {
-    width: 180px;
+    width: 280px;
     flex: none;
     display: flex;
     align-items: center;
