@@ -6,7 +6,7 @@
  * construction). `version` bumps trigger a Stage rebuild.
  */
 
-import type { Layer, SceneDoc, StyleProperty } from '@riposte/shared';
+import type { BezierEasing, ElementStyle, Layer, SceneDoc, StyleProperty } from '@riposte/shared';
 
 export interface SetRef {
   root: string;
@@ -36,6 +36,8 @@ class EditorState {
   frame = $state(0);
   playing = $state(false);
   selectedLayerId = $state<string | null>(null);
+  /** Selected keyframe on the selected layer. targetKey: 'el' or 'mask<i>'. */
+  selectedKf = $state<{ targetKey: string; prop: string; frame: number } | null>(null);
 
   status = $state('');
 
@@ -44,6 +46,11 @@ class EditorState {
 
   get selectedLayer(): Layer | null {
     return this.scene?.composition.layers.find((l) => l.id === this.selectedLayerId) ?? null;
+  }
+
+  selectLayer(id: string | null): void {
+    if (this.selectedLayerId !== id) this.selectedKf = null;
+    this.selectedLayerId = id;
   }
 
   get assetBase(): string {
@@ -107,6 +114,7 @@ class EditorState {
     this.frame = this.firstPauseFrame();
     this.playing = false;
     this.selectedLayerId = null;
+    this.selectedKf = null;
     this.dirty = false;
     this.undoStack = [];
     this.undoIndex = 0;
@@ -204,6 +212,119 @@ class EditorState {
     })).json();
     this.assets = this.assets.filter((a) => !r.deleted.includes(a.file));
     this.flash(`deleted ${r.deleted.length} unused assets (${mb} MB)`);
+  }
+
+  // ---- keyframe editing ------------------------------------------------------
+
+  /** Resolve the style object a targetKey refers to on a layer of the LIVE doc. */
+  static styleOf(layer: Layer, targetKey: string): ElementStyle | null {
+    if (targetKey === 'el') return layer.element.style;
+    const m = /^mask(\d+)$/.exec(targetKey);
+    if (m) return layer.masks?.[Number(m[1])]?.style ?? null;
+    return null;
+  }
+
+  private withStyle(label: string, targetKey: string, fn: (style: ElementStyle) => void): void {
+    const id = this.selectedLayerId;
+    if (!id) return;
+    this.mutate(label, (scene) => {
+      const layer = scene.composition.layers.find((l) => l.id === id);
+      const style = layer ? EditorState.styleOf(layer, targetKey) : null;
+      if (style) fn(style);
+    });
+  }
+
+  /** Add a keyframe at the playhead (or remove it if one sits exactly there). */
+  toggleKeyframe(targetKey: string, prop: string): void {
+    const f = this.frame;
+    this.withStyle(`keyframe ${prop}`, targetKey, (style) => {
+      const p = (style[prop] ??= { value: 0 });
+      const kfs = (p.keyframes ??= []);
+      const existing = kfs.findIndex((k) => k.frame === f);
+      if (existing >= 0) {
+        kfs.splice(existing, 1);
+        if (kfs.length === 0) delete p.keyframes;
+      } else {
+        kfs.push({ frame: f, value: propNumber(p, f, typeof p.value === 'number' ? p.value : 0) });
+        kfs.sort((a, b) => a.frame - b.frame);
+      }
+    });
+    if (this.selectedKf?.targetKey === targetKey && this.selectedKf.prop === prop && this.selectedKf.frame === f) {
+      this.selectedKf = null;
+    }
+  }
+
+  /** Set the value at the playhead: upsert a keyframe when animated, else the static value. */
+  setValueAtPlayhead(targetKey: string, prop: string, value: number): void {
+    const f = this.frame;
+    this.withStyle(`set ${prop}`, targetKey, (style) => {
+      const p = (style[prop] ??= { value });
+      if (!p.keyframes || p.keyframes.length === 0) {
+        p.value = value;
+        return;
+      }
+      const existing = p.keyframes.find((k) => k.frame === f);
+      if (existing) existing.value = value;
+      else {
+        p.keyframes.push({ frame: f, value });
+        p.keyframes.sort((a, b) => a.frame - b.frame);
+      }
+    });
+  }
+
+  moveKeyframe(targetKey: string, prop: string, from: number, to: number): void {
+    if (from === to) return;
+    this.withStyle(`move keyframe`, targetKey, (style) => {
+      const kfs = style[prop]?.keyframes;
+      if (!kfs) return;
+      const kf = kfs.find((k) => k.frame === from);
+      if (!kf) return;
+      const clash = kfs.findIndex((k) => k.frame === to);
+      if (clash >= 0) kfs.splice(clash, 1);
+      kf.frame = to;
+      kfs.sort((a, b) => a.frame - b.frame);
+    });
+    if (this.selectedKf?.prop === prop && this.selectedKf.frame === from) {
+      this.selectedKf = { targetKey, prop, frame: to };
+    }
+  }
+
+  deleteSelectedKeyframe(): void {
+    const sel = this.selectedKf;
+    if (!sel) return;
+    this.withStyle('delete keyframe', sel.targetKey, (style) => {
+      const p = style[sel.prop];
+      const kfs = p?.keyframes;
+      if (!p || !kfs) return;
+      const i = kfs.findIndex((k) => k.frame === sel.frame);
+      if (i >= 0) kfs.splice(i, 1);
+      if (kfs.length === 0) delete p.keyframes;
+    });
+    this.selectedKf = null;
+  }
+
+  setKeyframeEasing(easing: BezierEasing | null): void {
+    const sel = this.selectedKf;
+    if (!sel) return;
+    this.withStyle('set easing', sel.targetKey, (style) => {
+      const kf = style[sel.prop]?.keyframes?.find((k) => k.frame === sel.frame);
+      if (!kf) return;
+      if (easing) kf.easing = easing;
+      else delete kf.easing;
+    });
+  }
+
+  setKeyframeNumber(field: 'frame' | 'value', v: number): void {
+    const sel = this.selectedKf;
+    if (!sel) return;
+    if (field === 'frame') {
+      this.moveKeyframe(sel.targetKey, sel.prop, sel.frame, Math.max(0, Math.round(v)));
+    } else {
+      this.withStyle('set keyframe value', sel.targetKey, (style) => {
+        const kf = style[sel.prop]?.keyframes?.find((k) => k.frame === sel.frame);
+        if (kf) kf.value = v;
+      });
+    }
   }
 
   private async confirmDiscard(): Promise<boolean> {

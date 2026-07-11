@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Layer, StyleProperty } from '@riposte/shared';
+  import type { ElementStyle, Layer } from '@riposte/shared';
   import { ed } from './state.svelte.ts';
 
   let rowsEl: HTMLDivElement | undefined = $state();
@@ -20,16 +20,67 @@
   /** Display top-first, like a layer panel (scene array is bottom-first). */
   const displayLayers = $derived(comp ? [...comp.layers].slice().reverse() : []);
 
-  function keyframeFrames(layer: Layer): number[] {
-    const frames = new Set<number>();
-    const collect = (style: Record<string, StyleProperty | undefined>) => {
-      for (const p of Object.values(style)) {
-        for (const k of p?.keyframes ?? []) frames.add(k.frame);
+  interface PropRow {
+    targetKey: string;
+    label: string;
+    prop: string;
+    frames: number[];
+  }
+
+  /** Animated properties of the selected layer (element + masks) as sub-rows. */
+  function propRows(layer: Layer): PropRow[] {
+    const rows: PropRow[] = [];
+    const collect = (style: ElementStyle, targetKey: string, prefix: string) => {
+      for (const [prop, p] of Object.entries(style)) {
+        if (!p?.keyframes?.length) continue;
+        rows.push({
+          targetKey,
+          prop,
+          label: prefix + prop,
+          frames: p.keyframes.map((k) => k.frame),
+        });
       }
     };
-    collect(layer.element.style);
-    for (const m of layer.masks ?? []) collect(m.style);
-    return [...frames].sort((a, b) => a - b);
+    collect(layer.element.style, 'el', '');
+    (layer.masks ?? []).forEach((m, i) => collect(m.style, `mask${i}`, `mask${i > 0 ? i + 1 : ''}.`));
+    return rows;
+  }
+
+  // ---- keyframe diamond interaction -----------------------------------------
+  let dragKf: { targetKey: string; prop: string; from: number; current: number } | null = $state(null);
+
+  function kfDown(ev: PointerEvent, row: PropRow, frame: number): void {
+    ev.stopPropagation();
+    ed.selectedKf = { targetKey: row.targetKey, prop: row.prop, frame };
+    dragKf = { targetKey: row.targetKey, prop: row.prop, from: frame, current: frame };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  }
+
+  function kfMove(ev: PointerEvent): void {
+    if (!dragKf || !comp) return;
+    const track = (ev.currentTarget as HTMLElement).closest('.track');
+    if (!track) return;
+    const r = track.getBoundingClientRect();
+    const f = Math.round((ev.clientX - r.left) / pxPerFrame);
+    dragKf.current = Math.min(Math.max(f, 0), comp.duration - 1);
+  }
+
+  function kfUp(): void {
+    if (!dragKf) return;
+    const { targetKey, prop, from, current } = dragKf;
+    dragKf = null;
+    if (from !== current) ed.moveKeyframe(targetKey, prop, from, current);
+  }
+
+  function kfDisplayFrame(row: PropRow, frame: number): number {
+    return dragKf && dragKf.targetKey === row.targetKey && dragKf.prop === row.prop && dragKf.from === frame
+      ? dragKf.current
+      : frame;
+  }
+
+  function isSelectedKf(row: PropRow, frame: number): boolean {
+    const s = ed.selectedKf;
+    return !!s && s.targetKey === row.targetKey && s.prop === row.prop && s.frame === frame;
   }
 
   function seek(ev: PointerEvent): void {
@@ -101,7 +152,10 @@
           <div
             class="row"
             class:selected={ed.selectedLayerId === layer.id}
-            onpointerdown={() => (ed.selectedLayerId = layer.id)}
+            onpointerdown={() => ed.selectLayer(layer.id)}
+            {@attach (node) => {
+              if (ed.selectedLayerId === layer.id) node.scrollIntoView({ block: 'center' });
+            }}
           >
             <div class="label" class:dim={layer.hidden || layer.isGuide}>
               {layer.isGuide ? '▦ ' : ''}{layer.hidden ? '∅ ' : ''}{layer.name}
@@ -111,14 +165,28 @@
                 class="bar"
                 style="left:{layer.startFrame * pxPerFrame}px;width:{layer.duration * pxPerFrame}px"
               ></div>
-              {#if ed.selectedLayerId === layer.id}
-                {#each keyframeFrames(layer) as f (f)}
-                  <span class="kf" style="left:{f * pxPerFrame}px" title="keyframe @{f}"></span>
-                {/each}
-              {/if}
               <span class="playhead faint" style="left:{ed.frame * pxPerFrame}px"></span>
             </div>
           </div>
+          {#if ed.selectedLayerId === layer.id}
+            {#each propRows(layer) as row (row.targetKey + row.prop)}
+              <div class="row proprow">
+                <div class="label prop">{row.label}</div>
+                <div class="track" onpointermove={kfMove} onpointerup={kfUp}>
+                  {#each row.frames as f (f)}
+                    <span
+                      class="kf"
+                      class:selkf={isSelectedKf(row, f)}
+                      style="left:{kfDisplayFrame(row, f) * pxPerFrame}px"
+                      title="{row.label} @{kfDisplayFrame(row, f)}"
+                      onpointerdown={(ev) => kfDown(ev, row, f)}
+                    ></span>
+                  {/each}
+                  <span class="playhead faint" style="left:{ed.frame * pxPerFrame}px"></span>
+                </div>
+              </div>
+            {/each}
+          {/if}
         {/each}
       </div>
     </div>
@@ -185,15 +253,19 @@
     border-radius: 3px;
     opacity: 0.85;
   }
+  .row.proprow { height: 18px; background: #1b1e25; }
+  .label.prop { padding-left: 24px; color: #8a8f98; font-size: 10px; }
   .kf {
     position: absolute;
-    top: 7px;
+    top: 5px;
     width: 8px;
     height: 8px;
     margin-left: -4px;
     background: #d9a441;
     transform: rotate(45deg);
+    cursor: ew-resize;
   }
+  .kf.selkf { background: #fff; outline: 1.5px solid #d9a441; }
   .marker { position: absolute; top: 0; bottom: 0; width: 2px; }
   .marker.pause { background: #4ea1e0; }
   .marker.outro { background: #e05555; }

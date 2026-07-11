@@ -17,23 +17,12 @@
   function setStyleNumber(prop: string, raw: string): void {
     const v = Number(raw);
     if (!Number.isFinite(v) || !layer) return;
-    const id = layer.id;
-    ed.mutate(`set ${prop}`, (scene) => {
-      const l = scene.composition.layers.find((x) => x.id === id);
-      if (!l) return;
-      const p = l.element.style[prop];
-      if (p && p.keyframes?.length) {
-        // animated: shift all keyframes so the value at the playhead matches
-        const cur = propNumber(p, ed.frame, 0);
-        const delta = v - cur;
-        if (typeof p.value === 'number') p.value += delta;
-        for (const k of p.keyframes) if (typeof k.value === 'number') k.value += delta;
-      } else if (p) {
-        p.value = v;
-      } else {
-        l.element.style[prop] = { value: v };
-      }
-    });
+    // animated: upsert a keyframe at the playhead; static: set the value
+    ed.setValueAtPlayhead('el', prop, v);
+  }
+
+  function hasKfAtPlayhead(prop: string): boolean {
+    return !!el?.style[prop]?.keyframes?.some((k) => k.frame === ed.frame);
   }
 
   function setElementField(field: string, value: unknown): void {
@@ -54,6 +43,24 @@
     });
   }
 
+  const EASING_PRESETS: Record<string, { p1x: number; p1y: number; p2x: number; p2y: number } | null> = {
+    linear: null,
+    ease: { p1x: 0.25, p1y: 0.1, p2x: 0.25, p2y: 1 },
+    'ease-in': { p1x: 0.42, p1y: 0, p2x: 1, p2y: 1 },
+    'ease-out': { p1x: 0, p1y: 0, p2x: 0.58, p2y: 1 },
+    'ease-in-out': { p1x: 0.42, p1y: 0, p2x: 0.58, p2y: 1 },
+  };
+
+  function easingName(e: { p1x: number; p1y: number; p2x: number; p2y: number } | undefined): string {
+    if (!e) return 'linear';
+    for (const [name, preset] of Object.entries(EASING_PRESETS)) {
+      if (preset && preset.p1x === e.p1x && preset.p1y === e.p1y && preset.p2x === e.p2x && preset.p2y === e.p2y) {
+        return name;
+      }
+    }
+    return 'custom';
+  }
+
   const NUM_PROPS: { prop: string; label: string; fallback: number }[] = [
     { prop: 'x', label: 'X', fallback: 0 },
     { prop: 'y', label: 'Y', fallback: 0 },
@@ -70,10 +77,10 @@
     <h2>{layer.name}</h2>
     <p class="type">{el.type}{el.key ? ` · ${el.key}` : ''}</p>
 
-    <div class="grid">
+    <div class="grid three">
       {#each NUM_PROPS as np (np.prop)}
         {#if el.style[np.prop] || ['x', 'y'].includes(np.prop)}
-          <label for="in-{np.prop}">{np.label}{isAnimated(el.style[np.prop]) ? ' ◆' : ''}</label>
+          <label for="in-{np.prop}">{np.label}</label>
           <input
             id="in-{np.prop}"
             type="number"
@@ -81,9 +88,17 @@
             value={numAt(el.style[np.prop], np.fallback)}
             onchange={(e) => setStyleNumber(np.prop, (e.currentTarget as HTMLInputElement).value)}
           />
+          <button
+            class="kfbtn"
+            class:on={hasKfAtPlayhead(np.prop)}
+            class:animated={isAnimated(el.style[np.prop])}
+            title={hasKfAtPlayhead(np.prop) ? 'Remove keyframe at playhead' : 'Add keyframe at playhead'}
+            onclick={() => ed.toggleKeyframe('el', np.prop)}
+          >◆</button>
         {/if}
       {/each}
-
+    </div>
+    <div class="grid">
       <label for="in-key">Key</label>
       <input
         id="in-key"
@@ -149,6 +164,32 @@
       <p class="asset">{el.asset}</p>
     {/if}
 
+    {#if ed.selectedKf}
+      {@const sel = ed.selectedKf}
+      {@const kfStyle = layer ? (sel.targetKey === 'el' ? layer.element.style : layer.masks?.[Number(sel.targetKey.slice(4))]?.style) : null}
+      {@const kf = kfStyle?.[sel.prop]?.keyframes?.find((k) => k.frame === sel.frame)}
+      <h3>Keyframe · {sel.prop} @{sel.frame}</h3>
+      {#if kf}
+        <div class="grid">
+          <label for="kf-frame">Frame</label>
+          <input id="kf-frame" type="number" value={sel.frame}
+            onchange={(e) => ed.setKeyframeNumber('frame', Number((e.currentTarget as HTMLInputElement).value))} />
+          <label for="kf-value">Value</label>
+          <input id="kf-value" type="number" step="any" value={typeof kf.value === 'number' ? kf.value : 0}
+            onchange={(e) => ed.setKeyframeNumber('value', Number((e.currentTarget as HTMLInputElement).value))} />
+          <label for="kf-ease">Easing</label>
+          <select id="kf-ease" value={easingName(kf.easing)}
+            onchange={(e) => ed.setKeyframeEasing(EASING_PRESETS[(e.currentTarget as HTMLSelectElement).value] ?? null)}>
+            {#each Object.keys(EASING_PRESETS) as name (name)}
+              <option value={name}>{name}</option>
+            {/each}
+            {#if easingName(kf.easing) === 'custom'}<option value="custom">custom</option>{/if}
+          </select>
+        </div>
+        <button class="minor" onclick={() => ed.deleteSelectedKeyframe()}>Delete keyframe (Del)</button>
+      {/if}
+    {/if}
+
     <h3>Layer</h3>
     <div class="grid">
       <label for="in-hidden">Hidden</label>
@@ -158,7 +199,11 @@
       <input id="in-guide" type="checkbox" checked={layer.isGuide ?? false}
         onchange={(e) => setLayerField('isGuide', (e.currentTarget as HTMLInputElement).checked)} />
     </div>
-    <p class="hint">◆ = animated: edits shift the whole curve. Masks move with the element on drag.</p>
+    <p class="hint">
+      ◆ dim = property animated · gold = keyframe at playhead. Number edits on
+      animated properties write a keyframe at the playhead. Stage drags move the
+      whole curve (and masks). Select diamonds in the timeline to retime or ease.
+    </p>
   {:else}
     <p class="empty">Nothing selected</p>
   {/if}
@@ -182,6 +227,28 @@
   }
   .type { color: #676c76; font-size: 11px; margin: 2px 0 10px; }
   .grid { display: grid; grid-template-columns: 70px 1fr; gap: 5px 8px; align-items: center; }
+  .grid.three { grid-template-columns: 62px 1fr 22px; margin-bottom: 6px; }
+  .kfbtn {
+    background: none;
+    border: none;
+    color: #4a4e58;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+  }
+  .kfbtn.animated { color: #8a6a2a; }
+  .kfbtn.on { color: #d9a441; }
+  .kfbtn:hover { color: #d9a441; }
+  .minor {
+    margin-top: 6px;
+    background: #23262e;
+    border: 1px solid #383c46;
+    color: #cfd3da;
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 11px;
+  }
   label { color: #aab; font-size: 12px; }
   input, select, textarea {
     background: #23262e;

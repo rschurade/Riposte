@@ -22,6 +22,11 @@
       }
       const frame = params.get('frame');
       if (frame) ed.frame = Number(frame);
+      const layerName = params.get('layer');
+      if (layerName && ed.scene) {
+        const l = ed.scene.composition.layers.find((x) => x.name.includes(layerName) || x.element.key === layerName);
+        if (l) ed.selectLayer(l.id);
+      }
     })();
   });
 
@@ -52,6 +57,13 @@
     if (isTyping() || !ed.scene) return;
     const dur = ed.scene.composition.duration;
     switch (ev.key) {
+      case 'Delete':
+      case 'Backspace':
+        if (ed.selectedKf) {
+          ev.preventDefault();
+          ed.deleteSelectedKeyframe();
+        }
+        break;
       case ' ':
         ev.preventDefault();
         ed.playing = !ed.playing;

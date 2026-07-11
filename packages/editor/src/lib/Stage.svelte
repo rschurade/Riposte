@@ -124,7 +124,7 @@
     if (!comp) return;
     const p = toComp(ev);
     const hit = hitTest(p.x, p.y);
-    ed.selectedLayerId = hit?.id ?? null;
+    ed.selectLayer(hit?.id ?? null);
     if (hit) {
       drag = { id: hit.id, startX: p.x, startY: p.y, applied: { dx: 0, dy: 0 } };
       (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
