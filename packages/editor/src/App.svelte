@@ -30,6 +30,37 @@
     })();
   });
 
+  // ---- resizable panels (persisted) ---------------------------------------
+  const savedLayout = JSON.parse(localStorage.getItem('riposte.layout') ?? '{}') as Record<string, number>;
+  let leftW = $state(savedLayout['leftW'] ?? 250);
+  let rightW = $state(savedLayout['rightW'] ?? 270);
+  let timelineH = $state(savedLayout['timelineH'] ?? 240);
+
+  let splitDrag: { which: 'left' | 'right' | 'timeline'; start: number; orig: number } | null = null;
+
+  function splitDown(ev: PointerEvent, which: 'left' | 'right' | 'timeline'): void {
+    splitDrag = {
+      which,
+      start: which === 'timeline' ? ev.clientY : ev.clientX,
+      orig: which === 'left' ? leftW : which === 'right' ? rightW : timelineH,
+    };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  }
+
+  function splitMove(ev: PointerEvent): void {
+    if (!splitDrag) return;
+    const { which, start, orig } = splitDrag;
+    if (which === 'left') leftW = Math.min(Math.max(orig + (ev.clientX - start), 160), 520);
+    else if (which === 'right') rightW = Math.min(Math.max(orig - (ev.clientX - start), 200), 560);
+    else timelineH = Math.min(Math.max(orig - (ev.clientY - start), 110), Math.round(window.innerHeight * 0.6));
+  }
+
+  function splitUp(): void {
+    if (!splitDrag) return;
+    splitDrag = null;
+    localStorage.setItem('riposte.layout', JSON.stringify({ leftW, rightW, timelineH }));
+  }
+
   function isTyping(): boolean {
     const t = document.activeElement?.tagName;
     return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT';
@@ -88,7 +119,7 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="app">
+<div class="app" style="--tl-h:{timelineH}px">
   <header>
     <h1>Riposte</h1>
     <span class="scene-name">
@@ -102,11 +133,17 @@
     <button class="primary" onclick={() => ed.save()} disabled={!ed.dirty} title="Ctrl+S">Save</button>
     <button onclick={() => ed.exportSet()} disabled={!ed.setRef} title="Export set as CasparCG templates">Export</button>
   </header>
-  <div class="main">
+  <div class="main" style="grid-template-columns:{leftW}px 5px 1fr 5px {rightW}px">
     <Sidebar />
+    <div class="split v" role="separator" aria-orientation="vertical"
+      onpointerdown={(e) => splitDown(e, 'left')} onpointermove={splitMove} onpointerup={splitUp}></div>
     <Stage />
+    <div class="split v" role="separator" aria-orientation="vertical"
+      onpointerdown={(e) => splitDown(e, 'right')} onpointermove={splitMove} onpointerup={splitUp}></div>
     <Inspector />
   </div>
+  <div class="split h" role="separator" aria-orientation="horizontal"
+    onpointerdown={(e) => splitDown(e, 'timeline')} onpointermove={splitMove} onpointerup={splitUp}></div>
   <Timeline />
 </div>
 
@@ -120,7 +157,7 @@
   }
   .app {
     display: grid;
-    grid-template-rows: auto 1fr 240px;
+    grid-template-rows: auto 1fr 5px var(--tl-h, 240px);
     height: 100vh;
   }
   header {
@@ -154,7 +191,14 @@
   header button:disabled { opacity: 0.4; cursor: default; }
   .main {
     display: grid;
-    grid-template-columns: 250px 1fr 270px;
     min-height: 0;
   }
+  .split {
+    background: transparent;
+    transition: background 0.15s;
+    touch-action: none;
+  }
+  .split:hover, .split:active { background: #d9a44166; }
+  .split.v { cursor: col-resize; }
+  .split.h { cursor: row-resize; }
 </style>
