@@ -60,7 +60,16 @@ Consequences:
 
 - Rebranding = swapping files in one folder (`frame.png`, `bar.png` are the
   known rebranding surfaces).
-- Assets are content-hash deduplicated on import and on add.
+- Assets are content-hash deduplicated on import and on add. **Identity is
+  the content hash; the filename is only a human label.** Dedup policy:
+  - same name + same bytes → stored once;
+  - different name + same bytes → still deduplicated, references rewritten
+    to the canonical file;
+  - same name + different bytes → NEVER silently overwritten — the newcomer
+    is stored under a hash-suffixed name and the collision is reported.
+  - Additionally a **near-duplicate report** (pixel/perceptual comparison)
+    flags byte-different but visually identical assets for manual merging;
+    it never auto-merges.
 - The editor's Resources panel is set-scoped with per-asset "used by" tracking.
 - Optional **preload manifest**: the runtime can fetch all set assets at
   template load (before first play) to prevent asset-load flash on the first
@@ -120,7 +129,12 @@ end. `isVisible` is false before play and after the end.
    *Acceptance: a hand-written Schedule scene plays intro → pause → outro and
    updates via templateData XML under the headless rig.*
 2. **Loopic importer** (~2 d) — FIE Schedule + Medal Counts import into one
-   set project and render pixel-close in the A/B rig.
+   set project and render pixel-close in the A/B rig. Phases 1+2 together
+   are the first big milestone: a set of Loopic exports deflated into
+   scene JSONs + ONE shared, content-deduplicated assets folder, and
+   exported back to working CasparCG templates. Asset filenames from the
+   source (if recoverable at all — Loopic embeds anonymous data-URIs) are
+   labels only; the content hash decides identity.
 3. **Editor MVP** (~4–5 d) — canvas (select/move/resize/snap/zoom), inspector
    with keyframe diamonds, frame timeline (layer rows, draggable keyframes,
    easing presets, markers), Text/Image/ImageLoader/Rectangle tools, project
