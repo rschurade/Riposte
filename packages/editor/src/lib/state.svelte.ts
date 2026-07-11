@@ -638,8 +638,8 @@ class EditorState {
     return null;
   }
 
-  private withStyle(label: string, targetKey: string, fn: (style: ElementStyle) => void): void {
-    const id = this.selectedLayerId;
+  private withStyle(label: string, targetKey: string, fn: (style: ElementStyle) => void, layerId?: string): void {
+    const id = layerId ?? this.selectedLayerId;
     if (!id) return;
     this.mutate(label, (scene) => {
       const layer = scene.composition.layers.find((l) => l.id === id);
@@ -650,41 +650,51 @@ class EditorState {
 
   /** Add a keyframe at the playhead (or remove it if one sits exactly there).
    * `fallback` seeds a property that doesn't exist yet (e.g. opacity → 1). */
-  toggleKeyframe(targetKey: string, prop: string, fallback = 0): void {
+  toggleKeyframe(targetKey: string, prop: string, fallback = 0, layerId?: string): void {
     const f = this.frame;
-    this.withStyle(`keyframe ${prop}`, targetKey, (style) => {
-      const p = (style[prop] ??= { value: fallback });
-      const kfs = (p.keyframes ??= []);
-      const existing = kfs.findIndex((k) => k.frame === f);
-      if (existing >= 0) {
-        kfs.splice(existing, 1);
-        if (kfs.length === 0) delete p.keyframes;
-      } else {
-        kfs.push({ frame: f, value: propNumber(p, f, typeof p.value === 'number' ? p.value : fallback) });
-        kfs.sort((a, b) => a.frame - b.frame);
-      }
-    });
+    this.withStyle(
+      `keyframe ${prop}`,
+      targetKey,
+      (style) => {
+        const p = (style[prop] ??= { value: fallback });
+        const kfs = (p.keyframes ??= []);
+        const existing = kfs.findIndex((k) => k.frame === f);
+        if (existing >= 0) {
+          kfs.splice(existing, 1);
+          if (kfs.length === 0) delete p.keyframes;
+        } else {
+          kfs.push({ frame: f, value: propNumber(p, f, typeof p.value === 'number' ? p.value : fallback) });
+          kfs.sort((a, b) => a.frame - b.frame);
+        }
+      },
+      layerId,
+    );
     if (this.selectedKf?.targetKey === targetKey && this.selectedKf.prop === prop && this.selectedKf.frame === f) {
       this.selectedKf = null;
     }
   }
 
   /** Set the value at the playhead: upsert a keyframe when animated, else the static value. */
-  setValueAtPlayhead(targetKey: string, prop: string, value: number): void {
+  setValueAtPlayhead(targetKey: string, prop: string, value: number, layerId?: string): void {
     const f = this.frame;
-    this.withStyle(`set ${prop}`, targetKey, (style) => {
-      const p = (style[prop] ??= { value });
-      if (!p.keyframes || p.keyframes.length === 0) {
-        p.value = value;
-        return;
-      }
-      const existing = p.keyframes.find((k) => k.frame === f);
-      if (existing) existing.value = value;
-      else {
-        p.keyframes.push({ frame: f, value });
-        p.keyframes.sort((a, b) => a.frame - b.frame);
-      }
-    });
+    this.withStyle(
+      `set ${prop}`,
+      targetKey,
+      (style) => {
+        const p = (style[prop] ??= { value });
+        if (!p.keyframes || p.keyframes.length === 0) {
+          p.value = value;
+          return;
+        }
+        const existing = p.keyframes.find((k) => k.frame === f);
+        if (existing) existing.value = value;
+        else {
+          p.keyframes.push({ frame: f, value });
+          p.keyframes.sort((a, b) => a.frame - b.frame);
+        }
+      },
+      layerId,
+    );
   }
 
   moveKeyframe(targetKey: string, prop: string, from: number, to: number): void {
@@ -827,6 +837,53 @@ class EditorState {
 }
 
 export const ed = new EditorState();
+
+// ---- animatable property catalog (Inspector + Timeline share this) ----------
+
+export interface PropDef {
+  prop: string;
+  label: string;
+  fallback: number;
+  /** stored 0–1 / ×1, shown as % */
+  pct?: boolean;
+}
+
+export const TRANSFORM_PROPS: PropDef[] = [
+  { prop: 'x', label: 'X', fallback: 0 },
+  { prop: 'y', label: 'Y', fallback: 0 },
+  { prop: 'scaleX', label: 'Scale X %', fallback: 1, pct: true },
+  { prop: 'scaleY', label: 'Scale Y %', fallback: 1, pct: true },
+  { prop: 'rotation', label: 'Rotation °', fallback: 0 },
+  { prop: 'width', label: 'W', fallback: 0 },
+  { prop: 'height', label: 'H', fallback: 0 },
+  { prop: 'opacity', label: 'Opacity %', fallback: 1, pct: true },
+  { prop: 'fontSize', label: 'Font size', fallback: 24 },
+];
+
+export const FILTER_PROP_DEFS: PropDef[] = [
+  { prop: 'filterBlur', label: 'Blur px', fallback: 0 },
+  { prop: 'filterBrightness', label: 'Brightness %', fallback: 1, pct: true },
+  { prop: 'filterContrast', label: 'Contrast %', fallback: 1, pct: true },
+  { prop: 'filterGrayscale', label: 'Grayscale %', fallback: 0, pct: true },
+  { prop: 'filterHueRotate', label: 'Hue rotate °', fallback: 0 },
+  { prop: 'filterInvert', label: 'Invert %', fallback: 0, pct: true },
+  { prop: 'filterOpacity', label: 'Filter opacity %', fallback: 1, pct: true },
+  { prop: 'filterSaturate', label: 'Saturate %', fallback: 1, pct: true },
+  { prop: 'filterSepia', label: 'Sepia %', fallback: 0, pct: true },
+];
+
+export const MASK_PROP_DEFS: PropDef[] = [
+  { prop: 'x', label: 'X', fallback: 0 },
+  { prop: 'y', label: 'Y', fallback: 0 },
+  { prop: 'width', label: 'W', fallback: 0 },
+  { prop: 'height', label: 'H', fallback: 0 },
+];
+
+/** Display value of a property per its def (percent props shown ×100). */
+export function dispPropValue(p: StyleProperty | undefined, def: PropDef, frame: number): number {
+  const v = propNumber(p, frame, def.fallback) * (def.pct ? 100 : 1);
+  return Math.round(v * 100) / 100;
+}
 
 /**
  * The one display name of a layer: the element's KEY when bound, the stored

@@ -1,6 +1,14 @@
 <script lang="ts">
   import type { ElementStyle, Layer } from '@riposte/shared';
-  import { ed, layerLabel } from './state.svelte.ts';
+  import {
+    ed,
+    layerLabel,
+    dispPropValue,
+    TRANSFORM_PROPS,
+    FILTER_PROP_DEFS,
+    MASK_PROP_DEFS,
+    type PropDef,
+  } from './state.svelte.ts';
 
   let rowsEl: HTMLDivElement | undefined = $state();
   let trackWidth = $state(600);
@@ -26,25 +34,66 @@
     label: string;
     prop: string;
     frames: number[];
+    def: PropDef;
+    style: ElementStyle;
   }
 
-  /** Animated properties of the selected layer (element + masks) as sub-rows. */
-  function propRows(layer: Layer): PropRow[] {
-    const rows: PropRow[] = [];
-    const collect = (style: ElementStyle, targetKey: string, prefix: string) => {
-      for (const [prop, p] of Object.entries(style)) {
-        if (!p?.keyframes?.length) continue;
-        rows.push({
-          targetKey,
-          prop,
-          label: prefix + prop,
-          frames: p.keyframes.map((k) => k.frame),
-        });
-      }
-    };
-    collect(layer.element.style, 'el', '');
-    (layer.masks ?? []).forEach((m, i) => collect(m.style, `mask${i}`, `mask${i > 0 ? i + 1 : ''}.`));
-    return rows;
+  interface PropGroup {
+    title: string;
+    key: string;
+    rows: PropRow[];
+  }
+
+  // Loopic-style in-place expansion: chevron per layer, grouped property rows.
+  let expandedLayers = $state<Record<string, boolean>>({});
+  let groupClosed = $state<Record<string, boolean>>({});
+
+  function layerGroups(layer: Layer): PropGroup[] {
+    const mk = (style: ElementStyle, targetKey: string, defs: PropDef[]): PropRow[] =>
+      defs.map((def) => ({
+        targetKey,
+        prop: def.prop,
+        label: def.label,
+        def,
+        style,
+        frames: style[def.prop]?.keyframes?.map((k) => k.frame) ?? [],
+      }));
+    const groups: PropGroup[] = [
+      {
+        title: 'Transform',
+        key: `${layer.id}/t`,
+        rows: mk(
+          layer.element.style,
+          'el',
+          TRANSFORM_PROPS.filter((d) => d.prop !== 'fontSize' || layer.element.type === 'text'),
+        ),
+      },
+      { title: 'Filter', key: `${layer.id}/f`, rows: mk(layer.element.style, 'el', FILTER_PROP_DEFS) },
+    ];
+    (layer.masks ?? []).forEach((m, i) => {
+      if (m.type === 'path') return;
+      groups.push({
+        title: `Mask${(layer.masks?.length ?? 0) > 1 ? ` ${i + 1}` : ''}`,
+        key: `${layer.id}/m${i}`,
+        rows: mk(m.style, `mask${i}`, MASK_PROP_DEFS),
+      });
+    });
+    return groups;
+  }
+
+  /** Filter starts closed unless it carries data; everything else starts open. */
+  function groupOpen(g: PropGroup): boolean {
+    const override = groupClosed[g.key];
+    if (override !== undefined) return !override;
+    return g.title !== 'Filter' || g.rows.some((r) => r.style[r.prop] !== undefined);
+  }
+
+  function setPropValue(layer: Layer, row: PropRow, raw: string): void {
+    let v = Number(raw);
+    if (!Number.isFinite(v)) return;
+    if (row.def.pct) v /= 100;
+    ed.selectLayer(layer.id);
+    ed.setValueAtPlayhead(row.targetKey, row.prop, v, layer.id);
   }
 
   /** All keyframe frames of a layer (element + masks) — the at-a-glance marks. */
@@ -61,8 +110,9 @@
   // ---- keyframe diamond interaction -----------------------------------------
   let dragKf: { targetKey: string; prop: string; from: number; current: number } | null = $state(null);
 
-  function kfDown(ev: PointerEvent, row: PropRow, frame: number): void {
+  function kfDown(ev: PointerEvent, row: PropRow, frame: number, layerId: string): void {
     ev.stopPropagation();
+    ed.selectLayer(layerId); // keyframe ops act on the selected layer
     ed.selectedKf = { targetKey: row.targetKey, prop: row.prop, frame };
     dragKf = { targetKey: row.targetKey, prop: row.prop, from: frame, current: frame };
     (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
@@ -262,6 +312,12 @@
             }}
           >
             <div class="label" class:dim={layer.hidden || layer.isGuide}>
+              <button
+                class="chev"
+                title="Show properties"
+                onpointerdown={(e) => e.stopPropagation()}
+                onclick={() => (expandedLayers[layer.id] = !expandedLayers[layer.id])}
+              >{expandedLayers[layer.id] ? '▾' : '▸'}</button>
               {#if renamingLayer?.id === layer.id}
                 <input
                   class="rename"
@@ -330,23 +386,58 @@
               <span class="playhead faint" style="left:{ed.frame * pxPerFrame}px"></span>
             </div>
           </div>
-          {#if ed.selectedLayerId === layer.id}
-            {#each propRows(layer) as row (row.targetKey + row.prop)}
-              <div class="row proprow">
-                <div class="label prop">{row.label}</div>
-                <div class="track" onpointermove={kfMove} onpointerup={kfUp}>
-                  {#each row.frames as f (f)}
-                    <span
-                      class="kf"
-                      class:selkf={isSelectedKf(row, f)}
-                      style="left:{kfDisplayFrame(row, f) * pxPerFrame}px"
-                      title="{row.label} @{kfDisplayFrame(row, f)}"
-                      onpointerdown={(ev) => kfDown(ev, row, f)}
-                    ></span>
-                  {/each}
-                  <span class="playhead faint" style="left:{ed.frame * pxPerFrame}px"></span>
+          {#if expandedLayers[layer.id]}
+            {#each layerGroups(layer) as g (g.key)}
+              <div class="row grouprow">
+                <div class="label group">
+                  <button class="chev" onclick={() => (groupClosed[g.key] = groupOpen(g))}>
+                    {groupOpen(g) ? '▾' : '▸'} {g.title}
+                  </button>
                 </div>
+                <div class="track"></div>
               </div>
+              {#if groupOpen(g)}
+                {#each g.rows as row (g.key + row.prop)}
+                  <div class="row proprow" onpointerdown={() => ed.selectLayer(layer.id)}>
+                    <div class="label prop">
+                      <span class="pname">{row.label}</span>
+                      <input
+                        class="pval"
+                        type="number"
+                        step="1"
+                        value={dispPropValue(row.style[row.prop], row.def, ed.frame)}
+                        onchange={(e) => setPropValue(layer, row, (e.currentTarget as HTMLInputElement).value)}
+                        onpointerdown={(e) => e.stopPropagation()}
+                      />
+                      <button
+                        class="kfbtn"
+                        class:on={row.frames.includes(ed.frame)}
+                        class:animated={row.frames.length > 0}
+                        title={row.frames.includes(ed.frame)
+                          ? `Remove ${row.label} keyframe @${ed.frame}`
+                          : `Add ${row.label} keyframe @${ed.frame}`}
+                        onpointerdown={(e) => e.stopPropagation()}
+                        onclick={() => {
+                          ed.selectLayer(layer.id);
+                          ed.toggleKeyframe(row.targetKey, row.prop, row.def.fallback, layer.id);
+                        }}
+                      >◆</button>
+                    </div>
+                    <div class="track" onpointermove={kfMove} onpointerup={kfUp}>
+                      {#each row.frames as f (f)}
+                        <span
+                          class="kf"
+                          class:selkf={isSelectedKf(row, f)}
+                          style="left:{kfDisplayFrame(row, f) * pxPerFrame}px"
+                          title="{row.label} @{kfDisplayFrame(row, f)}"
+                          onpointerdown={(ev) => kfDown(ev, row, f, layer.id)}
+                        ></span>
+                      {/each}
+                      <span class="playhead faint" style="left:{ed.frame * pxPerFrame}px"></span>
+                    </div>
+                  </div>
+                {/each}
+              {/if}
             {/each}
           {/if}
         {/each}
@@ -478,8 +569,57 @@
     transform: rotate(45deg);
     pointer-events: none;
   }
-  .row.proprow { height: 18px; background: #1b1e25; }
-  .label.prop { padding-left: 24px; color: #8a8f98; font-size: 10px; }
+  .row.proprow { height: 20px; background: #1b1e25; }
+  .row.grouprow { height: 18px; background: #191c22; }
+  .label.group { padding-left: 18px; }
+  .label.group .chev { font-size: 10px; color: #7d828c; text-transform: uppercase; letter-spacing: 0.08em; width: auto; }
+  .label.prop {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 30px;
+    color: #8a8f98;
+    font-size: 10px;
+  }
+  .pname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pval {
+    flex: none;
+    width: 58px;
+    background: none;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: #cfd3da;
+    font-size: 10px;
+    text-align: right;
+    padding: 0 2px;
+  }
+  .pval:hover, .pval:focus { border-bottom-color: #383c46; background: #14161b; outline: none; }
+  /* hide number spinners — too big for 20px rows */
+  .pval::-webkit-outer-spin-button, .pval::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .kfbtn {
+    flex: none;
+    background: none;
+    border: none;
+    color: #4a4e58;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .kfbtn.animated { color: #8a6a2a; }
+  .kfbtn.on { color: #d9a441; }
+  .kfbtn:hover { color: #d9a441; }
+  .chev {
+    flex: none;
+    background: none;
+    border: none;
+    color: #676c76;
+    cursor: pointer;
+    font-size: 9px;
+    padding: 0 2px;
+    width: 14px;
+  }
+  .chev:hover { color: #cfd3da; }
   .kf {
     position: absolute;
     top: 5px;
