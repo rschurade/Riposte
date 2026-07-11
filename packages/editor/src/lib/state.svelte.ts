@@ -35,6 +35,8 @@ class EditorState {
 
   frame = $state(0);
   playing = $state(false);
+  /** Script preview: stage runs the FULL runtime (actions + previewData). */
+  scriptPreview = $state(false);
   selectedLayerId = $state<string | null>(null);
   /** Selected keyframe on the selected layer. targetKey: 'el' or 'mask<i>'. */
   selectedKf = $state<{ targetKey: string; prop: string; frame: number } | null>(null);

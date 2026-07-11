@@ -302,7 +302,8 @@ function buildElement(
       node.style.overflow = 'hidden';
       img = document.createElement('img');
       img.draggable = false;
-      img.style.display = 'none'; // hidden until first setImage
+      if (el.placeholder) img.src = assetBase + el.placeholder;
+      else img.style.display = 'none'; // hidden until first setImage
       applyFit(img, el.fit);
       node.appendChild(img);
       break;

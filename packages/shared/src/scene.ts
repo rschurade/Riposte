@@ -12,6 +12,11 @@ export interface SceneDoc {
   formatVersion: typeof SCENE_FORMAT_VERSION;
   /** Scene name; also the exported template file name. */
   name: string;
+  /**
+   * Design-time sample payload (key → value). Editor script-preview and the
+   * bench apply it like an on-air update(); never shipped to CasparCG.
+   */
+  previewData?: Record<string, string>;
   composition: Composition;
 }
 
@@ -160,6 +165,8 @@ export interface ImageSequenceElement extends BaseElement {
 export interface ImageLoaderElement extends BaseElement {
   type: 'imageLoader';
   fit: 'original' | 'contain' | 'cover' | 'stretch' | 'fitWidth' | 'fitHeight';
+  /** Design-time placeholder asset shown until update() provides a source. */
+  placeholder?: string;
 }
 
 export interface RectangleElement extends BaseElement {
