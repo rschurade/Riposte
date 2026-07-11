@@ -117,6 +117,22 @@
     ev.dataTransfer?.setData('text/riposte-asset', file);
     if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'copy';
   }
+
+  // ---- file pickers (new set from .loo, asset upload) ------------------------
+  let looInput = $state<HTMLInputElement>();
+  let assetInput = $state<HTMLInputElement>();
+
+  function pickedLoo(): void {
+    const files = [...(looInput?.files ?? [])];
+    if (looInput) looInput.value = '';
+    void ed.importLooFiles(files);
+  }
+
+  function pickedAssets(): void {
+    const files = [...(assetInput?.files ?? [])];
+    if (assetInput) assetInput.value = '';
+    void ed.uploadAssets(files);
+  }
 </script>
 
 {#snippet renameInput()}
@@ -132,7 +148,14 @@
 {/snippet}
 
 <aside>
-  <h2><button class="linkish" onclick={() => toggle('sets')}>{collapsed.sets ? '▸' : '▾'} Sets</button></h2>
+  <input class="ghost" type="file" multiple accept=".loo" bind:this={looInput} onchange={pickedLoo} />
+  <input class="ghost" type="file" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.svg,.gif,.ttf,.otf,.woff,.woff2" bind:this={assetInput} onchange={pickedAssets} />
+
+  <h2 class="hrow">
+    <button class="linkish" onclick={() => toggle('sets')}>{collapsed.sets ? '▸' : '▾'} Sets</button>
+    <button class="hbtn wide" title="Import Loopic .loo project files into a new or existing set" onclick={() => looInput?.click()}>+ .loo</button>
+    <button class="hbtn" title="New empty set" onclick={() => ed.createSet()}>+</button>
+  </h2>
   {#if !collapsed.sets}
     <ul class="sets">
       {#each ed.sets as s (s.root + s.name)}
@@ -207,11 +230,12 @@
       {/if}
     {/if}
 
-    <h2>
+    <h2 class="hrow">
       <button class="linkish" onclick={() => toggle('assets')}>
         {collapsed.assets ? '▸' : '▾'} Assets
         <span class="dim">({ed.assets.length}{unused.length ? `, ${unused.length} unused` : ''})</span>
       </button>
+      <button class="hbtn" title="Upload images / fonts into this set" onclick={() => assetInput?.click()}>+</button>
     </h2>
     {#if !collapsed.assets}
       {#if unused.length > 0}
@@ -356,6 +380,8 @@
     padding: 0;
   }
   .hbtn:hover { background: #2c4a75; }
+  .hbtn.wide { width: auto; padding: 0 6px; font-size: 11px; }
+  .ghost { display: none; }
   .kinds { display: flex; gap: 3px; margin: 2px 0; flex: none; }
   .kind {
     background: #23262e;

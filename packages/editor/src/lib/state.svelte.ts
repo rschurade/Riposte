@@ -198,6 +198,90 @@ class EditorState {
     this.flash(`deleted ${name}`);
   }
 
+  /** Create an empty set (folder + set.json + assets/) and open it. */
+  async createSet(presetName?: string): Promise<SetRef | null> {
+    const name = (presetName ?? prompt('Name for the new set:', ''))?.trim();
+    if (!name) return null;
+    const res = await fetch('/api/set/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    const r = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      this.flash(`FAILED: ${r['error'] ?? res.status}`);
+      return null;
+    }
+    await this.loadSets();
+    const ref = this.sets.find((s) => s.root === 'projects' && s.name === name) ?? null;
+    if (ref) await this.openSet(ref);
+    this.flash(`created set ${name}`);
+    return ref;
+  }
+
+  /** Upload .loo files into an existing or new set; the server-side importer
+   * does the real work (shared asset pool, script migration). */
+  async importLooFiles(files: File[]): Promise<void> {
+    if (files.length === 0) return;
+    const def = this.setRef?.root === 'projects' ? this.setRef.name : files[0]!.name.replace(/\.loo$/i, '');
+    const name = prompt('Import into set (existing name adds to it, new name creates it):', def)?.trim();
+    if (!name) return;
+    if (!this.sets.some((s) => s.root === 'projects' && s.name === name)) {
+      if (!(await this.createSet(name))) return;
+    }
+    const q = `root=projects&name=${encodeURIComponent(name)}`;
+    let count = 0;
+    const allScenes: string[] = [];
+    for (const f of files) {
+      count++;
+      this.status = `importing ${f.name} (${count}/${files.length})…`;
+      const res = await fetch(`/api/set/import-loo?${q}&filename=${encodeURIComponent(f.name)}`, {
+        method: 'POST',
+        body: f,
+      });
+      const r = (await res.json()) as Record<string, unknown>;
+      if (!res.ok) {
+        this.flash(`IMPORT FAILED ${f.name}: ${r['error'] ?? res.status}`);
+        return;
+      }
+      allScenes.push(...((r['scenes'] as string[]) ?? []));
+      for (const w of (r['warnings'] as string[]) ?? []) console.warn(`${f.name}: ${w}`);
+    }
+    await this.loadSets();
+    const ref = this.sets.find((s) => s.root === 'projects' && s.name === name);
+    if (ref) await this.openSet(ref);
+    this.flash(`imported ${allScenes.length} scene(s) from ${files.length} .loo file(s) into ${name}`);
+  }
+
+  /** Upload asset files into the open set; fonts are auto-registered. */
+  async uploadAssets(files: File[]): Promise<void> {
+    const ref = this.setRef;
+    if (!ref || files.length === 0) return;
+    const q = `root=${encodeURIComponent(ref.root)}&name=${encodeURIComponent(ref.name)}`;
+    const notes: string[] = [];
+    let count = 0;
+    for (const f of files) {
+      count++;
+      this.status = `uploading ${f.name} (${count}/${files.length})…`;
+      const res = await fetch(`/api/assets/upload?${q}&filename=${encodeURIComponent(f.name)}`, {
+        method: 'POST',
+        body: f,
+      });
+      const r = (await res.json()) as Record<string, unknown>;
+      if (!res.ok) {
+        this.flash(`UPLOAD FAILED ${f.name}: ${r['error'] ?? res.status}`);
+        return;
+      }
+      if (r['status'] !== 'written') notes.push(`${f.name}: ${r['status']}`);
+    }
+    // refresh assets + fonts without touching the (possibly dirty) open scene
+    this.assets = await (await fetch(`/api/assets?${q}`)).json();
+    const sets = (await (await fetch('/api/sets')).json()) as SetRef[];
+    const fresh = sets.find((s) => s.root === ref.root && s.name === ref.name);
+    if (fresh) ref.fonts = fresh.fonts;
+    this.flash(`uploaded ${files.length} file(s)${notes.length ? ` — ${notes.join('; ')}` : ''}`);
+  }
+
   /** Register a fresh scene doc on the server and open it. */
   private async createScene(name: string, doc: SceneDoc): Promise<void> {
     const file = `scenes/${name}.json`;

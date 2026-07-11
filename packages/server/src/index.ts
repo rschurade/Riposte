@@ -12,10 +12,13 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, readdir, stat, writeFile, unlink, rename } from 'node:fs/promises';
-import { join, resolve, extname, dirname } from 'node:path';
+import { mkdir, readFile, readdir, stat, writeFile, unlink, rename } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve, extname, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { exportSet } from '@riposte/exporter';
+import { importLoo } from '@riposte/importer';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverRoot = resolve(here, '..');
@@ -62,6 +65,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/sets') return json(res, [...(await listSets(examplesDir, 'examples')), ...(await listSets(projectsDir, 'projects'))]);
   if (path === '/api/set') return apiSetBundle(url, res);
   if (path === '/api/assets') return apiAssets(url, res);
+  if (path === '/api/set/create' && req.method === 'POST') return apiCreateSet(req, res);
+  if (path === '/api/set/import-loo' && req.method === 'POST') return apiImportLoo(url, req, res);
+  if (path === '/api/assets/upload' && req.method === 'POST') return apiUploadAsset(url, req, res);
   if (path === '/api/scene' && req.method === 'PUT') return apiSaveScene(req, res);
   if (path === '/api/scene/create' && req.method === 'POST') return apiCreateScene(req, res);
   if (path === '/api/scene/remove' && req.method === 'POST') return apiRemoveScene(req, res);
@@ -154,6 +160,111 @@ async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<voi
   }
   const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode } : {});
   return json(res, result);
+}
+
+/** Raw request body as a Buffer (binary uploads). */
+async function readRawBody(req: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  return Buffer.concat(chunks);
+}
+
+/** Create an empty set: projects/<name>/ with set.json and assets/. */
+async function apiCreateSet(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { name: string };
+  const name = (body.name ?? '').trim();
+  if (!/^[\w .()-]+$/.test(name)) throw Object.assign(new Error('bad set name'), { status: 400 });
+  const dir = join(projectsDir, name);
+  try {
+    await stat(join(dir, 'set.json'));
+    throw Object.assign(new Error(`set "${name}" already exists`), { status: 409 });
+  } catch (err) {
+    if ((err as { status?: number }).status === 409) throw err;
+  }
+  await mkdir(join(dir, 'assets'), { recursive: true });
+  await mkdir(join(dir, 'scenes'), { recursive: true });
+  const set = { formatVersion: 1, name, scenes: [], components: [], fonts: [] };
+  await writeFile(join(dir, 'set.json'), JSON.stringify(set, null, 2) + '\n', 'utf8');
+  return json(res, { ok: true, name });
+}
+
+/**
+ * Import an uploaded .loo file into a set (?root=&name=&filename=).
+ * The body is the raw file; it lands in a temp file so the existing
+ * importer (shared asset pool, migration passes) does the real work.
+ */
+async function apiImportLoo(url: URL, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const dir = setDirOf(url);
+  const filename = basename(url.searchParams.get('filename') ?? 'upload.loo');
+  const bytes = await readRawBody(req);
+  if (bytes.length === 0) throw Object.assign(new Error('empty upload'), { status: 400 });
+  // temp DIR + original file name — the importer names scenes after the file
+  const tmpDir = join(tmpdir(), `riposte-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`);
+  await mkdir(tmpDir, { recursive: true });
+  const tmp = join(tmpDir, filename);
+  await writeFile(tmp, bytes);
+  try {
+    const r = await importLoo(tmp, dir);
+    return json(res, {
+      ok: true,
+      scenes: r.scenes,
+      skipped: r.skipped,
+      warnings: r.warnings,
+      assets: { written: r.assetReport.written.length, deduplicated: r.assetReport.deduplicated.length },
+    });
+  } finally {
+    await unlink(tmp).catch(() => {});
+  }
+}
+
+const FONT_EXT_RE = /\.(ttf|otf|woff2?)$/i;
+
+/**
+ * Upload one asset (?root=&name=&filename=, raw body). Importer collision
+ * policy: same name + same bytes → skip; same name + different bytes →
+ * hash-suffixed name. Fonts land in assets/fonts/ and are auto-registered
+ * in set.json (family derived from the file name).
+ */
+async function apiUploadAsset(url: URL, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const dir = setDirOf(url);
+  const raw = basename(url.searchParams.get('filename') ?? '');
+  if (!/^[\w .()-]+\.\w+$/.test(raw)) throw Object.assign(new Error('bad asset filename'), { status: 400 });
+  const bytes = await readRawBody(req);
+  if (bytes.length === 0) throw Object.assign(new Error('empty upload'), { status: 400 });
+
+  const isFont = FONT_EXT_RE.test(raw);
+  const subdir = isFont ? 'assets/fonts' : 'assets';
+  await mkdir(join(dir, subdir), { recursive: true });
+
+  let file = `${subdir}/${raw}`;
+  let status = 'written';
+  try {
+    const existing = await readFile(join(dir, file));
+    if (existing.equals(bytes)) {
+      status = 'identical — skipped';
+    } else {
+      const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 8);
+      const ext = extname(raw);
+      file = `${subdir}/${raw.slice(0, -ext.length)}-${hash}${ext}`;
+      status = `name taken — stored as ${basename(file)}`;
+      await writeFile(join(dir, file), bytes);
+    }
+  } catch {
+    await writeFile(join(dir, file), bytes);
+  }
+
+  let family: string | undefined;
+  if (isFont) {
+    const setPath = join(dir, 'set.json');
+    const set = JSON.parse(await readFile(setPath, 'utf8')) as { fonts?: { family: string; file: string }[] };
+    set.fonts ??= [];
+    if (!set.fonts.some((f) => f.file === file)) {
+      family = raw.replace(/\.\w+$/, '').replace(/[_-]+/g, ' ').trim();
+      set.fonts.push({ family, file });
+      await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
+    }
+  }
+  return json(res, { ok: true, file, status, family });
 }
 
 /** Create a scene file (new or duplicate) and register it in set.json. */
