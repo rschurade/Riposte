@@ -46,11 +46,20 @@ export interface ElementHandle {
   setImage(url: string): void;
 }
 
+export interface LayerHandle {
+  /** The scene-doc layer (live object — read for matching, mutate with care). */
+  readonly doc: Layer;
+  /** The layer wrapper div — transforms here move element AND masks together. */
+  readonly node: HTMLElement;
+}
+
 export interface BuiltScene {
   readonly rootEl: HTMLElement;
   readonly byKey: Map<string, ElementHandle>;
   /** Every element (keyed or not) by element id — editor hit-testing/drag. */
   readonly byId: Map<string, ElementHandle>;
+  /** Built layers in paint order — custom-code relayout (see Schedule). */
+  readonly layers: LayerHandle[];
   setFrame(frame: number): void;
   show(): void;
   hide(): void;
@@ -83,11 +92,13 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
 
   const byKey = new Map<string, ElementHandle>();
   const byId = new Map<string, ElementHandle>();
+  const layers: LayerHandle[] = [];
   const dynamics: DynamicBinding[] = [];
 
   for (const layer of comp.layers) {
     if (layer.isGuide && !opts.showGuides) continue;
-    buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, opts);
+    const node = buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, opts);
+    layers.push({ doc: layer, node });
   }
 
   let visible = false;
@@ -95,6 +106,7 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
     rootEl,
     byKey,
     byId,
+    layers,
     setFrame(frame) {
       for (const d of dynamics) d.apply(frame);
     },
@@ -122,7 +134,7 @@ function buildLayer(
   byId: Map<string, ElementHandle>,
   dynamics: DynamicBinding[],
   opts: BuildOptions,
-): void {
+): HTMLElement {
   const layerEl = document.createElement('div');
   layerEl.dataset['layer'] = layer.name;
   Object.assign(layerEl.style, {
@@ -160,6 +172,7 @@ function buildLayer(
     byId.set(layer.element.id, handle);
     if (layer.element.key) byKey.set(layer.element.key, handle);
   }
+  return layerEl;
 }
 
 function buildMask(mask: SceneElement, parent: HTMLElement, dynamics: DynamicBinding[]): HTMLElement {

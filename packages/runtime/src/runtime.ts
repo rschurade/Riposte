@@ -5,7 +5,7 @@
  */
 
 import type { SceneDoc } from '@riposte/shared';
-import { buildScene, type BuildOptions, type BuiltScene, type ElementHandle } from './dom.ts';
+import { buildScene, type BuildOptions, type BuiltScene, type ElementHandle, type LayerHandle } from './dom.ts';
 import { parseUpdateData } from './data.ts';
 import { Player } from './player.ts';
 
@@ -22,6 +22,8 @@ export interface CompositionApi {
   readonly duration: number;
   readonly fps: number;
   readonly isPlaying: boolean;
+  /** Built layers in paint order (doc + wrapper node) — for relayout scripts. */
+  readonly layers: LayerHandle[];
   play(opts?: { reverse?: boolean }): void;
   pause(): void;
   goTo(frame: number): void;
@@ -42,6 +44,7 @@ export interface Runtime {
   useOnPlay(cb: PlayMiddleware): void;
   useOnUpdate(key: string, cb: UpdateMiddleware): void;
   useOnStop(cb: StopMiddleware): void;
+  useOnNext(cb: PlayMiddleware): void;
   useOnInvoke(name: string, cb: (...args: unknown[]) => unknown): void;
 
   readonly composition: CompositionApi;
@@ -57,6 +60,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
 
   const playMws: PlayMiddleware[] = [];
   const stopMws: StopMiddleware[] = [];
+  const nextMws: PlayMiddleware[] = [];
   const updateMws = new Map<string, UpdateMiddleware[]>(); // '*' = wildcard
   const invokables = new Map<string, (...args: unknown[]) => unknown>();
   const templateData: Record<string, string> = {};
@@ -70,6 +74,9 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
   built.setFrame(0);
 
   const compositionApi: CompositionApi = {
+    get layers() {
+      return built.layers;
+    },
     get activeFrame() {
       return player.activeFrame;
     },
@@ -170,7 +177,11 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     },
     next() {
       flags.next = true;
-      player.resume();
+      chain(
+        nextMws,
+        () => player.resume(),
+        (mw, next) => mw(next),
+      );
     },
     invoke(name, ...args) {
       const fn = invokables.get(name);
@@ -182,6 +193,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     },
     useOnPlay: (cb) => playMws.push(cb),
     useOnStop: (cb) => stopMws.push(cb),
+    useOnNext: (cb) => nextMws.push(cb),
     useOnUpdate(key, cb) {
       const list = updateMws.get(key) ?? [];
       list.push(cb);
