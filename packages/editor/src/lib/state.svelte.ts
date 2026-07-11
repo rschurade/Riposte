@@ -12,6 +12,7 @@ export interface SetRef {
   root: string;
   name: string;
   scenes: string[];
+  components: string[];
   fonts: { family: string; file: string }[];
 }
 

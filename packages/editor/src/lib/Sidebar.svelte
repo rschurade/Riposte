@@ -41,6 +41,19 @@
       {/each}
     </ul>
 
+    {#if ed.setRef.components.length > 0}
+      <h2>Components <span class="dim">({ed.setRef.components.length})</span></h2>
+      <ul class="scenes">
+        {#each ed.setRef.components as file (file)}
+          <li class="scene-row">
+            <button class:active={ed.sceneFile === file} onclick={() => ed.openScene(file)}>
+              ▣ {sceneName(file)}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
     <h2>
       <button class="linkish" onclick={() => (showAssets = !showAssets)}>
         Assets <span class="dim">({ed.assets.length}{unused.length ? `, ${unused.length} unused` : ''})</span>

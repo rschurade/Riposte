@@ -95,27 +95,33 @@ export async function importLoo(looPath: string, setDir: string, opts: LooImport
     }
   }
 
-  const { keep, skipped } = selectCompositions(doc, opts.allCompositions ?? false);
+  const { keep, skipped, activeId } = selectCompositions(doc, opts.allCompositions ?? false);
 
   const sceneFiles: string[] = [];
+  const componentFiles: string[] = [];
   await mkdir(join(setDir, 'scenes'), { recursive: true });
   for (const comp of keep) {
     const { scene, warnings: w } = await convertComposition(comp, resolver);
     warnings.push(...w.map((msg) => `${comp.name}: ${msg}`));
     const file = `scenes/${sanitizeDir(comp.name)}.json`;
     await writeFile(join(setDir, file), JSON.stringify(scene, null, 2) + '\n', 'utf8');
-    sceneFiles.push(file);
+    // the active composition is the template; embedded comps are components
+    if (comp.id === activeId || opts.allCompositions) sceneFiles.push(file);
+    else componentFiles.push(file);
   }
 
-  await updateSetDoc(setDir, sceneFiles, fonts);
+  await updateSetDoc(setDir, sceneFiles, componentFiles, fonts);
   return { scenes: sceneFiles, skipped, warnings, assetReport: pool.report };
 }
 
 /** Active composition + everything it transitively embeds; the rest is baggage. */
-function selectCompositions(doc: LooDoc, all: boolean): { keep: LooDoc['compositions']; skipped: string[] } {
-  if (all || doc.compositions.length < 2) return { keep: doc.compositions, skipped: [] };
+function selectCompositions(
+  doc: LooDoc,
+  all: boolean,
+): { keep: LooDoc['compositions']; skipped: string[]; activeId: string } {
   const byId = new Map(doc.compositions.map((c) => [c.id, c]));
   const active = byId.get(doc.activeCompositionId ?? '') ?? doc.compositions[0]!;
+  if (all || doc.compositions.length < 2) return { keep: doc.compositions, skipped: [], activeId: active.id };
   const keptIds = new Set([active.id]);
   const queue = [active];
   while (queue.length > 0) {
@@ -132,10 +138,11 @@ function selectCompositions(doc: LooDoc, all: boolean): { keep: LooDoc['composit
   return {
     keep: doc.compositions.filter((c) => keptIds.has(c.id)),
     skipped: doc.compositions.filter((c) => !keptIds.has(c.id)).map((c) => c.name),
+    activeId: active.id,
   };
 }
 
-async function updateSetDoc(setDir: string, newScenes: string[], newFonts: SetFont[]): Promise<void> {
+async function updateSetDoc(setDir: string, newScenes: string[], newComponents: string[], newFonts: SetFont[]): Promise<void> {
   const setPath = join(setDir, 'set.json');
   let set: SetDoc;
   try {
@@ -149,6 +156,13 @@ async function updateSetDoc(setDir: string, newScenes: string[], newFonts: SetFo
     };
   }
   for (const s of newScenes) if (!set.scenes.includes(s)) set.scenes.push(s);
+  const components = set.components ?? [];
+  for (const c of newComponents) {
+    if (!components.includes(c)) components.push(c);
+    // a component is never also a top-level scene
+    set.scenes = set.scenes.filter((s) => s !== c);
+  }
+  if (components.length > 0) set.components = components;
   const fonts = set.fonts ?? [];
   for (const f of newFonts) {
     const existing = fonts.find((x) => x.family === f.family);

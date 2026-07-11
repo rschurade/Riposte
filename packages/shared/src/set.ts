@@ -15,6 +15,11 @@ export interface SetDoc {
   name: string;
   /** Scene files relative to the set root, e.g. "scenes/Schedule.json". */
   scenes: string[];
+  /**
+   * Component scenes: embedded by other scenes (nested compositions), not
+   * standalone graphics — not exported as templates, listed separately.
+   */
+  components?: string[];
   /** Fonts shared by the set's scenes; renderers emit @font-face for each. */
   fonts?: SetFont[];
   export: ExportSettings;

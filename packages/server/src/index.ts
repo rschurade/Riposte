@@ -82,9 +82,9 @@ function setDirOf(url: URL): string {
 /** The whole set in one response: set.json + every scene doc (for usage scans). */
 async function apiSetBundle(url: URL, res: ServerResponse): Promise<void> {
   const dir = setDirOf(url);
-  const set = JSON.parse(await readFile(join(dir, 'set.json'), 'utf8')) as { scenes?: string[] };
+  const set = JSON.parse(await readFile(join(dir, 'set.json'), 'utf8')) as { scenes?: string[]; components?: string[] };
   const scenes: Record<string, unknown> = {};
-  for (const file of set.scenes ?? []) {
+  for (const file of [...(set.scenes ?? []), ...(set.components ?? [])]) {
     if (!SCENE_FILE_RE.test(file)) continue;
     try {
       scenes[file] = JSON.parse(await readFile(join(dir, file), 'utf8'));
@@ -199,6 +199,7 @@ interface SetInfo {
   root: string;
   name: string;
   scenes: string[];
+  components: string[];
   fonts: { family: string; file: string }[];
 }
 
@@ -217,9 +218,10 @@ async function listSets(dir: string, root: string): Promise<SetInfo[]> {
       const doc = JSON.parse(await readFile(setFile, 'utf8')) as {
         name?: string;
         scenes?: string[];
+        components?: string[];
         fonts?: { family: string; file: string }[];
       };
-      out.push({ root, name: entry, scenes: doc.scenes ?? [], fonts: doc.fonts ?? [] });
+      out.push({ root, name: entry, scenes: doc.scenes ?? [], components: doc.components ?? [], fonts: doc.fonts ?? [] });
     } catch {
       // not a set folder — skip
     }
