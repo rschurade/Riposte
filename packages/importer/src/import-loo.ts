@@ -133,9 +133,17 @@ export async function importLoo(looPath: string, setDir: string, opts: LooImport
     componentFiles.push(file);
   }
 
-  for (const item of converted.filter((x) => x.isActive)) {
+  // Active scenes are named after the .loo FILE — that's the template's
+  // user-facing identity (matches the exported .html name and what the
+  // playout client references). Designers copy project files without
+  // renaming the composition inside, so comp names collide (Medals *_v2).
+  const looName = sanitizeDir(basename(looPath).replace(/\.loo$/i, ''));
+  const actives = converted.filter((x) => x.isActive);
+  for (const item of actives) {
     substituteCompRefs(item.scene, finalRefs, warnings);
-    const file = `scenes/${sanitizeDir(item.comp.name)}.json`;
+    const fileStem = actives.length === 1 ? looName : sanitizeDir(item.comp.name);
+    const file = `scenes/${fileStem}.json`;
+    item.scene.name = fileStem;
     await writeFile(join(setDir, file), JSON.stringify(item.scene, null, 2) + '\n', 'utf8');
     sceneFiles.push(file);
   }

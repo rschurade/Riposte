@@ -13,6 +13,8 @@ import { createRuntime, type Runtime, type RuntimeOptions } from './runtime.ts';
 export interface BootOptions extends RuntimeOptions {
   /** Preload these asset URLs before declaring ready (kills first-play flash). */
   preload?: string[];
+  /** Fonts to register and await before declaring ready. */
+  fonts?: { family: string; url: string }[];
 }
 
 export function boot(scene: SceneDoc, opts: BootOptions = {}): Promise<Runtime> {
@@ -29,8 +31,10 @@ export function boot(scene: SceneDoc, opts: BootOptions = {}): Promise<Runtime> 
 
   return new Promise((resolve) => {
     const start = async () => {
+      if (opts.fonts?.length) await loadFonts(opts.fonts);
       if (opts.preload?.length) await preloadAll(opts.preload);
       runtime = createRuntime(scene, document.body, opts);
+      w['__riposte'] = runtime; // debugging/verification handle
       for (const fn of queue) fn(runtime);
       queue.length = 0;
       resolve(runtime);
@@ -41,6 +45,18 @@ export function boot(scene: SceneDoc, opts: BootOptions = {}): Promise<Runtime> 
       void start();
     }
   });
+}
+
+function loadFonts(fonts: { family: string; url: string }[]): Promise<void> {
+  return Promise.all(
+    fonts.map((f) => {
+      const face = new FontFace(f.family, `url("${f.url}")`);
+      return face
+        .load()
+        .then((ff) => document.fonts.add(ff))
+        .catch(() => {}); // missing font must not block ready
+    }),
+  ).then(() => {});
 }
 
 function preloadAll(urls: string[]): Promise<void> {

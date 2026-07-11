@@ -100,6 +100,7 @@
     <button onclick={() => ed.undo()} title="Ctrl+Z">↶</button>
     <button onclick={() => ed.redo()} title="Ctrl+Y">↷</button>
     <button class="primary" onclick={() => ed.save()} disabled={!ed.dirty} title="Ctrl+S">Save</button>
+    <button onclick={() => ed.exportSet()} disabled={!ed.setRef} title="Export set as CasparCG templates">Export</button>
   </header>
   <div class="main">
     <Sidebar />

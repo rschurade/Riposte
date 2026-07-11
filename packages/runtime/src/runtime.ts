@@ -187,7 +187,12 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
       list.push(cb);
       updateMws.set(key, list);
     },
-    useOnInvoke: (name, cb) => invokables.set(name, cb),
+    useOnInvoke(name, cb) {
+      invokables.set(name, cb);
+      // CasparCG INVOKE calls a global function by name — expose it.
+      const w = globalThis as Record<string, unknown>;
+      if (typeof window !== 'undefined' && !(name in w)) w[name] = cb;
+    },
     composition: compositionApi,
     templateData,
     flags,

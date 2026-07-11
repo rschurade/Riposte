@@ -15,6 +15,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile, readdir, stat, writeFile, unlink } from 'node:fs/promises';
 import { join, resolve, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { exportSet } from '@riposte/exporter';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverRoot = resolve(here, '..');
@@ -63,6 +64,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/scene' && req.method === 'PUT') return apiSaveScene(req, res);
   if (path === '/api/scene/remove' && req.method === 'POST') return apiRemoveScene(req, res);
   if (path === '/api/assets/delete' && req.method === 'POST') return apiDeleteAssets(req, res);
+  if (path === '/api/export' && req.method === 'POST') return apiExport(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
   if (path.startsWith('/projects/')) return file(res, safeJoin(projectsDir, path.slice('/projects/'.length)));
@@ -131,6 +133,16 @@ async function apiSaveScene(req: IncomingMessage, res: ServerResponse): Promise<
   if (!SCENE_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
   await writeFile(join(dir, body.file), JSON.stringify(body.doc, null, 2) + '\n', 'utf8');
   return json(res, { ok: true });
+}
+
+/** Export a set to CasparCG templates. Default target: projects/_export/<name>. */
+async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked'; outDir?: string };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const setDir = setDirOf(url);
+  const outDir = body.outDir?.trim() ? resolve(body.outDir) : join(projectsDir, '_export', body.name);
+  const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode } : {});
+  return json(res, result);
 }
 
 /** Remove a scene from the set (and optionally delete its file). */
