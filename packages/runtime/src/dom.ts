@@ -163,7 +163,7 @@ function buildLayer(
   opts: BuildOptions,
 ): HTMLElement {
   const layerEl = document.createElement('div');
-  layerEl.dataset['layer'] = layer.name;
+  layerEl.dataset['layer'] = layer.name ?? layer.element.key ?? '';
   Object.assign(layerEl.style, {
     position: 'absolute',
     left: '0',

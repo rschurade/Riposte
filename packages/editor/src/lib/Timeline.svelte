@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ElementStyle, Layer } from '@riposte/shared';
-  import { ed } from './state.svelte.ts';
+  import { ed, layerLabel } from './state.svelte.ts';
 
   let rowsEl: HTMLDivElement | undefined = $state();
   let trackWidth = $state(600);
@@ -20,11 +20,6 @@
   /** Display top-first, like a layer panel (scene array is bottom-first). */
   const displayLayers = $derived(comp ? [...comp.layers].slice().reverse() : []);
 
-  /** The key IS the layer's identity — show it whenever it exists; the
-   * imported "Copy of Copy of…" names only appear in the tooltip. */
-  function layerLabel(layer: Layer): string {
-    return layer.element.key ?? layer.name;
-  }
 
   interface PropRow {
     targetKey: string;
@@ -269,8 +264,8 @@
                   class="ltext"
                   role="button"
                   tabindex="-1"
-                  title="{layer.name}{layer.element.key ? ` · ${layer.element.key}` : ''} — double-click to rename"
-                  ondblclick={() => (renamingLayer = { id: layer.id, value: layer.name })}
+                  title="{layerLabel(layer)} — double-click to rename{layer.element.key ? ' (edits the key)' : ''}"
+                  ondblclick={() => (renamingLayer = { id: layer.id, value: layer.element.key ?? layer.name ?? '' })}
                 >
                   {#if kfFrames.length > 0}<span class="animind" title="{kfFrames.length} keyframes">◆</span>{/if}
                   {layer.isGuide ? '▦ ' : ''}{layerLabel(layer)}

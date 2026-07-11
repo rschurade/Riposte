@@ -12,7 +12,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SceneDoc } from '@riposte/shared';
-import { migrateSceneScripts, restructureHoldLayers } from './migrate-scripts.ts';
+import { cleanupLayerNames, migrateSceneScripts, restructureHoldLayers } from './migrate-scripts.ts';
 
 const args = process.argv.slice(2);
 const dry = args.includes('--dry');
@@ -34,7 +34,7 @@ for (const sub of ['scenes', 'components']) {
   for (const f of files) {
     const path = join(dir, f);
     const doc = JSON.parse(await readFile(path, 'utf8')) as SceneDoc;
-    const steps = [migrateSceneScripts(doc), restructureHoldLayers(doc)];
+    const steps = [migrateSceneScripts(doc), restructureHoldLayers(doc), cleanupLayerNames(doc)];
     const notes = steps.flatMap((s) => s.notes);
     const changed = steps.some((s) => s.changed);
     if (notes.length > 0 || changed) {

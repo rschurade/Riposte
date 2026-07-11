@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { StyleProperty, VisibilityBinding } from '@riposte/shared';
-  import { ed, propNumber } from './state.svelte.ts';
+  import { ed, layerLabel, propNumber } from './state.svelte.ts';
 
   const layer = $derived(ed.selectedLayer);
   const el = $derived(layer?.element ?? null);
@@ -111,8 +111,8 @@
 
 <aside>
   {#if layer && el}
-    <h2>{layer.name}</h2>
-    <p class="type">{el.type}{el.key ? ` · ${el.key}` : ''}</p>
+    <h2>{layerLabel(layer)}</h2>
+    <p class="type">{el.type}</p>
 
     <div class="grid three">
       {#each NUM_PROPS as np (np.prop)}
@@ -141,7 +141,7 @@
         id="in-key"
         type="text"
         value={el.key ?? ''}
-        onchange={(e) => setElementField('key', (e.currentTarget as HTMLInputElement).value || undefined)}
+        onchange={(e) => ed.setElementKey(layer.id, (e.currentTarget as HTMLInputElement).value)}
       />
     </div>
 

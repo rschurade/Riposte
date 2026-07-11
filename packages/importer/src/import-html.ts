@@ -164,8 +164,8 @@ export async function importLoopicHtml(htmlPath: string, setDir: string): Promis
   if (action !== '') scene.composition.action = action;
 
   // Loopic show/hide + redirect scripts become data (visibility bindings)
-  const { migrateSceneScripts, restructureHoldLayers } = await import('./migrate-scripts.ts');
-  for (const step of [migrateSceneScripts(scene), restructureHoldLayers(scene)]) {
+  const { migrateSceneScripts, restructureHoldLayers, cleanupLayerNames } = await import('./migrate-scripts.ts');
+  for (const step of [migrateSceneScripts(scene), restructureHoldLayers(scene), cleanupLayerNames(scene)]) {
     warnings.push(...step.notes.map((n) => `migrate: ${n}`));
   }
 

@@ -275,13 +275,43 @@ class EditorState {
     });
   }
 
-  renameLayer(id: string, name: string): void {
-    name = name.trim();
-    if (!name) return;
-    this.mutate('rename layer', (scene) => {
+  /**
+   * One name per layer: for BOUND elements the key is the name, so renaming
+   * edits the key (a deliberate data-contract change); unbound layers keep a
+   * plain display name.
+   */
+  renameLayer(id: string, value: string): void {
+    value = value.trim();
+    if (!value) return;
+    const layer = this.scene?.composition.layers.find((l) => l.id === id);
+    if (!layer) return;
+    if (layer.element.key) this.setElementKey(id, value);
+    else {
+      this.mutate('rename layer', (scene) => {
+        const l = scene.composition.layers.find((x) => x.id === id);
+        if (l) l.name = value;
+      });
+    }
+  }
+
+  /** Change an element's update key — refuses duplicates, announces the change. */
+  setElementKey(id: string, key: string): void {
+    key = key.trim();
+    const layer = this.scene?.composition.layers.find((l) => l.id === id);
+    if (!layer || key === (layer.element.key ?? '')) return;
+    if (key && this.scene!.composition.layers.some((l) => l.id !== id && l.element.key === key)) {
+      this.flash(`key ${key} is already used by another element`);
+      return;
+    }
+    const old = layer.element.key;
+    this.mutate('change key', (scene) => {
       const l = scene.composition.layers.find((x) => x.id === id);
-      if (l) l.name = name;
+      if (!l) return;
+      if (key) l.element.key = key;
+      else delete l.element.key;
     });
+    if (old && key) this.flash(`key changed: ${old} → ${key}`);
+    else if (!key) this.flash(`key ${old} removed — element is no longer data-bound`);
   }
 
   /** Move/trim a layer's visible span (timeline bar drag). */
@@ -304,11 +334,9 @@ class EditorState {
       const w = img.naturalWidth || 200;
       const h = img.naturalHeight || 200;
       const id = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-      const name = assetFile.replace(/^assets\//, '').replace(/\.[^.]+$/, '');
       this.mutate('add image layer', (s) => {
         s.composition.layers.push({
           id,
-          name,
           startFrame: 0,
           duration: s.composition.duration,
           element: {
@@ -325,7 +353,7 @@ class EditorState {
         });
       });
       this.selectLayer(id);
-      this.flash(`added ${name}`);
+      this.flash(`added ${assetFile.replace(/^assets\//, '')}`);
     };
     img.onerror = () => this.flash(`could not load ${assetFile}`);
     img.src = this.assetBase + assetFile;
@@ -547,6 +575,32 @@ class EditorState {
 }
 
 export const ed = new EditorState();
+
+/**
+ * The one display name of a layer: the element's KEY when bound, the stored
+ * name when a human wrote one, otherwise a label derived from the element.
+ */
+export function layerLabel(layer: Layer): string {
+  const el = layer.element;
+  if (el.key) return el.key;
+  if (layer.name) return layer.name;
+  switch (el.type) {
+    case 'image':
+      return 'image ' + el.asset.replace(/^assets\//, '');
+    case 'imageSequence':
+      return `sequence (${el.frames.length})`;
+    case 'imageLoader':
+      return 'image loader';
+    case 'text': {
+      const t = el.content.replace(/<[^>]*>/g, '').trim();
+      return t ? `text “${t.slice(0, 24)}”` : 'text';
+    }
+    case 'composition':
+      return 'comp ' + el.compositionId.replace(/^scenes\//, '').replace(/\.json$/, '');
+    default:
+      return el.type;
+  }
+}
 
 // ---- shared geometry/property helpers used by Stage + Inspector -------------
 

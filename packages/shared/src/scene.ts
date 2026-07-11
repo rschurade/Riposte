@@ -46,7 +46,13 @@ export type Marker =
 
 export interface Layer {
   id: string;
-  name: string;
+  /**
+   * Optional display name — only for layers whose element has no key (the
+   * key IS the identity of bound elements) and where a human wrote
+   * something meaningful. Editors derive a label from the element
+   * (type/asset/content) when absent.
+   */
+  name?: string;
   startFrame: number;
   /** Duration in frames; the layer is hidden outside [startFrame, startFrame + duration). */
   duration: number;

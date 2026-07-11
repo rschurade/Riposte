@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Layer, SceneDoc, SceneElement, TextElement } from '@riposte/shared';
-import { migrateSceneScripts, restructureHoldLayers } from '../src/migrate-scripts.ts';
+import { cleanupLayerNames, migrateSceneScripts, restructureHoldLayers } from '../src/migrate-scripts.ts';
 
 function textEl(id: string, key?: string): TextElement {
   return { id, key, type: 'text', content: '', style: { x: { value: 0 }, y: { value: 0 } } };
@@ -117,6 +117,22 @@ test('migration is idempotent', () => {
   migrateSceneScripts(d);
   const r2 = migrateSceneScripts(d);
   assert.equal(r2.changed, false);
+});
+
+test('cleanupLayerNames drops junk and key-duplicating names, keeps human ones', () => {
+  const a = layer(textEl('a', '_lamp'), { name: 'New layer' });
+  const b = layer(textEl('b', '_score'), { name: 'Copy of Copy of New layer 2' });
+  const c = layer(textEl('c', '_noc'), { name: '_noc' });
+  const d = layer(textEl('d'), { name: 'Background plate' });
+  const e = layer(textEl('e'), { name: 'Layer 3' });
+  const r = cleanupLayerNames(doc([a, b, c, d, e], ''));
+  assert.equal(r.changed, true);
+  assert.equal(a.name, undefined);
+  assert.equal(b.name, undefined);
+  assert.equal(c.name, undefined);
+  assert.equal(d.name, 'Background plate');
+  assert.equal(e.name, undefined);
+  assert.equal(cleanupLayerNames(doc([a, b, c, d, e], '')).changed, false); // idempotent
 });
 
 test('restructureHoldLayers extends bound hold layers with the sibling fade', () => {
