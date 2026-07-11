@@ -182,9 +182,13 @@ export interface PathElement extends BaseElement {
   strokeWidth?: number;
 }
 
-/** Nested composition instance (reusable group). */
+/** Nested composition instance (reusable component). */
 export interface CompositionElement extends BaseElement {
   type: 'composition';
-  /** Scene-local composition reference — resolution semantics defined in phase 1. */
+  /** Set-relative scene file of the embedded component, e.g. "scenes/nest.json". */
   compositionId: string;
+  /** Loopic semantics: child runs its own clock instead of syncing to the parent. */
+  detachPlayhead?: boolean;
+  /** With detachPlayhead: child starts playing as soon as it becomes visible. */
+  autoPlay?: boolean;
 }

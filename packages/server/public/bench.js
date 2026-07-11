@@ -21,7 +21,7 @@ async function listScenes() {
     for (const scenePath of s.scenes) {
       const name = scenePath.replace(/^scenes\//, '').replace(/\.json$/, '');
       options.push({
-        root: s.root, set: s.name, scene: name, fonts: s.fonts,
+        root: s.root, set: s.name, scene: name, fonts: s.fonts, components: s.components,
         label: `${s.name} / ${name}`, value: `${s.root}/${s.name}/${name}`,
       });
     }
@@ -50,7 +50,11 @@ async function load(opt) {
   const base = `/${opt.root}/${opt.set}/`;
   await injectFonts(base, opt.fonts);
   scene = await (await fetch(`${base}scenes/${opt.scene}.json`)).json();
-  rt = riposte.createRuntime(scene, $('stage'), { assetBase: base });
+  const components = {};
+  for (const f of opt.components || []) {
+    try { components[f] = await (await fetch(base + f)).json(); } catch { /* missing component */ }
+  }
+  rt = riposte.createRuntime(scene, $('stage'), { assetBase: base, components });
   window.rt = rt; // debugging convenience
 
   const comp = scene.composition;
@@ -160,6 +164,14 @@ async function main() {
     document.querySelector('.riposte-comp').style.visibility = 'visible';
   });
   window.addEventListener('resize', fitStage);
+
+  // Headless playback mode: real play() — nested comps, pause markers, the works
+  if (params.has('play')) {
+    const raw = params.get('data');
+    if (raw) rt.update(raw);
+    rt.play();
+    return;
+  }
 
   // Headless screenshot mode
   if (params.has('frame')) {

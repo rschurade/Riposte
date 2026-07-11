@@ -40,9 +40,11 @@ const PAUSE_RE = /^\s*this\.pause\(\)\s*;?\s*$/;
 export async function convertComposition(
   loo: LooComposition,
   resolve: AssetResolver,
+  /** Loopic composition id → set-relative scene file, for COMPOSITION elements. */
+  compRefs?: Map<string, string>,
 ): Promise<{ scene: SceneDoc; warnings: string[] }> {
   const warnings: string[] = [];
-  const ctx: Ctx = { resolve, warnings };
+  const ctx: Ctx = { resolve, warnings, compRefs };
 
   const markers: Marker[] = [];
   for (const action of loo.actions ?? []) {
@@ -84,6 +86,7 @@ export async function convertComposition(
 interface Ctx {
   resolve: AssetResolver;
   warnings: string[];
+  compRefs?: Map<string, string>;
 }
 
 async function convertLayer(loo: LooLayer, ctx: Ctx): Promise<Layer> {
@@ -148,6 +151,20 @@ async function convertElement(loo: LooElement, ctx: Ctx, where: string, frameOff
     case 'ELLIPSE': {
       applyShapeFill(loo, style, ctx, where);
       return { ...base, type: 'ellipse' };
+    }
+    case 'COMPOSITION': {
+      const ref = loo.compositionId ? ctx.compRefs?.get(loo.compositionId) : undefined;
+      if (!ref) {
+        ctx.warnings.push(`${where}: COMPOSITION references unknown composition — imported as placeholder`);
+        return { ...base, type: 'rectangle' };
+      }
+      const el: SceneElement = { ...base, type: 'composition', compositionId: ref };
+      if (loo.detachPlayhead) {
+        el.detachPlayhead = true;
+        ctx.warnings.push(`${where}: detachPlayhead composition — runtime syncs to parent for now`);
+      }
+      if (loo.autoPlay) el.autoPlay = true;
+      return el;
     }
     default:
       ctx.warnings.push(`${where}: unsupported element type ${loo.type} — imported as hidden placeholder`);

@@ -24,6 +24,13 @@ export interface BuildOptions {
   assetBase?: string;
   /** Render guide layers (editor preview); default false (on-air). */
   showGuides?: boolean;
+  /**
+   * Component scene docs by set-relative file (e.g. "scenes/nest.json") —
+   * targets of CompositionElement. Provided by the host (bench/editor/export).
+   */
+  components?: Record<string, SceneDoc | null | undefined>;
+  /** Internal recursion guard for nested compositions. */
+  nestingDepth?: number;
 }
 
 export interface ElementHandle {
@@ -78,7 +85,7 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
 
   for (const layer of comp.layers) {
     if (layer.isGuide && !opts.showGuides) continue;
-    buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics);
+    buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, opts);
   }
 
   let visible = false;
@@ -112,6 +119,7 @@ function buildLayer(
   byKey: Map<string, ElementHandle>,
   byId: Map<string, ElementHandle>,
   dynamics: DynamicBinding[],
+  opts: BuildOptions,
 ): void {
   const layerEl = document.createElement('div');
   layerEl.dataset['layer'] = layer.name;
@@ -145,7 +153,7 @@ function buildLayer(
     parent = buildMask(mask, parent, dynamics);
   }
 
-  const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics);
+  const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics, opts, byKey);
   if (handle) {
     byId.set(layer.element.id, handle);
     if (layer.element.key) byKey.set(layer.element.key, handle);
@@ -197,6 +205,8 @@ function buildElement(
   parent: HTMLElement,
   assetBase: string,
   dynamics: DynamicBinding[],
+  opts: BuildOptions,
+  parentByKey: Map<string, ElementHandle>,
 ): ElementHandle | null {
   let node: HTMLElement;
   let contentEl: HTMLElement | null = null;
@@ -318,8 +328,30 @@ function buildElement(
       break;
     }
     case 'composition': {
-      console.warn(`riposte: nested composition "${el.id}" not supported yet — skipped`);
-      return null;
+      const depth = opts.nestingDepth ?? 0;
+      const doc = opts.components?.[el.compositionId];
+      node = document.createElement('div');
+      if (!doc || depth >= 4) {
+        console.warn(`riposte: component "${el.compositionId}" ${doc ? 'nested too deep' : 'not provided'} — skipped`);
+        break;
+      }
+      const sub = buildScene(doc, node, { ...opts, nestingDepth: depth + 1 });
+      sub.rootEl.style.visibility = 'visible';
+      node.style.width = `${doc.composition.width}px`;
+      node.style.height = `${doc.composition.height}px`;
+      const subLast = doc.composition.duration - 1;
+      const start = layer.startFrame;
+      // Child timeline follows the parent playhead (detachPlayhead pending).
+      dynamics.push({
+        apply(frame) {
+          sub.setFrame(Math.min(Math.max(frame - start, 0), subLast));
+        },
+      });
+      // Loopic data convention: nested keys addressed as "_comp._key"
+      if (el.key) {
+        for (const [k, h] of sub.byKey) parentByKey.set(`${el.key}.${k}`, h);
+      }
+      break;
     }
     default: {
       console.warn(`riposte: unknown element type "${(el as { type: string }).type}" — skipped`);

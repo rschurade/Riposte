@@ -7,6 +7,7 @@
  * - fonts are registered in set.json (family = Loopic resource name)
  */
 
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import type { SceneDoc, SetDoc, SetFont } from '@riposte/shared';
@@ -96,22 +97,70 @@ export async function importLoo(looPath: string, setDir: string, opts: LooImport
   }
 
   const { keep, skipped, activeId } = selectCompositions(doc, opts.allCompositions ?? false);
+  // Composition refs start as tokens; final filenames are assigned after
+  // conversion so component files can be deduplicated by CONTENT — the same
+  // component name in different .loo files often holds different variants
+  // (each Team template ships its own "nest").
+  const compRefs = new Map(keep.map((c) => [c.id, `@comp:${c.id}`]));
+
+  const converted: { comp: (typeof keep)[number]; scene: Awaited<ReturnType<typeof convertComposition>>['scene']; isActive: boolean }[] = [];
+  for (const comp of keep) {
+    const { scene, warnings: w } = await convertComposition(comp, resolver, compRefs);
+    warnings.push(...w.map((msg) => `${comp.name}: ${msg}`));
+    converted.push({ comp, scene, isActive: comp.id === activeId || (opts.allCompositions ?? false) });
+  }
 
   const sceneFiles: string[] = [];
   const componentFiles: string[] = [];
+  const finalRefs = new Map<string, string>();
   await mkdir(join(setDir, 'scenes'), { recursive: true });
-  for (const comp of keep) {
-    const { scene, warnings: w } = await convertComposition(comp, resolver);
-    warnings.push(...w.map((msg) => `${comp.name}: ${msg}`));
-    const file = `scenes/${sanitizeDir(comp.name)}.json`;
-    await writeFile(join(setDir, file), JSON.stringify(scene, null, 2) + '\n', 'utf8');
-    // the active composition is the template; embedded comps are components
-    if (comp.id === activeId || opts.allCompositions) sceneFiles.push(file);
-    else componentFiles.push(file);
+
+  // components first (so parents can reference their final filenames)
+  for (const item of converted.filter((x) => !x.isActive)) {
+    substituteCompRefs(item.scene, finalRefs, warnings);
+    const content = JSON.stringify(item.scene, null, 2) + '\n';
+    let file = `scenes/${sanitizeDir(item.comp.name)}.json`;
+    const existing = await readFileOrNull(join(setDir, file));
+    if (existing !== null && existing !== content) {
+      // same name, different content — never overwrite (asset policy applies)
+      const hash = createHash('sha1').update(content).digest('hex').slice(0, 8);
+      file = `scenes/${sanitizeDir(item.comp.name)}-${hash}.json`;
+    }
+    if ((await readFileOrNull(join(setDir, file))) !== content) {
+      await writeFile(join(setDir, file), content, 'utf8');
+    }
+    finalRefs.set(item.comp.id, file);
+    componentFiles.push(file);
+  }
+
+  for (const item of converted.filter((x) => x.isActive)) {
+    substituteCompRefs(item.scene, finalRefs, warnings);
+    const file = `scenes/${sanitizeDir(item.comp.name)}.json`;
+    await writeFile(join(setDir, file), JSON.stringify(item.scene, null, 2) + '\n', 'utf8');
+    sceneFiles.push(file);
   }
 
   await updateSetDoc(setDir, sceneFiles, componentFiles, fonts);
   return { scenes: sceneFiles, skipped, warnings, assetReport: pool.report };
+}
+
+/** Replace "@comp:<id>" tokens in composition elements with final filenames. */
+function substituteCompRefs(scene: { composition: { layers: { element: { type: string; compositionId?: string } }[] } }, finalRefs: Map<string, string>, warnings: string[]): void {
+  for (const layer of scene.composition.layers) {
+    const el = layer.element;
+    if (el.type !== 'composition' || !el.compositionId?.startsWith('@comp:')) continue;
+    const file = finalRefs.get(el.compositionId.slice('@comp:'.length));
+    if (file) el.compositionId = file;
+    else warnings.push(`unresolved component reference in ${el.compositionId}`);
+  }
+}
+
+async function readFileOrNull(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 /** Active composition + everything it transitively embeds; the rest is baggage. */

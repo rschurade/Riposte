@@ -91,6 +91,10 @@ export interface LooElement {
   // IMAGE_LOADER
   size?: string; // fit mode: original|contain|cover|stretch|...
   placeholderId?: string;
+  // COMPOSITION
+  compositionId?: string;
+  detachPlayhead?: boolean;
+  autoPlay?: boolean;
   // RECTANGLE / ELLIPSE / PATH share pathProperties for fill/stroke
   pathProperties?: {
     fill?: LooColorProperty;

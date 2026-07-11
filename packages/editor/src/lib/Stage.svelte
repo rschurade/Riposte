@@ -31,7 +31,11 @@
     built?.destroy();
     built = null;
     if (!scene || !stageEl) return;
-    built = buildScene(scene, stageEl, { assetBase: ed.assetBase, showGuides: true });
+    built = buildScene(scene, stageEl, {
+      assetBase: ed.assetBase,
+      showGuides: true,
+      components: ed.allScenes,
+    });
     built.show();
     built.setFrame(ed.frame);
   });
