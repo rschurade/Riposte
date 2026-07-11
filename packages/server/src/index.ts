@@ -12,7 +12,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, readdir, stat, writeFile, unlink } from 'node:fs/promises';
+import { readFile, readdir, stat, writeFile, unlink, rename } from 'node:fs/promises';
 import { join, resolve, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exportSet } from '@riposte/exporter';
@@ -64,7 +64,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/assets') return apiAssets(url, res);
   if (path === '/api/scene' && req.method === 'PUT') return apiSaveScene(req, res);
   if (path === '/api/scene/remove' && req.method === 'POST') return apiRemoveScene(req, res);
+  if (path === '/api/scene/rename' && req.method === 'POST') return apiRenameScene(req, res);
   if (path === '/api/assets/delete' && req.method === 'POST') return apiDeleteAssets(req, res);
+  if (path === '/api/assets/rename' && req.method === 'POST') return apiRenameAsset(req, res);
   if (path === '/api/export' && req.method === 'POST') return apiExport(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
@@ -171,6 +173,151 @@ async function apiRemoveScene(req: IncomingMessage, res: ServerResponse): Promis
     }
   }
   return json(res, { ok: true, scenes: set.scenes });
+}
+
+const DOC_FILE_RE = /^(scenes|components)\/[\w .()-]+\.json$/;
+
+/** Every scene + component file registered in set.json. */
+async function docFilesOf(dir: string): Promise<string[]> {
+  const set = JSON.parse(await readFile(join(dir, 'set.json'), 'utf8')) as { scenes?: string[]; components?: string[] };
+  return [...(set.scenes ?? []), ...(set.components ?? [])].filter((f) => DOC_FILE_RE.test(f));
+}
+
+/** Load each doc file, run the rewrite; write back the ones it changed. */
+async function rewriteDocs(dir: string, rewrite: (doc: Record<string, unknown>) => boolean): Promise<string[]> {
+  const changed: string[] = [];
+  for (const file of await docFilesOf(dir)) {
+    let doc: Record<string, unknown>;
+    try {
+      doc = JSON.parse(await readFile(join(dir, file), 'utf8')) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (rewrite(doc)) {
+      await writeFile(join(dir, file), JSON.stringify(doc, null, 2) + '\n', 'utf8');
+      changed.push(file);
+    }
+  }
+  return changed;
+}
+
+/** All elements (layer elements + masks) of a scene doc. */
+function docElements(doc: Record<string, unknown>): Record<string, unknown>[] {
+  const comp = doc['composition'] as { layers?: { element: Record<string, unknown>; masks?: Record<string, unknown>[] }[] } | undefined;
+  const out: Record<string, unknown>[] = [];
+  for (const l of comp?.layers ?? []) {
+    if (l.element) out.push(l.element);
+    out.push(...(l.masks ?? []));
+  }
+  return out;
+}
+
+/**
+ * Rename a scene or component: file on disk, set.json entry, doc.name, and —
+ * for components — every compositionId reference across the set.
+ */
+async function apiRenameScene(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; file: string; newName: string };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  const newName = (body.newName ?? '').trim();
+  if (!DOC_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
+  if (!/^[\w .()-]+$/.test(newName)) throw Object.assign(new Error('bad new name'), { status: 400 });
+  // components also live under scenes/ — set.json array membership is the kind
+  const setPath = join(dir, 'set.json');
+  const set = JSON.parse(await readFile(setPath, 'utf8')) as Record<string, string[]>;
+  const kind = (set['components'] ?? []).includes(body.file) ? 'components' : 'scenes';
+  const newFile = body.file.replace(/[^/]+\.json$/, `${newName}.json`);
+  if (newFile === body.file) return json(res, { ok: true, file: body.file });
+  try {
+    await stat(join(dir, newFile));
+    throw Object.assign(new Error(`"${newName}" already exists`), { status: 409 });
+  } catch (err) {
+    if ((err as { status?: number }).status === 409) throw err; // stat succeeded → clash
+  }
+
+  const doc = JSON.parse(await readFile(join(dir, body.file), 'utf8')) as Record<string, unknown>;
+  doc['name'] = newName;
+  await writeFile(join(dir, newFile), JSON.stringify(doc, null, 2) + '\n', 'utf8');
+  await unlink(join(dir, body.file));
+
+  set[kind] = (set[kind] ?? []).map((f) => (f === body.file ? newFile : f));
+  await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
+
+  // components are referenced by file path — keep every instance pointing at it
+  const changed =
+    kind === 'components'
+      ? await rewriteDocs(dir, (d) => {
+          let touched = false;
+          for (const el of docElements(d)) {
+            if (el['type'] === 'composition' && el['compositionId'] === body.file) {
+              el['compositionId'] = newFile;
+              touched = true;
+            }
+          }
+          return touched;
+        })
+      : [];
+  return json(res, { ok: true, file: newFile, changed });
+}
+
+/** Rename an asset file and rewrite every reference to it across the set. */
+async function apiRenameAsset(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; from: string; to: string };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  const { from } = body;
+  const to = (body.to ?? '').trim();
+  if (!ASSET_FILE_RE.test(from) || from.includes('..')) throw Object.assign(new Error('bad asset path'), { status: 400 });
+  if (!ASSET_FILE_RE.test(to) || to.includes('..')) throw Object.assign(new Error('bad new asset path'), { status: 400 });
+  if (from === to) return json(res, { ok: true, changed: [] });
+  try {
+    await stat(join(dir, to));
+    throw Object.assign(new Error(`"${to}" already exists`), { status: 409 });
+  } catch (err) {
+    if ((err as { status?: number }).status === 409) throw err;
+  }
+  await rename(join(dir, from), join(dir, to));
+
+  const changed = await rewriteDocs(dir, (doc) => {
+    let touched = false;
+    for (const el of docElements(doc)) {
+      if (el['asset'] === from) {
+        el['asset'] = to;
+        touched = true;
+      }
+      if (el['placeholder'] === from) {
+        el['placeholder'] = to;
+        touched = true;
+      }
+      const frames = el['frames'];
+      if (Array.isArray(frames)) {
+        for (let i = 0; i < frames.length; i++) {
+          if (frames[i] === from) {
+            frames[i] = to;
+            touched = true;
+          }
+        }
+      }
+    }
+    return touched;
+  });
+
+  // fonts live in set.json
+  const setPath = join(dir, 'set.json');
+  const set = JSON.parse(await readFile(setPath, 'utf8')) as { fonts?: { family: string; file: string }[] };
+  let fontsTouched = false;
+  for (const f of set.fonts ?? []) {
+    if (f.file === from) {
+      f.file = to;
+      fontsTouched = true;
+    }
+  }
+  if (fontsTouched) {
+    await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
+    changed.push('set.json');
+  }
+  return json(res, { ok: true, changed });
 }
 
 async function apiDeleteAssets(req: IncomingMessage, res: ServerResponse): Promise<void> {

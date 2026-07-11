@@ -112,9 +112,40 @@
     return null;
   }
 
-  const selectionRect = $derived(
-    ed.selectedLayer && visibleAtFrame(ed.selectedLayer) ? layerRect(ed.selectedLayer) : ed.selectedLayer ? layerRect(ed.selectedLayer) : null,
-  );
+  // Selection highlight: measure the ACTUAL DOM box of the built element —
+  // accurate for auto-sized text, scaled/rotated elements and nested comps.
+  // Falls back to style-derived geometry when the node doesn't render
+  // (outside its layer span → dashed "ghost" outline).
+  let selectionRect = $state<{ x: number; y: number; w: number; h: number } | null>(null);
+  let selectionGhost = $state(false);
+
+  $effect(() => {
+    void ed.version;
+    void ed.frame;
+    void scale;
+    void wrapSize;
+    const layer = ed.selectedLayer;
+    if (!layer || !comp) {
+      selectionRect = null;
+      return;
+    }
+    selectionGhost = !visibleAtFrame(layer);
+    const handle = built?.byId.get(layer.element.id);
+    const stageR = stageEl?.getBoundingClientRect();
+    if (handle && stageR && scale > 0) {
+      const r = handle.node.getBoundingClientRect();
+      if (r.width > 0 || r.height > 0) {
+        selectionRect = {
+          x: (r.left - stageR.left) / scale,
+          y: (r.top - stageR.top) / scale,
+          w: r.width / scale,
+          h: r.height / scale,
+        };
+        return;
+      }
+    }
+    selectionRect = layerRect(layer);
+  });
 
   // ---- pointer interaction ---------------------------------------------------
   let drag: { id: string; startX: number; startY: number; applied: { dx: number; dy: number } } | null = null;
@@ -189,6 +220,7 @@
       {#if selectionRect}
         <div
           class="selection"
+          class:ghost={selectionGhost}
           style="left:{selectionRect.x * scale}px;top:{selectionRect.y * scale}px;width:{selectionRect.w * scale}px;height:{selectionRect.h * scale}px"
         ></div>
       {/if}
@@ -214,6 +246,10 @@
     border: 1.5px solid #d9a441;
     outline: 1px solid rgba(0, 0, 0, 0.5);
     pointer-events: none;
+  }
+  .selection.ghost {
+    border-style: dashed;
+    opacity: 0.6;
   }
   .empty { color: #676c76; text-align: center; margin-top: 30vh; }
 </style>

@@ -94,6 +94,82 @@
     return !!s && s.targetKey === row.targetKey && s.prop === row.prop && s.frame === frame;
   }
 
+  // ---- layer bar move/trim ----------------------------------------------------
+  type BarMode = 'move' | 'left' | 'right';
+  let dragBar: {
+    id: string;
+    mode: BarMode;
+    downX: number;
+    orig: { start: number; dur: number };
+    cur: { start: number; dur: number };
+  } | null = $state(null);
+
+  function barDown(ev: PointerEvent, layer: Layer, mode: BarMode): void {
+    ev.stopPropagation();
+    ed.selectLayer(layer.id);
+    dragBar = {
+      id: layer.id,
+      mode,
+      downX: ev.clientX,
+      orig: { start: layer.startFrame, dur: layer.duration },
+      cur: { start: layer.startFrame, dur: layer.duration },
+    };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  }
+
+  function barMove(ev: PointerEvent): void {
+    if (!dragBar || !comp) return;
+    const df = Math.round((ev.clientX - dragBar.downX) / pxPerFrame);
+    const { start, dur } = dragBar.orig;
+    if (dragBar.mode === 'move') {
+      const s = Math.min(Math.max(start + df, 0), comp.duration - dur);
+      dragBar.cur = { start: Math.max(s, 0), dur };
+    } else if (dragBar.mode === 'left') {
+      const s = Math.min(Math.max(start + df, 0), start + dur - 1);
+      dragBar.cur = { start: s, dur: start + dur - s };
+    } else {
+      const d = Math.min(Math.max(dur + df, 1), comp.duration - start);
+      dragBar.cur = { start, dur: d };
+    }
+  }
+
+  function barUp(): void {
+    if (!dragBar) return;
+    const { id, orig, cur } = dragBar;
+    dragBar = null;
+    if (cur.start !== orig.start || cur.dur !== orig.dur) ed.setLayerSpan(id, cur.start, cur.dur);
+  }
+
+  /** Bar geometry with live drag feedback. */
+  function barSpan(layer: Layer): { start: number; dur: number } {
+    return dragBar?.id === layer.id ? dragBar.cur : { start: layer.startFrame, dur: layer.duration };
+  }
+
+  // ---- layer rename -------------------------------------------------------------
+  let renamingLayer = $state<{ id: string; value: string } | null>(null);
+
+  function commitLayerRename(): void {
+    if (!renamingLayer) return;
+    const { id, value } = renamingLayer;
+    renamingLayer = null;
+    ed.renameLayer(id, value);
+  }
+
+  // ---- asset drop → new image layer ---------------------------------------------
+  function onDragOver(ev: DragEvent): void {
+    if (ev.dataTransfer?.types.includes('text/riposte-asset')) {
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'copy';
+    }
+  }
+
+  function onDrop(ev: DragEvent): void {
+    const file = ev.dataTransfer?.getData('text/riposte-asset');
+    if (!file) return;
+    ev.preventDefault();
+    ed.addImageLayer(file);
+  }
+
   function seek(ev: PointerEvent): void {
     if (!comp) return;
     const target = ev.currentTarget as HTMLElement;
@@ -158,9 +234,10 @@
           <span class="playhead" style="left:{ed.frame * pxPerFrame}px"></span>
         </div>
       </div>
-      <div class="scroll">
+      <div class="scroll" role="list" ondragover={onDragOver} ondrop={onDrop}>
         {#each displayLayers as layer (layer.id)}
           {@const kfFrames = allKfFrames(layer)}
+          {@const span = barSpan(layer)}
           <div
             class="row"
             class:selected={ed.selectedLayerId === layer.id}
@@ -170,14 +247,42 @@
             }}
           >
             <div class="label" class:dim={layer.hidden || layer.isGuide}>
-              {#if kfFrames.length > 0}<span class="animind" title="{kfFrames.length} keyframes">◆</span>{/if}
-              {layer.isGuide ? '▦ ' : ''}{layer.hidden ? '∅ ' : ''}{layer.name}
+              {#if renamingLayer?.id === layer.id}
+                <input
+                  class="rename"
+                  type="text"
+                  value={renamingLayer.value}
+                  oninput={(e) => { if (renamingLayer) renamingLayer.value = (e.currentTarget as HTMLInputElement).value; }}
+                  onkeydown={(e) => { if (e.key === 'Enter') commitLayerRename(); else if (e.key === 'Escape') renamingLayer = null; }}
+                  onblur={commitLayerRename}
+                  onpointerdown={(e) => e.stopPropagation()}
+                  {@attach (node) => { (node as HTMLInputElement).focus(); (node as HTMLInputElement).select(); }}
+                />
+              {:else}
+                <span
+                  role="button"
+                  tabindex="-1"
+                  title="double-click to rename"
+                  ondblclick={() => (renamingLayer = { id: layer.id, value: layer.name })}
+                >
+                  {#if kfFrames.length > 0}<span class="animind" title="{kfFrames.length} keyframes">◆</span>{/if}
+                  {layer.isGuide ? '▦ ' : ''}{layer.hidden ? '∅ ' : ''}{layer.name}
+                </span>
+              {/if}
             </div>
             <div class="track">
               <div
                 class="bar"
-                style="left:{layer.startFrame * pxPerFrame}px;width:{layer.duration * pxPerFrame}px"
-              ></div>
+                class:dragging={dragBar?.id === layer.id}
+                style="left:{span.start * pxPerFrame}px;width:{span.dur * pxPerFrame}px"
+                title="{span.start} – {span.start + span.dur} (drag to move, edges to trim)"
+                onpointerdown={(ev) => barDown(ev, layer, 'move')}
+                onpointermove={barMove}
+                onpointerup={barUp}
+              >
+                <div class="handle l" onpointerdown={(ev) => barDown(ev, layer, 'left')} onpointermove={barMove} onpointerup={barUp}></div>
+                <div class="handle r" onpointerdown={(ev) => barDown(ev, layer, 'right')} onpointermove={barMove} onpointerup={barUp}></div>
+              </div>
               {#each kfFrames as f (f)}
                 <span class="kfmark" style="left:{f * pxPerFrame}px"></span>
               {/each}
@@ -268,6 +373,27 @@
     background: #2c4a75;
     border-radius: 3px;
     opacity: 0.85;
+    cursor: grab;
+  }
+  .bar.dragging, .bar:hover { opacity: 1; background: #38598a; }
+  .handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 7px;
+    cursor: col-resize;
+  }
+  .handle.l { left: -2px; border-radius: 3px 0 0 3px; }
+  .handle.r { right: -2px; border-radius: 0 3px 3px 0; }
+  .bar:hover .handle { background: rgba(255, 255, 255, 0.25); }
+  .rename {
+    background: #14161b;
+    color: #fff;
+    border: 1px solid #d9a441;
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 11px;
+    width: 100%;
   }
   .animind { color: #d9a441; font-size: 8px; margin-right: 3px; vertical-align: 1px; }
   .kfmark {

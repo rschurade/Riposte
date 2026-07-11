@@ -198,6 +198,131 @@ class EditorState {
     this.flash(`removed ${name} from set`);
   }
 
+  /** POST an api call with the set ref mixed in; flashes errors, null on failure. */
+  private async post(path: string, body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+    if (!this.setRef) return null;
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, ...body }),
+    });
+    const r = (await res.json()) as Record<string, unknown>;
+    if (!res.ok) {
+      this.flash(`FAILED: ${r['error'] ?? res.status}`);
+      return null;
+    }
+    return r;
+  }
+
+  /** Re-fetch set.json + all docs + assets after server-side rewrites. Keeps the open scene/selection. */
+  private async reloadBundle(): Promise<void> {
+    const ref = this.setRef;
+    if (!ref) return;
+    const q = `root=${encodeURIComponent(ref.root)}&name=${encodeURIComponent(ref.name)}`;
+    const bundle = await (await fetch(`/api/set?${q}`)).json();
+    this.allScenes = bundle.scenes;
+    this.assets = await (await fetch(`/api/assets?${q}`)).json();
+    ref.scenes = bundle.set.scenes ?? [];
+    ref.components = bundle.set.components ?? [];
+    ref.fonts = bundle.set.fonts ?? [];
+    if (this.sceneFile) {
+      const doc = this.allScenes[this.sceneFile];
+      this.scene = doc ? (JSON.parse(JSON.stringify(doc)) as SceneDoc) : null;
+      // disk is the new truth — old snapshots would resurrect renamed refs
+      this.undoStack = [];
+      this.undoIndex = 0;
+      this.dirty = false;
+      this.version++;
+    }
+  }
+
+  /** Rename a scene or component (file + set.json + component refs, server-side). */
+  async renameScene(file: string, newName: string): Promise<void> {
+    newName = newName.trim();
+    const oldName = file.replace(/^scenes\//, '').replace(/\.json$/, '');
+    if (!newName || newName === oldName) return;
+    if (this.dirty) {
+      this.flash('save your changes before renaming');
+      return;
+    }
+    const r = await this.post('/api/scene/rename', { file, newName });
+    if (!r) return;
+    if (this.sceneFile === file) this.sceneFile = r['file'] as string;
+    await this.reloadBundle();
+    this.flash(`renamed to ${newName}`);
+  }
+
+  /** Rename an asset file; the server rewrites every reference across the set. */
+  async renameAsset(from: string, to: string): Promise<void> {
+    to = to.trim();
+    if (!to || to === from) return;
+    if (this.dirty) {
+      this.flash('save your changes before renaming assets');
+      return;
+    }
+    const r = await this.post('/api/assets/rename', { from, to });
+    if (!r) return;
+    await this.reloadBundle();
+    const changed = (r['changed'] as string[]).length;
+    this.flash(`renamed asset${changed ? ` — ${changed} file(s) updated` : ''}`);
+  }
+
+  renameLayer(id: string, name: string): void {
+    name = name.trim();
+    if (!name) return;
+    this.mutate('rename layer', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === id);
+      if (l) l.name = name;
+    });
+  }
+
+  /** Move/trim a layer's visible span (timeline bar drag). */
+  setLayerSpan(id: string, startFrame: number, duration: number): void {
+    this.mutate('layer span', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === id);
+      if (!l) return;
+      l.startFrame = startFrame;
+      l.duration = duration;
+    });
+  }
+
+  /** Create an image layer from an asset (drag & drop) — topmost, full span. */
+  addImageLayer(assetFile: string): void {
+    const scene = this.scene;
+    if (!scene) return;
+    const comp = scene.composition;
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth || 200;
+      const h = img.naturalHeight || 200;
+      const id = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+      const name = assetFile.replace(/^assets\//, '').replace(/\.[^.]+$/, '');
+      this.mutate('add image layer', (s) => {
+        s.composition.layers.push({
+          id,
+          name,
+          startFrame: 0,
+          duration: s.composition.duration,
+          element: {
+            id: `${id}-el`,
+            type: 'image',
+            asset: assetFile,
+            style: {
+              x: { value: Math.round(comp.width / 2) },
+              y: { value: Math.round(comp.height / 2) },
+              width: { value: w },
+              height: { value: h },
+            },
+          },
+        });
+      });
+      this.selectLayer(id);
+      this.flash(`added ${name}`);
+    };
+    img.onerror = () => this.flash(`could not load ${assetFile}`);
+    img.src = this.assetBase + assetFile;
+  }
+
   async deleteUnusedAssets(): Promise<void> {
     if (!this.setRef) return;
     const unused = this.unusedAssets;
