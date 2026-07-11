@@ -116,7 +116,7 @@
 
     <div class="grid three">
       {#each NUM_PROPS as np (np.prop)}
-        {#if el.style[np.prop] || ['x', 'y'].includes(np.prop)}
+        {#if np.prop !== 'fontSize' || el.type === 'text'}
           <label for="in-{np.prop}">{np.label}</label>
           <input
             id="in-{np.prop}"
@@ -129,8 +129,10 @@
             class="kfbtn"
             class:on={hasKfAtPlayhead(np.prop)}
             class:animated={isAnimated(el.style[np.prop])}
-            title={hasKfAtPlayhead(np.prop) ? 'Remove keyframe at playhead' : 'Add keyframe at playhead'}
-            onclick={() => ed.toggleKeyframe('el', np.prop)}
+            title={hasKfAtPlayhead(np.prop)
+              ? `Remove ${np.label} keyframe @${ed.frame}`
+              : `Add ${np.label} keyframe @${ed.frame}`}
+            onclick={() => ed.toggleKeyframe('el', np.prop, np.fallback)}
           >◆</button>
         {/if}
       {/each}
@@ -284,9 +286,11 @@
         onchange={(e) => setLayerField('isGuide', (e.currentTarget as HTMLInputElement).checked)} />
     </div>
     <p class="hint">
-      ◆ dim = property animated · gold = keyframe at playhead. Number edits on
-      animated properties write a keyframe at the playhead. Stage drags move the
-      whole curve (and masks). Select diamonds in the timeline to retime or ease.
+      Animate: move the playhead, click ◆ to set a keyframe (click again to
+      remove). Dim ◆ = property animated · gold = keyframe at playhead. Number
+      edits on animated properties write a keyframe at the playhead. Stage
+      drags move the whole curve (and masks). Select diamonds in the timeline
+      to retime or ease.
     </p>
   {:else if ed.scene}
     {@const comp = ed.scene.composition}

@@ -648,18 +648,19 @@ class EditorState {
     });
   }
 
-  /** Add a keyframe at the playhead (or remove it if one sits exactly there). */
-  toggleKeyframe(targetKey: string, prop: string): void {
+  /** Add a keyframe at the playhead (or remove it if one sits exactly there).
+   * `fallback` seeds a property that doesn't exist yet (e.g. opacity → 1). */
+  toggleKeyframe(targetKey: string, prop: string, fallback = 0): void {
     const f = this.frame;
     this.withStyle(`keyframe ${prop}`, targetKey, (style) => {
-      const p = (style[prop] ??= { value: 0 });
+      const p = (style[prop] ??= { value: fallback });
       const kfs = (p.keyframes ??= []);
       const existing = kfs.findIndex((k) => k.frame === f);
       if (existing >= 0) {
         kfs.splice(existing, 1);
         if (kfs.length === 0) delete p.keyframes;
       } else {
-        kfs.push({ frame: f, value: propNumber(p, f, typeof p.value === 'number' ? p.value : 0) });
+        kfs.push({ frame: f, value: propNumber(p, f, typeof p.value === 'number' ? p.value : fallback) });
         kfs.sort((a, b) => a.frame - b.frame);
       }
     });
