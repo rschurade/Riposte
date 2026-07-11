@@ -40,6 +40,8 @@ export interface ElementHandle {
 export interface BuiltScene {
   readonly rootEl: HTMLElement;
   readonly byKey: Map<string, ElementHandle>;
+  /** Every element (keyed or not) by element id — editor hit-testing/drag. */
+  readonly byId: Map<string, ElementHandle>;
   setFrame(frame: number): void;
   show(): void;
   hide(): void;
@@ -71,17 +73,19 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
   root.appendChild(rootEl);
 
   const byKey = new Map<string, ElementHandle>();
+  const byId = new Map<string, ElementHandle>();
   const dynamics: DynamicBinding[] = [];
 
   for (const layer of comp.layers) {
     if (layer.isGuide && !opts.showGuides) continue;
-    buildLayer(layer, comp, rootEl, assetBase, byKey, dynamics);
+    buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics);
   }
 
   let visible = false;
   return {
     rootEl,
     byKey,
+    byId,
     setFrame(frame) {
       for (const d of dynamics) d.apply(frame);
     },
@@ -106,6 +110,7 @@ function buildLayer(
   rootEl: HTMLElement,
   assetBase: string,
   byKey: Map<string, ElementHandle>,
+  byId: Map<string, ElementHandle>,
   dynamics: DynamicBinding[],
 ): void {
   const layerEl = document.createElement('div');
@@ -141,7 +146,10 @@ function buildLayer(
   }
 
   const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics);
-  if (handle && layer.element.key) byKey.set(layer.element.key, handle);
+  if (handle) {
+    byId.set(layer.element.id, handle);
+    if (layer.element.key) byKey.set(layer.element.key, handle);
+  }
 }
 
 function buildMask(mask: SceneElement, parent: HTMLElement, dynamics: DynamicBinding[]): HTMLElement {

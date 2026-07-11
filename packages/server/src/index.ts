@@ -11,8 +11,8 @@
  * Later: project open/save API, asset upload with content-hash dedup, export.
  */
 
-import { createServer } from 'node:http';
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFile, readdir, stat, writeFile, unlink } from 'node:fs/promises';
 import { join, resolve, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -41,25 +41,133 @@ const MIME: Record<string, string> = {
 const port = Number(process.env['PORT'] ?? 5720);
 
 createServer((req, res) => {
-  void handle(req.url ?? '/', res).catch((err) => {
+  void handle(req, res).catch((err) => {
     console.error(err);
     res.writeHead(500).end('internal error');
   });
-}, ).listen(port, () => {
+}).listen(port, () => {
   console.log(`riposte server listening on http://localhost:${port}`);
 });
 
-async function handle(rawUrl: string, res: import('node:http').ServerResponse): Promise<void> {
-  const url = new URL(rawUrl, 'http://localhost');
+const ROOTS: Record<string, string> = { examples: '', projects: '' };
+
+async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  ROOTS['examples'] = examplesDir;
+  ROOTS['projects'] = projectsDir;
+  const url = new URL(req.url ?? '/', 'http://localhost');
   const path = decodeURIComponent(url.pathname);
 
   if (path === '/api/sets') return json(res, [...(await listSets(examplesDir, 'examples')), ...(await listSets(projectsDir, 'projects'))]);
+  if (path === '/api/set') return apiSetBundle(url, res);
+  if (path === '/api/assets') return apiAssets(url, res);
+  if (path === '/api/scene' && req.method === 'PUT') return apiSaveScene(req, res);
+  if (path === '/api/scene/remove' && req.method === 'POST') return apiRemoveScene(req, res);
+  if (path === '/api/assets/delete' && req.method === 'POST') return apiDeleteAssets(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
   if (path.startsWith('/projects/')) return file(res, safeJoin(projectsDir, path.slice('/projects/'.length)));
 
   const rel = path === '/' ? 'index.html' : path.replace(/^\//, '');
   return file(res, safeJoin(publicDir, rel));
+}
+
+/** Resolve a set directory from ?root=&name=, guarding against traversal. */
+function setDirOf(url: URL): string {
+  const root = ROOTS[url.searchParams.get('root') ?? ''];
+  const name = url.searchParams.get('name') ?? '';
+  if (!root || !/^[\w .()-]+$/.test(name)) throw Object.assign(new Error('bad set ref'), { status: 400 });
+  return join(root, name);
+}
+
+/** The whole set in one response: set.json + every scene doc (for usage scans). */
+async function apiSetBundle(url: URL, res: ServerResponse): Promise<void> {
+  const dir = setDirOf(url);
+  const set = JSON.parse(await readFile(join(dir, 'set.json'), 'utf8')) as { scenes?: string[] };
+  const scenes: Record<string, unknown> = {};
+  for (const file of set.scenes ?? []) {
+    if (!SCENE_FILE_RE.test(file)) continue;
+    try {
+      scenes[file] = JSON.parse(await readFile(join(dir, file), 'utf8'));
+    } catch {
+      scenes[file] = null;
+    }
+  }
+  return json(res, { set, scenes });
+}
+
+async function apiAssets(url: URL, res: ServerResponse): Promise<void> {
+  const dir = setDirOf(url);
+  const out: { file: string; size: number }[] = [];
+  const walk = async (rel: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(join(dir, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const childRel = `${rel}/${e.name}`;
+      if (e.isDirectory()) await walk(childRel);
+      else out.push({ file: childRel, size: (await stat(join(dir, childRel))).size });
+    }
+  };
+  await walk('assets');
+  return json(res, out);
+}
+
+const SCENE_FILE_RE = /^scenes\/[\w .()-]+\.json$/;
+const ASSET_FILE_RE = /^assets\/[\w .()\/-]+$/;
+
+async function readBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const c of req) chunks.push(c as Buffer);
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+}
+
+async function apiSaveScene(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; file: string; doc: unknown };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  if (!SCENE_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
+  await writeFile(join(dir, body.file), JSON.stringify(body.doc, null, 2) + '\n', 'utf8');
+  return json(res, { ok: true });
+}
+
+/** Remove a scene from the set (and optionally delete its file). */
+async function apiRemoveScene(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; file: string; deleteFile?: boolean };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  if (!SCENE_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
+  const setPath = join(dir, 'set.json');
+  const set = JSON.parse(await readFile(setPath, 'utf8')) as { scenes: string[] };
+  set.scenes = set.scenes.filter((s) => s !== body.file);
+  await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
+  if (body.deleteFile) {
+    try {
+      await unlink(join(dir, body.file));
+    } catch {
+      // already gone
+    }
+  }
+  return json(res, { ok: true, scenes: set.scenes });
+}
+
+async function apiDeleteAssets(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; files: string[] };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  const deleted: string[] = [];
+  for (const f of body.files ?? []) {
+    if (!ASSET_FILE_RE.test(f) || f.includes('..')) continue;
+    try {
+      await unlink(join(dir, f));
+      deleted.push(f);
+    } catch {
+      // already gone — fine
+    }
+  }
+  return json(res, { deleted });
 }
 
 function safeJoin(root: string, rel: string): string {
