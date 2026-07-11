@@ -329,20 +329,30 @@ class EditorState {
 
   async exportSet(): Promise<void> {
     if (!this.setRef) return;
+    const remembered = localStorage.getItem('riposte.exportDir') ?? '';
     const outDir = prompt(
-      'Export folder (empty = projects/_export/' + this.setRef.name + ').\nPoint this at your CasparCG template directory to deploy directly:',
-      '',
+      'Export folder — paste the full path of your CasparCG template directory\n' +
+        '(browsers cannot open a real folder picker for server paths; the last used path is remembered).\n' +
+        'Leave empty for projects/_export/' + this.setRef.name + ':',
+      remembered,
     );
     if (outDir === null) return;
     this.flash('exporting…');
-    const r = await (await fetch('/api/export', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, outDir }),
-    })).json();
-    const mb = (r.assetBytes / 1048576).toFixed(1);
-    this.flash(`exported ${r.scenes.length} templates + ${r.assetsCopied} assets (${mb} MB) → ${r.outDir}`);
-    if (r.warnings?.length) console.warn('export warnings', r.warnings);
+    try {
+      const res = await fetch('/api/export', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, outDir }),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new Error(r.error ?? `server responded ${res.status}`);
+      if (outDir.trim()) localStorage.setItem('riposte.exportDir', outDir.trim());
+      const mb = (r.assetBytes / 1048576).toFixed(1);
+      this.flash(`exported ${r.scenes.length} templates + ${r.assetsCopied} assets (${mb} MB) → ${r.outDir}`);
+      if (r.warnings?.length) console.warn('export warnings', r.warnings);
+    } catch (err) {
+      this.flash(`EXPORT FAILED: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   private async confirmDiscard(): Promise<boolean> {

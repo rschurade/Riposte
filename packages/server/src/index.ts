@@ -42,9 +42,10 @@ const MIME: Record<string, string> = {
 const port = Number(process.env['PORT'] ?? 5720);
 
 createServer((req, res) => {
-  void handle(req, res).catch((err) => {
+  void handle(req, res).catch((err: Error & { status?: number }) => {
     console.error(err);
-    res.writeHead(500).end('internal error');
+    res.writeHead(err.status ?? 500, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message ?? 'internal error' }));
   });
 }).listen(port, () => {
   console.log(`riposte server listening on http://localhost:${port}`);
@@ -140,7 +141,14 @@ async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<voi
   const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked'; outDir?: string };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const setDir = setDirOf(url);
-  const outDir = body.outDir?.trim() ? resolve(body.outDir) : join(projectsDir, '_export', body.name);
+  // relative paths resolve against the repo root, not the server CWD
+  const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(projectsDir, '_export', body.name);
+  const parent = dirname(outDir);
+  try {
+    if (!(await stat(parent)).isDirectory()) throw new Error();
+  } catch {
+    throw Object.assign(new Error(`parent folder does not exist: ${parent}`), { status: 400 });
+  }
   const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode } : {});
   return json(res, result);
 }
