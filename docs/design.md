@@ -91,10 +91,22 @@ so the importer is near-mechanical:
 - x/y are the element box **center** (Loopic convention, kept).
 - **First-class markers**: `pause`, `outro`, `loop` are timeline objects, not
   code snippets. `next` semantics become explicit and testable.
+- **Visibility bindings**: `element.visibility = { bindKey, showWhen?/hideWhen?,
+  initial? }` shows/hides an element from an `update()` value (default:
+  hidden when the value is `"0"` — the `_xSwitch` convention). This replaces
+  the Loopic-era show/hide middleware scripts entirely; the importer's
+  `migrate-scripts` pass (also available as `riposte-migrate <set-dir>`)
+  converts those scripts to bindings by probe-executing them against
+  recording stubs. Bindings drive CSS `visibility`, so they compose with the
+  layer's timeline span (display) and keyframed opacity fades — a lamp that
+  is "on" still fades in with the build-up and out with the outro.
 - Actions remain as an escape hatch (composition + frame actions, code
-  strings) with Loopic-compatible middleware names (`useOnPlay`,
-  `useOnUpdate(key, cb)`, `useOnStop`, `useOnInvoke`) so custom code in
-  imported templates ports with minimal edits.
+  strings) for genuinely dynamic behavior only. Canonical scope: bare
+  `useOnPlay`, `useOnUpdate(key, cb)`, `useOnStop`, `useOnNext`,
+  `useOnInvoke`, `find(key)` (element handle: `setContent`, `show`/`hide`/
+  `setVisible`, `node`), `riposte` (the runtime), `this` = composition.
+  `loopic` and `runtime` remain as deprecated aliases so unmigrated imports
+  run as-is.
 
 ## CasparCG contract
 

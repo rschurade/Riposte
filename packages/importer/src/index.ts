@@ -12,4 +12,5 @@
 export { importLoo, type LooImportResult } from './import-loo.ts';
 export { convertComposition, type AssetResolver } from './convert.ts';
 export { AssetPool, decodeContent } from './assets.ts';
+export { migrateSceneScripts, restructureHoldLayers, type MigrateResult } from './migrate-scripts.ts';
 export type * from './loo-format.ts';

@@ -6,7 +6,8 @@
   "types": "src/index.ts",
   "bin": {
     "riposte-import": "src/cli.ts",
-    "riposte-import-html": "src/cli-html.ts"
+    "riposte-import-html": "src/cli-html.ts",
+    "riposte-migrate": "src/cli-migrate.ts"
   },
   "scripts": {
     "check": "tsc -p .",

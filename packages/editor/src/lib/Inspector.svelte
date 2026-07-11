@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { StyleProperty } from '@riposte/shared';
+  import type { StyleProperty, VisibilityBinding } from '@riposte/shared';
   import { ed, propNumber } from './state.svelte.ts';
 
   const layer = $derived(ed.selectedLayer);
@@ -61,6 +61,43 @@
     return 'custom';
   }
 
+  /** 'hide' = hideWhen (default ["0"]), 'show' = showWhen whitelist. */
+  function visMode(v: VisibilityBinding | undefined): 'hide' | 'show' {
+    return v?.showWhen ? 'show' : 'hide';
+  }
+
+  function visValues(v: VisibilityBinding | undefined): string {
+    return (v?.showWhen ?? v?.hideWhen ?? ['0']).join(', ');
+  }
+
+  function parseValues(raw: string): string[] {
+    return raw.split(',').map((s) => s.trim()).filter((s) => s !== '');
+  }
+
+  /** Rebuild the whole binding from the four inputs; empty bind key removes it. */
+  function setVisibility(patch: Partial<{ bindKey: string; mode: 'hide' | 'show'; values: string; initial: string }>): void {
+    if (!layer) return;
+    const id = layer.id;
+    const cur = el?.visibility;
+    const bindKey = patch.bindKey ?? cur?.bindKey ?? '';
+    const mode = patch.mode ?? visMode(cur);
+    const values = parseValues(patch.values ?? visValues(cur));
+    const initial = patch.initial ?? cur?.initial ?? 'visible';
+    ed.mutate('set visibility binding', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === id);
+      if (!l) return;
+      if (!bindKey) {
+        delete l.element.visibility;
+        return;
+      }
+      const b: VisibilityBinding = { bindKey };
+      if (mode === 'show') b.showWhen = values;
+      else if (values.length > 0 && !(values.length === 1 && values[0] === '0')) b.hideWhen = values; // ["0"] is the default
+      if (initial === 'hidden') b.initial = 'hidden';
+      l.element.visibility = b;
+    });
+  }
+
   const NUM_PROPS: { prop: string; label: string; fallback: number }[] = [
     { prop: 'x', label: 'X', fallback: 0 },
     { prop: 'y', label: 'Y', fallback: 0 },
@@ -106,6 +143,46 @@
         value={el.key ?? ''}
         onchange={(e) => setElementField('key', (e.currentTarget as HTMLInputElement).value || undefined)}
       />
+    </div>
+
+    <h3>Visibility <span class="dim">show/hide by update() key</span></h3>
+    <div class="grid">
+      <label for="vis-key">Bind key</label>
+      <input
+        id="vis-key"
+        type="text"
+        placeholder="e.g. _greenSwitch"
+        value={el.visibility?.bindKey ?? ''}
+        onchange={(e) => setVisibility({ bindKey: (e.currentTarget as HTMLInputElement).value.trim() })}
+      />
+      {#if el.visibility}
+        <label for="vis-mode">Mode</label>
+        <select
+          id="vis-mode"
+          value={visMode(el.visibility)}
+          onchange={(e) => setVisibility({ mode: (e.currentTarget as HTMLSelectElement).value as 'hide' | 'show' })}
+        >
+          <option value="hide">hidden when value is…</option>
+          <option value="show">visible only when value is…</option>
+        </select>
+        <label for="vis-values">Values</label>
+        <input
+          id="vis-values"
+          type="text"
+          placeholder="0"
+          value={visValues(el.visibility)}
+          onchange={(e) => setVisibility({ values: (e.currentTarget as HTMLInputElement).value })}
+        />
+        <label for="vis-initial">Initial</label>
+        <select
+          id="vis-initial"
+          value={el.visibility.initial ?? 'visible'}
+          onchange={(e) => setVisibility({ initial: (e.currentTarget as HTMLSelectElement).value })}
+        >
+          <option value="visible">visible</option>
+          <option value="hidden">hidden</option>
+        </select>
+      {/if}
     </div>
 
     {#if el.type === 'text'}
@@ -243,13 +320,15 @@
 
     <h3>Composition action <span class="dim">runs once at load</span></h3>
     <textarea class="code" rows="14" spellcheck="false" value={comp.action ?? ''}
-      placeholder={'// middleware & custom code, e.g.\n// loopic.useOnUpdate("_key", (key, value, next) => { ... });'}
+      placeholder={'// custom code, e.g.\n// useOnUpdate("_key", (key, value, next) => {\n//   find("_row1").hide();\n//   next();\n// });'}
       onchange={(e) => ed.setCompositionAction((e.currentTarget as HTMLTextAreaElement).value)}
     ></textarea>
     <p class="hint">
-      Scripts run in the bench and on air (not in the editor preview). API:
-      loopic.useOnPlay/useOnUpdate/useOnStop/useOnInvoke, this = composition
-      (play, pause, goTo, findElementByKey…). Frame-action markers run when the
+      Scripts run in the bench and on air (not in the editor preview). Plain
+      show/hide belongs in an element's Visibility binding, not here. API:
+      useOnPlay/useOnUpdate/useOnStop/useOnNext/useOnInvoke, find(key) →
+      element (setContent, show/hide, node), riposte = runtime, this =
+      composition (play, pause, goTo…). Frame-action markers run when the
       playhead crosses their frame.
     </p>
   {:else}

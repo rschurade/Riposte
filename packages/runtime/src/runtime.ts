@@ -4,10 +4,17 @@
  * imported templates ports with minimal edits.
  */
 
-import type { SceneDoc } from '@riposte/shared';
-import { buildScene, type BuildOptions, type BuiltScene, type ElementHandle, type LayerHandle } from './dom.ts';
+import type { SceneDoc, VisibilityBinding } from '@riposte/shared';
+import { buildScene, type BuildOptions, type BuiltScene, type BoundVisibility, type ElementHandle, type LayerHandle } from './dom.ts';
 import { parseUpdateData } from './data.ts';
 import { Player } from './player.ts';
+
+/** Evaluate a visibility binding against an update() value. */
+export function evaluateVisibility(binding: VisibilityBinding, value: string | undefined): boolean {
+  if (value === undefined) return binding.initial !== 'hidden';
+  if (binding.showWhen) return binding.showWhen.includes(value);
+  return !(binding.hideWhen ?? ['0']).includes(value);
+}
 
 export interface RuntimeOptions extends BuildOptions {}
 
@@ -73,6 +80,15 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
   });
   built.setFrame(0);
 
+  // Visibility bindings: index by update key, apply initial states.
+  const visByKey = new Map<string, BoundVisibility[]>();
+  for (const b of built.boundVisibility) {
+    const list = visByKey.get(b.binding.bindKey) ?? [];
+    list.push(b);
+    visByKey.set(b.binding.bindKey, list);
+    b.handle.setVisible(evaluateVisibility(b.binding, undefined));
+  }
+
   const compositionApi: CompositionApi = {
     get layers() {
       return built.layers;
@@ -96,12 +112,27 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     findElementByKey: (key) => built.byKey.get(key),
   };
 
+  // Scope available to action code. Canonical API: bare hooks + find() +
+  // `riposte` (the runtime); `this` = composition. `loopic` and `runtime`
+  // stay as deprecated aliases so unmigrated Loopic imports run as-is.
+  const ACTION_PARAMS = ['riposte', 'runtime', 'loopic', 'useOnPlay', 'useOnUpdate', 'useOnStop', 'useOnNext', 'useOnInvoke', 'find'];
+  const actionArgs = (): unknown[] => [
+    runtime,
+    runtime,
+    runtime,
+    runtime.useOnPlay,
+    runtime.useOnUpdate,
+    runtime.useOnStop,
+    runtime.useOnNext,
+    runtime.useOnInvoke,
+    runtime.findElementByKey,
+  ];
+
   function runAction(source: string): void {
     try {
-      // `this` = composition (Loopic frame-action semantics), `loopic` = runtime.
       // `runtime` is initialized by the time any action can fire.
       // eslint-disable-next-line no-new-func
-      new Function('loopic', source).call(compositionApi, runtime);
+      new Function(...ACTION_PARAMS, source).call(compositionApi, ...actionArgs());
     } catch (err) {
       console.error('riposte: action failed', err);
     }
@@ -124,6 +155,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     chain(
       mws,
       () => {
+        for (const b of visByKey.get(key) ?? []) b.handle.setVisible(evaluateVisibility(b.binding, value));
         const el = built.byKey.get(key);
         if (!el) return;
         if (el.type === 'text') el.setContent(value);
@@ -216,12 +248,10 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
   };
 
   // Composition action runs once on load (globals, middleware registration).
-  // The runtime is passed as BOTH `runtime` and `loopic`: imported Loopic
-  // composition actions call loopic.useOnUpdate(...) etc. and must run as-is.
   if (comp.action) {
     try {
       // eslint-disable-next-line no-new-func
-      new Function('loopic', 'runtime', comp.action).call(compositionApi, runtime, runtime);
+      new Function(...ACTION_PARAMS, comp.action).call(compositionApi, ...actionArgs());
     } catch (err) {
       console.error('riposte: composition action failed', err);
     }

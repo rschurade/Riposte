@@ -82,7 +82,31 @@ export interface BaseElement {
    * Empty/absent = not data-bound.
    */
   key?: string;
+  /**
+   * Data-driven show/hide, evaluated on every update() of `bindKey`.
+   * Drives CSS `visibility` on the element node — independent of the
+   * layer's in/out span (display) and keyframed opacity, so a "shown"
+   * element still fades in/out with its opacity gradient.
+   */
+  visibility?: VisibilityBinding;
   style: ElementStyle;
+}
+
+/**
+ * Replaces the Loopic-era `useOnUpdate` show/hide scripts: the element is
+ * shown or hidden by the value of an update() key. Exactly one of
+ * `showWhen`/`hideWhen` applies; with neither set, `hideWhen: ["0"]` is
+ * assumed (the ubiquitous `_xSwitch` convention).
+ */
+export interface VisibilityBinding {
+  /** update() key that drives visibility, e.g. "_greenSwitch". */
+  bindKey: string;
+  /** Visible ONLY for these values; hidden for anything else. */
+  showWhen?: string[];
+  /** Hidden for these values; visible for anything else. Default ["0"]. */
+  hideWhen?: string[];
+  /** State before `bindKey` first arrives. Default 'visible'. */
+  initial?: 'visible' | 'hidden';
 }
 
 /**

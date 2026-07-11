@@ -16,6 +16,7 @@ import type {
   SceneDoc,
   SceneElement,
   StyleProperty,
+  VisibilityBinding,
 } from '@riposte/shared';
 import { numberAtFrame, valueAtFrame } from './interpolate.ts';
 
@@ -44,6 +45,20 @@ export interface ElementHandle {
   setContent(html: string): void;
   /** Image loaders: point at a new image URL/path. */
   setImage(url: string): void;
+  /**
+   * Show/hide via CSS visibility — independent of the layer's timeline span
+   * and keyframed opacity. "Shown" means inherit, so the element still
+   * follows the composition's own show()/hide().
+   */
+  setVisible(visible: boolean): void;
+  show(): void;
+  hide(): void;
+}
+
+/** An element whose visibility is driven by an update() key. */
+export interface BoundVisibility {
+  binding: VisibilityBinding;
+  handle: ElementHandle;
 }
 
 export interface LayerHandle {
@@ -60,6 +75,8 @@ export interface BuiltScene {
   readonly byId: Map<string, ElementHandle>;
   /** Built layers in paint order — custom-code relayout (see Schedule). */
   readonly layers: LayerHandle[];
+  /** Elements with a visibility binding (nested bindKeys are dot-prefixed). */
+  readonly boundVisibility: BoundVisibility[];
   setFrame(frame: number): void;
   show(): void;
   hide(): void;
@@ -94,10 +111,11 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
   const byId = new Map<string, ElementHandle>();
   const layers: LayerHandle[] = [];
   const dynamics: DynamicBinding[] = [];
+  const boundVisibility: BoundVisibility[] = [];
 
   for (const layer of comp.layers) {
     if (layer.isGuide && !opts.showGuides) continue;
-    const node = buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, opts);
+    const node = buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, boundVisibility, opts);
     layers.push({ doc: layer, node });
   }
 
@@ -107,6 +125,7 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
     byKey,
     byId,
     layers,
+    boundVisibility,
     setFrame(frame) {
       for (const d of dynamics) d.apply(frame);
     },
@@ -133,6 +152,7 @@ function buildLayer(
   byKey: Map<string, ElementHandle>,
   byId: Map<string, ElementHandle>,
   dynamics: DynamicBinding[],
+  boundVisibility: BoundVisibility[],
   opts: BuildOptions,
 ): HTMLElement {
   const layerEl = document.createElement('div');
@@ -167,10 +187,11 @@ function buildLayer(
     parent = buildMask(mask, parent, dynamics);
   }
 
-  const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics, opts, byKey);
+  const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics, opts, byKey, boundVisibility);
   if (handle) {
     byId.set(layer.element.id, handle);
     if (layer.element.key) byKey.set(layer.element.key, handle);
+    if (layer.element.visibility) boundVisibility.push({ binding: layer.element.visibility, handle });
   }
   return layerEl;
 }
@@ -222,6 +243,7 @@ function buildElement(
   dynamics: DynamicBinding[],
   opts: BuildOptions,
   parentByKey: Map<string, ElementHandle>,
+  parentBound: BoundVisibility[],
 ): ElementHandle | null {
   let node: HTMLElement;
   let contentEl: HTMLElement | null = null;
@@ -366,6 +388,10 @@ function buildElement(
       // Loopic data convention: nested keys addressed as "_comp._key"
       if (el.key) {
         for (const [k, h] of sub.byKey) parentByKey.set(`${el.key}.${k}`, h);
+        for (const b of sub.boundVisibility)
+          parentBound.push({ binding: { ...b.binding, bindKey: `${el.key}.${b.binding.bindKey}` }, handle: b.handle });
+      } else {
+        parentBound.push(...sub.boundVisibility);
       }
       break;
     }
@@ -404,6 +430,16 @@ function buildElement(
         loaderImg.style.display = url ? 'block' : 'none';
         loaderImg.src = url;
       }
+    },
+    setVisible(visible) {
+      // '' = inherit, so the element still follows composition show()/hide()
+      node.style.visibility = visible ? '' : 'hidden';
+    },
+    show() {
+      node.style.visibility = '';
+    },
+    hide() {
+      node.style.visibility = 'hidden';
     },
   };
 }

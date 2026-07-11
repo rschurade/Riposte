@@ -163,6 +163,12 @@ export async function importLoopicHtml(htmlPath: string, setDir: string): Promis
   };
   if (action !== '') scene.composition.action = action;
 
+  // Loopic show/hide + redirect scripts become data (visibility bindings)
+  const { migrateSceneScripts, restructureHoldLayers } = await import('./migrate-scripts.ts');
+  for (const step of [migrateSceneScripts(scene), restructureHoldLayers(scene)]) {
+    warnings.push(...step.notes.map((n) => `migrate: ${n}`));
+  }
+
   const { writeFile, mkdir } = await import('node:fs/promises');
   await mkdir(join(setDir, 'scenes'), { recursive: true });
   const file = `scenes/${name}.json`;
@@ -215,7 +221,7 @@ function evalComposition(html: string): XComposition {
 }
 
 /** Index of the paren matching text[open]; skips string literals. */
-function scanBalanced(text: string, open: number): number {
+export function scanBalanced(text: string, open: number): number {
   let depth = 0;
   let str: string | null = null;
   for (let i = open; i < text.length; i++) {

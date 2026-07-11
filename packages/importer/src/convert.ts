@@ -24,6 +24,7 @@ import type {
   LooLayer,
   LooProperty,
 } from './loo-format.ts';
+import { migrateSceneScripts, restructureHoldLayers } from './migrate-scripts.ts';
 
 /** Resolves a Loopic resource reference to a set-relative asset path. */
 export interface AssetResolver {
@@ -77,10 +78,13 @@ export async function convertComposition(
     composition.action = loo.compositionAction;
   }
 
-  return {
-    scene: { formatVersion: SCENE_FORMAT_VERSION, name: loo.name, composition },
-    warnings,
-  };
+  const scene: SceneDoc = { formatVersion: SCENE_FORMAT_VERSION, name: loo.name, composition };
+  // Loopic show/hide + redirect scripts become data (visibility bindings)
+  for (const step of [migrateSceneScripts(scene), restructureHoldLayers(scene)]) {
+    warnings.push(...step.notes.map((n) => `migrate: ${n}`));
+  }
+
+  return { scene, warnings };
 }
 
 interface Ctx {
