@@ -25,6 +25,23 @@
     return !!el?.style[prop]?.keyframes?.some((k) => k.frame === ed.frame);
   }
 
+  function maskHasKfAtPlayhead(mi: number, prop: string): boolean {
+    return !!layer?.masks?.[mi]?.style[prop]?.keyframes?.some((k) => k.frame === ed.frame);
+  }
+
+  function setMaskNumber(mi: number, prop: string, raw: string): void {
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return;
+    ed.setValueAtPlayhead(`mask${mi}`, prop, v);
+  }
+
+  const MASK_PROPS: { prop: string; label: string; fallback: number }[] = [
+    { prop: 'x', label: 'X', fallback: 0 },
+    { prop: 'y', label: 'Y', fallback: 0 },
+    { prop: 'width', label: 'W', fallback: 0 },
+    { prop: 'height', label: 'H', fallback: 0 },
+  ];
+
   function setElementField(field: string, value: unknown): void {
     if (!layer) return;
     const id = layer.id;
@@ -186,6 +203,35 @@
         </select>
       {/if}
     </div>
+
+    {#each layer.masks ?? [] as mask, mi (mask.id)}
+      <h3>Mask{(layer.masks?.length ?? 0) > 1 ? ` ${mi + 1}` : ''} <span class="dim">{mask.type} · clips this element</span></h3>
+      {#if mask.type === 'path'}
+        <p class="hint">Path mask — geometry not editable yet.</p>
+      {:else}
+        <div class="grid three">
+          {#each MASK_PROPS as np (np.prop)}
+            <label for="mask{mi}-{np.prop}">{np.label}</label>
+            <input
+              id="mask{mi}-{np.prop}"
+              type="number"
+              step="1"
+              value={numAt(mask.style[np.prop], np.fallback)}
+              onchange={(e) => setMaskNumber(mi, np.prop, (e.currentTarget as HTMLInputElement).value)}
+            />
+            <button
+              class="kfbtn"
+              class:on={maskHasKfAtPlayhead(mi, np.prop)}
+              class:animated={isAnimated(mask.style[np.prop])}
+              title={maskHasKfAtPlayhead(mi, np.prop)
+                ? `Remove mask ${np.label} keyframe @${ed.frame}`
+                : `Add mask ${np.label} keyframe @${ed.frame}`}
+              onclick={() => ed.toggleKeyframe(`mask${mi}`, np.prop, np.fallback)}
+            >◆</button>
+          {/each}
+        </div>
+      {/if}
+    {/each}
 
     {#if el.type === 'text'}
       <h3>Text</h3>
