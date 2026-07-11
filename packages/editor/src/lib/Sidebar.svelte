@@ -185,7 +185,7 @@
 
 <style>
   aside {
-    overflow-y: auto;
+    overflow: hidden;
     padding: 8px;
     border-right: 1px solid #2c2f38;
     display: flex;
@@ -194,6 +194,7 @@
     min-height: 0;
   }
   h2 {
+    flex: none;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.14em;
@@ -220,7 +221,11 @@
   h2 .linkish:hover { color: #cfd3da; background: none; }
   li button:hover { background: #23262e; }
   li button.active { background: #2c4a75; color: #fff; }
-  .scenes { max-height: 40vh; overflow-y: auto; }
+  /* Lists take their natural height and only shrink (with their own
+     scrollbar) when the sidebar runs out of room — so collapsing other
+     sections hands the space to whatever stays open. */
+  .sets { flex: none; max-height: 20vh; overflow-y: auto; }
+  .scenes { flex: 0 1 auto; min-height: 60px; overflow-y: auto; }
   .scene-row { display: flex; align-items: center; }
   .scene-row .remove {
     display: none;
@@ -233,6 +238,7 @@
   .scene-row:hover .remove { display: block; }
   .scene-row .remove:hover { color: #e07777; background: #2a2020; }
   .filter {
+    flex: none;
     background: #23262e;
     color: #e6e6e6;
     border: 1px solid #383c46;
@@ -250,7 +256,7 @@
     font-size: 12px;
     width: 100%;
   }
-  .assets { font-size: 12px; max-height: 30vh; overflow-y: auto; }
+  .assets { flex: 0 1 auto; min-height: 60px; font-size: 12px; overflow-y: auto; }
   .assets li {
     display: flex;
     justify-content: space-between;
@@ -263,6 +269,7 @@
   .assets li.unused { color: #e0a34e; }
   .dim { color: #676c76; font-size: 11px; }
   .danger {
+    flex: none;
     background: #5a2b2b;
     color: #f0c9c9;
     border: 1px solid #7a3a3a;
