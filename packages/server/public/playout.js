@@ -18,6 +18,12 @@ const H = 1080;
 
 document.getElementById('feedLabel').textContent = `${FEED} · ch ${CHAN}`;
 
+// one window per output: offer the other feed in a tab of its own
+const OTHER = FEED === 'preview' ? 'main' : 'preview';
+const btnOther = document.getElementById('btnOther');
+btnOther.textContent = `open ${OTHER}`;
+btnOther.onclick = () => window.open(`/playout.html?feed=${OTHER}&chan=${CHAN}`, `riposte-playout-${OTHER}`);
+
 const stage = document.getElementById('stage');
 stage.style.width = W + 'px';
 stage.style.height = H + 'px';
