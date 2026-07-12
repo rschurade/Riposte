@@ -1,14 +1,8 @@
 node_modules/
 dist/
-# Set projects: scene/set JSON is tracked (hand-edited work), heavy binary
-# assets are not — they are re-extracted from the .loo sources on import.
-/projects/*
-!/projects/*/
-/projects/_ab/
-/projects/_export/
-/projects/*/*
-!/projects/*/set.json
-!/projects/*/scenes/
+# Set projects are user data, not code — they live outside version control
+# (scene JSON is re-creatable from the .loo sources; assets re-extract on import).
+/projects/
 /examples/*/export/
 *.local
 .DS_Store
