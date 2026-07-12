@@ -85,7 +85,8 @@ Surveyed djhtmlcreator.com (another Loopic alternative; €300/y, Windows
 desktop, single-file exports — their delivery model is what we left behind,
 but several feature ideas fit us). Adopted, in order:
 
-- **Small-wins batch (IN PROGRESS 2026-07-12):** tabular numerals toggle on
+- **Small-wins batch (SHIPPED 2026-07-12, bench-verified; demo scene
+  examples/demo/BoundBar):** tabular numerals toggle on
   text (fixed-advance digits — score/clock fields stop jittering on update);
   dynamic size binding (rectangle width/height follows a text layer's
   measured content + padding on every update — the "bar always fits the
