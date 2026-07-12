@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { buildScene, type BuiltScene } from '@riposte/runtime';
   import type { Layer } from '@riposte/shared';
   import { ed, propNumber, shiftProperty } from './state.svelte.ts';
@@ -37,7 +38,9 @@
       components: ed.allScenes,
     });
     built.show();
-    built.setFrame(ed.frame);
+    // untracked: the playhead must NOT be a dependency — a tracked read here
+    // rebuilt the whole scene on every frame change (and reset loop state).
+    built.setFrame(untrack(() => ed.frame));
   });
 
   $effect(() => {
@@ -133,9 +136,13 @@
         }
         ed.frame = Math.floor(cgPos);
       } else if (ed.cg.held) {
-        // parked on a pause: loop layers keep cycling
-        ts.hold += dt * comp.fps;
-        built?.setFrame(Math.floor(cgPos));
+        // parked on a pause: loop layers keep cycling. Read timeState off the
+        // CURRENT build — a rebuild (undo, edit) swaps the object.
+        const cur = built?.timeState;
+        if (cur) {
+          cur.hold += dt * comp.fps;
+          built!.setFrame(Math.floor(cgPos));
+        }
       }
       raf = requestAnimationFrame(tick);
     };
