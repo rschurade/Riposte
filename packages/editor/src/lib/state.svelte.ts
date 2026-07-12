@@ -198,6 +198,7 @@ class EditorState {
 
   async save(): Promise<void> {
     if (!this.scene || !this.sceneFile || !this.setRef) return;
+    this.ownSave = { file: this.sceneFile, at: Date.now() };
     await fetch('/api/scene', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -211,6 +212,70 @@ class EditorState {
     this.allScenes[this.sceneFile] = JSON.parse(JSON.stringify(this.scene)) as SceneDoc;
     this.dirty = false;
     this.flash(`saved ${this.sceneFile}`);
+  }
+
+  // ---- server push (SSE): external writers (MCP) show up live ---------------
+
+  private ownSave: { file: string; at: number } | null = null;
+  private es: EventSource | null = null;
+
+  connectEvents(): void {
+    if (this.es) return; // once — survives HMR re-mounts
+    const es = new EventSource('/api/events');
+    this.es = es;
+    es.addEventListener('open', (e) => {
+      void this.onRemoteOpen(JSON.parse((e as MessageEvent).data));
+    });
+    es.addEventListener('scene-saved', (e) => {
+      void this.onRemoteSaved(JSON.parse((e as MessageEvent).data));
+    });
+  }
+
+  private async onRemoteOpen(p: { root: string; name: string; file?: string }): Promise<void> {
+    if (this.setRef?.root !== p.root || this.setRef?.name !== p.name) {
+      if (this.sets.length === 0) await this.loadSets();
+      const ref = this.sets.find((s) => s.root === p.root && s.name === p.name);
+      if (!ref) return;
+      await this.openSet(ref); // confirmDiscard() protects unsaved edits
+      if (this.setRef !== ref) return; // user declined the discard
+    }
+    if (p.file && this.sceneFile !== p.file && this.allScenes[p.file] !== undefined) {
+      this.openScene(p.file);
+    }
+    this.flash(`remote: opened ${p.name}${p.file ? ' / ' + sceneNameOf(p.file) : ''}`);
+  }
+
+  private async onRemoteSaved(p: { root: string; name: string; file: string }): Promise<void> {
+    // our own save echoes back through the broadcast — ignore it
+    if (this.ownSave && this.ownSave.file === p.file && Date.now() - this.ownSave.at < 2000) return;
+    if (this.setRef?.root !== p.root || this.setRef?.name !== p.name) return;
+    const q = `root=${encodeURIComponent(p.root)}&name=${encodeURIComponent(p.name)}`;
+    const bundle = (await (await fetch(`/api/set?${q}`)).json()) as { scenes: Record<string, SceneDoc | null> };
+    if (p.file === this.sceneFile) {
+      if (this.dirty) {
+        // don't clobber in-flight edits; the bundle copy is refreshed on next open
+        this.flash(`${sceneNameOf(p.file)} was changed externally — you have unsaved edits`);
+        return;
+      }
+      this.allScenes = bundle.scenes;
+      const doc = bundle.scenes[p.file];
+      this.scene = doc ? (JSON.parse(JSON.stringify(doc)) as SceneDoc) : null;
+      if (this.selectedLayerId && !this.scene?.composition.layers.some((l) => l.id === this.selectedLayerId)) {
+        this.selectedLayerId = null;
+      }
+      this.selectedKf = null;
+      this.undoStack = [];
+      this.undoIndex = 0;
+      this.version++;
+      this.flash(`remote: ${sceneNameOf(p.file)} updated`);
+    } else {
+      // another scene (possibly a component rendered in this one) changed
+      if (this.dirty && this.sceneFile) this.allScenes[this.sceneFile] = this.scene;
+      const keep = this.dirty && this.sceneFile ? this.allScenes[this.sceneFile] : null;
+      this.allScenes = bundle.scenes;
+      if (keep && this.sceneFile) this.allScenes[this.sceneFile] = keep;
+      this.version++;
+    }
   }
 
   /** Delete a scene: out of the set AND off the disk (after confirmation). */
@@ -953,6 +1018,10 @@ export function dispPropValue(p: StyleProperty | undefined, def: PropDef, frame:
  * The one display name of a layer: the element's KEY when bound, the stored
  * name when a human wrote one, otherwise a label derived from the element.
  */
+function sceneNameOf(file: string): string {
+  return file.replace(/^scenes\//, '').replace(/\.json$/, '');
+}
+
 export function layerLabel(layer: Layer): string {
   const el = layer.element;
   if (el.key) return el.key;

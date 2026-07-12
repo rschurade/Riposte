@@ -76,12 +76,52 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/assets/rename' && req.method === 'POST') return apiRenameAsset(req, res);
   if (path === '/api/export' && req.method === 'POST') return apiExport(req, res);
   if (path === '/api/deploy' && req.method === 'POST') return apiDeploy(req, res);
+  if (path === '/api/events') return apiEvents(req, res);
+  if (path === '/api/open' && req.method === 'POST') return apiOpen(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
   if (path.startsWith('/projects/')) return file(res, safeJoin(projectsDir, path.slice('/projects/'.length)));
 
   const rel = path === '/' ? 'index.html' : path.replace(/^\//, '');
   return file(res, safeJoin(publicDir, rel));
+}
+
+// ---- server→editor push channel (SSE) ---------------------------------------
+// The editor subscribes to /api/events; external writers (MCP, scripts) show
+// up live instead of waiting for a reload.
+
+const sseClients = new Set<ServerResponse>();
+
+function apiEvents(req: IncomingMessage, res: ServerResponse): void {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-cache',
+    connection: 'keep-alive',
+  });
+  res.write('retry: 2000\n\n');
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+}
+
+function broadcast(event: string, payload: unknown): void {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(msg);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+/** Navigate the running editor(s) to a set/scene (MCP "open_scene"). */
+async function apiOpen(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; file?: string };
+  // validates root+name (throws on bad refs)
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  setDirOf(url);
+  broadcast('open', { root: body.root, name: body.name, file: body.file });
+  return json(res, { ok: true, listeners: sseClients.size });
 }
 
 /** Resolve a set directory from ?root=&name=, guarding against traversal. */
@@ -143,6 +183,7 @@ async function apiSaveScene(req: IncomingMessage, res: ServerResponse): Promise<
   const dir = setDirOf(url);
   if (!SCENE_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
   await writeFile(join(dir, body.file), JSON.stringify(body.doc, null, 2) + '\n', 'utf8');
+  broadcast('scene-saved', { root: body.root, name: body.name, file: body.file });
   return json(res, { ok: true });
 }
 

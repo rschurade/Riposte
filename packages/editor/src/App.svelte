@@ -6,6 +6,7 @@
   import { ed } from './lib/state.svelte.ts';
 
   $effect(() => {
+    ed.connectEvents();
     void (async () => {
       await ed.loadSets();
       // deep link: /?set=FIE_2026&scene=FIE_2026_HD_MedalCounts[&frame=50]
