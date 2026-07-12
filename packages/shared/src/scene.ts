@@ -60,6 +60,14 @@ export interface Layer {
   isGuide?: boolean;
   /** Hidden layers exist in the scene but never render (Loopic isVisible=false). */
   hidden?: boolean;
+  /**
+   * Independent loop region in LAYER-LOCAL frames (relative to startFrame):
+   * content before `start` is the entrance, [start, end) cycles on the
+   * layer's own clock — it keeps animating while the scene playhead holds
+   * at a pause marker — and the frames after `end` are the exit, played
+   * once (in scene time) when the outro begins.
+   */
+  loop?: { start: number; end: number };
   /** Mask elements clip this layer's element (rectangle or path shapes). */
   masks?: SceneElement[];
   element: SceneElement;

@@ -126,6 +126,51 @@
         }
       },
       {
+        "id": "l-shine1",
+        "name": "shine 1",
+        "startFrame": 35,
+        "duration": 115,
+        "loop": { "start": 10, "end": 60 },
+        "masks": [
+          {
+            "id": "shine1-mask",
+            "type": "rectangle",
+            "style": {
+              "x": { "value": 960 },
+              "y": { "value": 420 },
+              "width": { "value": 820 },
+              "height": { "value": 70 }
+            }
+          }
+        ],
+        "element": {
+          "id": "shine1",
+          "type": "image",
+          "asset": "assets/gradient.svg",
+          "style": {
+            "x": {
+              "value": 460,
+              "keyframes": [
+                { "frame": 45, "value": 460 },
+                { "frame": 95, "value": 1470 }
+              ]
+            },
+            "y": { "value": 420 },
+            "width": { "value": 400 },
+            "height": { "value": 74 },
+            "opacity": {
+              "value": 0.75,
+              "keyframes": [
+                { "frame": 35, "value": 0 },
+                { "frame": 45, "value": 0.75 },
+                { "frame": 95, "value": 0.75 },
+                { "frame": 103, "value": 0 }
+              ]
+            }
+          }
+        }
+      },
+      {
         "id": "l-bar2",
         "name": "bar 2",
         "startFrame": 0,

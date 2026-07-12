@@ -93,6 +93,25 @@
     });
   }
 
+  /** Loop region (layer-local frames); clearing both fields removes it. */
+  function setLoopField(field: 'start' | 'end', raw: string): void {
+    if (!layer) return;
+    const id = layer.id;
+    const v = raw.trim() === '' ? null : Number(raw);
+    if (v !== null && !Number.isFinite(v)) return;
+    ed.mutate('set loop region', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === id);
+      if (!l) return;
+      const cur = { start: l.loop?.start ?? 0, end: l.loop?.end ?? 0, ...(l.loop ?? {}) };
+      if (v === null) {
+        delete l.loop;
+        return;
+      }
+      cur[field] = Math.max(0, Math.round(v));
+      l.loop = cur;
+    });
+  }
+
   function setLayerField(field: 'hidden' | 'isGuide', value: boolean): void {
     if (!layer) return;
     const id = layer.id;
@@ -489,6 +508,33 @@
         <button class="minor" onclick={() => ed.deleteSelectedKeyframe()}>Delete keyframe (Del)</button>
       {/if}
     {/if}
+
+    <h3>Loop <span class="dim">cycles while the scene holds</span></h3>
+    <div class="grid">
+      <label for="loop-start">Start</label>
+      <input
+        id="loop-start"
+        type="number"
+        min="0"
+        placeholder="(none)"
+        value={layer.loop?.start ?? ''}
+        onchange={(e) => setLoopField('start', (e.currentTarget as HTMLInputElement).value)}
+      />
+      <label for="loop-end">End</label>
+      <input
+        id="loop-end"
+        type="number"
+        min="0"
+        placeholder="(none)"
+        value={layer.loop?.end ?? ''}
+        onchange={(e) => setLoopField('end', (e.currentTarget as HTMLInputElement).value)}
+      />
+    </div>
+    <p class="hint">
+      Layer-local frames. Before Start = entrance, Start–End cycles on its own
+      clock while the scene holds, after End = exit (plays with the outro).
+      Clear a field to remove the loop.
+    </p>
 
     <h3>Layer</h3>
     <div class="grid">

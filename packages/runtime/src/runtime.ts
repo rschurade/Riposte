@@ -73,10 +73,48 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
   const templateData: Record<string, string> = {};
   const flags = { play: false, update: false, stop: false, next: false };
 
+  // Hold clock: while the playhead is parked on a pause marker, loop layers
+  // keep animating — advance their shared `hold` time and re-render the
+  // parked frame. Runs only for scenes that actually have loop layers.
+  let holdRaf: number | null = null;
+  let holdLast = 0;
+  const stopHoldClock = (): void => {
+    if (holdRaf !== null) {
+      cancelAnimationFrame(holdRaf);
+      holdRaf = null;
+    }
+  };
+  const startHoldClock = (): void => {
+    if (!built.hasLoops || built.timeState.exiting || holdRaf !== null) return;
+    holdLast = 0;
+    const tick = (ts: number): void => {
+      holdRaf = null;
+      if (player.playing || built.timeState.exiting || !built.isVisible()) return;
+      if (holdLast === 0) holdLast = ts;
+      const dt = Math.min((ts - holdLast) / 1000, 0.25);
+      holdLast = ts;
+      built.timeState.hold += dt * comp.fps;
+      built.setFrame(player.activeFrame);
+      holdRaf = requestAnimationFrame(tick);
+    };
+    holdRaf = requestAnimationFrame(tick);
+  };
+  // Outro begins: loop layers abandon their loop position and play their
+  // exit zone in scene time, in sync with the scene outro.
+  const latchExit = (frame: number): void => {
+    if (!built.hasLoops || built.timeState.exiting) return;
+    built.timeState.exiting = true;
+    built.timeState.exitFrom = frame;
+    stopHoldClock();
+  };
+  const lastPauseFrame = comp.markers.reduce((max, m) => (m.type === 'pause' && m.frame > max ? m.frame : max), -1);
+
   const player = new Player(comp, {
     onFrame: (f) => built.setFrame(f),
     onEnded: () => built.hide(),
     runAction: (source) => runAction(source),
+    onPaused: () => startHoldClock(),
+    onOutro: (f) => latchExit(f),
   });
   built.setFrame(0);
 
@@ -193,6 +231,10 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
       chain(
         playMws,
         () => {
+          // fresh cycle: loop layers restart their entrance
+          stopHoldClock();
+          built.timeState.hold = 0;
+          built.timeState.exiting = false;
           built.show();
           player.play({ from: 0 });
         },
@@ -204,9 +246,12 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
       chain(
         stopMws,
         () => {
-          if (outroMarker) player.goToAndPlay(outroMarker.frame);
-          else {
+          if (outroMarker) {
+            latchExit(outroMarker.frame);
+            player.goToAndPlay(outroMarker.frame);
+          } else {
             player.pause();
+            stopHoldClock();
             built.hide();
           }
         },
@@ -217,7 +262,13 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
       flags.next = true;
       chain(
         nextMws,
-        () => player.resume(),
+        () => {
+          // resuming off the LAST pause plays the outro — exit the loops with it
+          if (!player.playing && lastPauseFrame >= 0 && player.activeFrame >= lastPauseFrame) {
+            latchExit(player.activeFrame);
+          }
+          player.resume();
+        },
         (mw, next) => mw(next),
       );
     },
@@ -248,6 +299,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     flags,
     findElementByKey: (key) => built.byKey.get(key),
     destroy() {
+      stopHoldClock();
       player.destroy();
       built.destroy();
     },

@@ -377,6 +377,13 @@
                 onpointermove={barMove}
                 onpointerup={barUp}
               >
+                {#if layer.loop && layer.loop.end > layer.loop.start}
+                  <div
+                    class="loopzone"
+                    style="left:{layer.loop.start * pxPerFrame}px;width:{(layer.loop.end - layer.loop.start) * pxPerFrame}px"
+                    title="loop {layer.loop.start}–{layer.loop.end} (layer frames)"
+                  ></div>
+                {/if}
                 <div class="handle l" onpointerdown={(ev) => barDown(ev, layer, 'left')} onpointermove={barMove} onpointerup={barUp}></div>
                 <div class="handle r" onpointerdown={(ev) => barDown(ev, layer, 'right')} onpointermove={barMove} onpointerup={barUp}></div>
               </div>
@@ -538,6 +545,14 @@
     cursor: grab;
   }
   .bar.dragging, .bar:hover { opacity: 1; background: #38598a; }
+  .loopzone {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    background: repeating-linear-gradient(-45deg, rgba(120, 200, 140, 0.55) 0 4px, rgba(120, 200, 140, 0.25) 4px 8px);
+    border-radius: 2px;
+    pointer-events: none;
+  }
   .handle {
     position: absolute;
     top: 0;

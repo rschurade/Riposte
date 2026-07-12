@@ -17,6 +17,10 @@ export interface PlayerHooks {
   onFrame(frame: number): void;
   onEnded(): void;
   runAction(source: string): void;
+  /** Playhead parked on a pause marker. */
+  onPaused?(frame: number): void;
+  /** Playhead crossed an outro marker while playing forward. */
+  onOutro?(frame: number): void;
 }
 
 export class Player {
@@ -165,12 +169,14 @@ export class Player {
           break;
         case 'pause':
           this.playing = false;
+          this.hooks.onPaused?.(frame);
           break;
         case 'loop':
           if (this.direction === 1) return m.loopToFrame;
           break;
         case 'outro':
-          break; // passive marker
+          if (this.direction === 1) this.hooks.onOutro?.(frame);
+          break;
       }
     }
     return null;

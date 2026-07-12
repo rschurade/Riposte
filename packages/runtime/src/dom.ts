@@ -55,6 +55,32 @@ export interface ElementHandle {
   hide(): void;
 }
 
+export interface LoopTimeState {
+  hold: number;
+  exiting: boolean;
+  exitFrom: number;
+}
+
+/**
+ * Frame warp for a layer with a loop region (pure — unit tested). Entrance
+ * plays through once; [start, end) wraps, with `hold` continuing the cycle
+ * while the scene playhead is parked; once `exiting`, the layer plays its
+ * exit zone in scene time from `exitFrom`.
+ */
+export function loopWarp(
+  frame: number,
+  startFrame: number,
+  loop: { start: number; end: number },
+  state: LoopTimeState,
+): number {
+  const ls = startFrame + loop.start;
+  const le = startFrame + loop.end;
+  const span = le - ls;
+  if (state.exiting) return le + (frame - state.exitFrom);
+  const local = frame + state.hold;
+  return local < ls ? local : ls + ((local - ls) % span);
+}
+
 /** An element whose visibility is driven by an update() key. */
 export interface BoundVisibility {
   binding: VisibilityBinding;
@@ -84,6 +110,15 @@ export interface BuiltScene {
   readonly layers: LayerHandle[];
   /** Elements with a visibility binding (nested bindKeys are dot-prefixed). */
   readonly boundVisibility: BoundVisibility[];
+  /**
+   * Shared clock state for layers with a loop region. `hold` accumulates
+   * extra frames while the scene playhead is parked (advanced by the
+   * runtime's hold clock); `exiting` latches when the outro starts and maps
+   * every loop layer onto its exit zone from `exitFrom` (scene time).
+   */
+  readonly timeState: LoopTimeState;
+  /** True when any top-level layer has a loop region (hold clock needed). */
+  readonly hasLoops: boolean;
   setFrame(frame: number): void;
   show(): void;
   hide(): void;
@@ -119,10 +154,11 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
   const layers: LayerHandle[] = [];
   const dynamics: DynamicBinding[] = [];
   const boundVisibility: BoundVisibility[] = [];
+  const timeState: LoopTimeState = { hold: 0, exiting: false, exitFrom: 0 };
 
   for (const layer of comp.layers) {
     if (layer.isGuide && !opts.showGuides) continue;
-    const node = buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, boundVisibility, opts);
+    const node = buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, boundVisibility, timeState, opts);
     layers.push({ doc: layer, node });
   }
 
@@ -133,6 +169,8 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
     byId,
     layers,
     boundVisibility,
+    timeState,
+    hasLoops: comp.layers.some((l) => l.loop),
     setFrame(frame) {
       for (const d of dynamics) d.apply(frame);
     },
@@ -160,8 +198,10 @@ function buildLayer(
   byId: Map<string, ElementHandle>,
   dynamics: DynamicBinding[],
   boundVisibility: BoundVisibility[],
+  timeState: LoopTimeState,
   opts: BuildOptions,
 ): HTMLElement {
+  const dynamicsFrom = dynamics.length;
   const layerEl = document.createElement('div');
   layerEl.dataset['layer'] = layer.name ?? layer.element.key ?? '';
   Object.assign(layerEl.style, {
@@ -206,6 +246,19 @@ function buildLayer(
         handle,
         ...(layer.hidden ? { hiddenLayerNode: layerEl } : {}),
       });
+    }
+  }
+
+  // Loop region: warp the frame every dynamic of THIS layer sees. Entrance
+  // plays through once, [start, end) wraps — `hold` keeps it cycling while
+  // the scene playhead is parked — and once `exiting` latches, the layer
+  // rides the scene outro through its exit zone (frames past `end`).
+  if (layer.loop && layer.loop.end > layer.loop.start) {
+    const loop = layer.loop;
+    const start = layer.startFrame;
+    for (let i = dynamicsFrom; i < dynamics.length; i++) {
+      const inner = dynamics[i]!;
+      dynamics[i] = { apply: (frame) => inner.apply(loopWarp(frame, start, loop, timeState)) };
     }
   }
   return layerEl;
