@@ -224,6 +224,32 @@ portBtn.onclick = async () => {
   logLine(s.listening ? `amcp "${FEED}" now listening on ${s.port} — reconnect the client` : `amcp "${FEED}" failed to bind ${s.port}: ${s.error}`, s.listening ? 'conn' : 'err');
 };
 
+// ---- debug probe (?debug=_time) ---------------------------------------------------
+// Prints the probed element's measured geometry into the command console on
+// every update — the ground truth for "is it actually moving, and is digit
+// boxing active in THIS tab".
+const DEBUG_KEY = params.get('debug');
+if (DEBUG_KEY) consoleEl.classList.add('open');
+
+function debugProbe() {
+  const n = stage.querySelector(`[data-key="${CSS.escape(DEBUG_KEY)}"]`);
+  if (!n) {
+    logLine(`dbg ${DEBUG_KEY}: element not found in any layer`, 'err');
+    return;
+  }
+  const span = n.querySelector('span');
+  if (!span) return;
+  const r = span.getBoundingClientRect();
+  const boxes = span.querySelectorAll('span').length;
+  const fam = getComputedStyle(n).fontFamily.split(',')[0].replace(/"/g, '');
+  const size = getComputedStyle(n).fontSize;
+  const loaded = document.fonts.check(`${size} ${getComputedStyle(n).fontFamily}`);
+  logLine(
+    `dbg ${DEBUG_KEY}: "${span.textContent}" left=${r.left.toFixed(1)} width=${r.width.toFixed(1)} digitBoxes=${boxes} font=${fam}@${size} loaded=${loaded}`,
+    boxes > 0 ? 'conn' : 'err',
+  );
+}
+
 // ---- SSE ------------------------------------------------------------------------
 const dot = document.getElementById('connDot');
 const es = new EventSource('/api/events');
@@ -244,6 +270,7 @@ es.addEventListener('amcp', (msg) => {
     if (ev.data) ev.data = rewriteMediaPaths(ev.data);
     if (ev.kind === 'cg') onCg(ev);
     else if (ev.kind === 'media') onMedia(ev);
+    if (DEBUG_KEY && ev.kind === 'cg' && ev.action === 'update') debugProbe();
   }
 });
 es.onerror = () => dot.classList.remove('on');
