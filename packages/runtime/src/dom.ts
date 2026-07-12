@@ -424,9 +424,21 @@ function buildElement(
           if (squeeze) squeeze();
         };
         const measure = () => {
+          // Probe on document.body, NOT inside the element: the layer may be
+          // display:none at measure time (startFrame > 0 during the ADD→PLAY
+          // lifecycle), where everything measures 0 wide and digit widths
+          // would look "equal". Copy the font from computed style — that
+          // resolves even inside hidden subtrees.
+          const cs = getComputedStyle(node);
           const probe = document.createElement('span');
-          probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
-          node.appendChild(probe);
+          probe.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;white-space:pre';
+          probe.style.fontFamily = cs.fontFamily;
+          probe.style.fontSize = cs.fontSize;
+          probe.style.fontWeight = cs.fontWeight;
+          probe.style.fontStyle = cs.fontStyle;
+          probe.style.letterSpacing = cs.letterSpacing;
+          probe.style.fontVariantNumeric = cs.fontVariantNumeric;
+          document.body.appendChild(probe);
           let min = Infinity;
           let max = 0;
           for (let d = 0; d <= 9; d++) {
@@ -436,7 +448,8 @@ function buildElement(
             if (w > max) max = w;
           }
           probe.remove();
-          const fontSize = parseFloat(getComputedStyle(node).fontSize) || 16;
+          if (max <= 0) return; // no metrics (font mid-swap) — keep current state
+          const fontSize = parseFloat(cs.fontSize) || 16;
           boxEm = max - min < 0.15 ? 0 : max / fontSize;
           setText!(raw);
         };
