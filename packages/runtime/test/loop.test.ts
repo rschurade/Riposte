@@ -37,10 +37,10 @@ test('hold time keeps the cycle moving while the playhead is parked', () => {
   assert.equal(loopWarp(40, START, LOOP, state({ hold: 15 })), 15); // wrapped
 });
 
-test('exiting maps scene time onto the exit zone from the latch frame', () => {
+test('exiting does not change the warp — the cycle continues under the fade', () => {
   const s = state({ exiting: true, exitFrom: 40 });
-  assert.equal(loopWarp(40, START, LOOP, s), 35); // loop end = exit start
-  assert.equal(loopWarp(45, START, LOOP, s), 40); // rides the outro 1:1
+  assert.equal(loopWarp(40, START, LOOP, s), loopWarp(40, START, LOOP, state()));
+  assert.equal(loopWarp(45, START, LOOP, s), loopWarp(45, START, LOOP, state()));
 });
 
 // ---- Player hooks -------------------------------------------------------------

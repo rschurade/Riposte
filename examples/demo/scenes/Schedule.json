@@ -162,9 +162,7 @@
               "value": 0.75,
               "keyframes": [
                 { "frame": 35, "value": 0 },
-                { "frame": 45, "value": 0.75 },
-                { "frame": 95, "value": 0.75 },
-                { "frame": 103, "value": 0 }
+                { "frame": 45, "value": 0.75 }
               ]
             }
           }

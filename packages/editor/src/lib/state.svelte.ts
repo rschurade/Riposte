@@ -35,6 +35,35 @@ class EditorState {
 
   frame = $state(0);
   playing = $state(false);
+  /**
+   * CasparCG lifecycle simulation (Stage runs the state machine): PLAY
+   * builds up and parks at pause markers with loop layers cycling, NEXT
+   * resumes (last pause = outro + loop fade), STOP jumps to the outro.
+   * `req`/`reqType` carry commands to the Stage effect.
+   */
+  cg = $state<{ active: boolean; held: boolean; req: number; reqType: 'play' | 'next' | 'stop' }>({
+    active: false,
+    held: false,
+    req: 0,
+    reqType: 'play',
+  });
+
+  cgPlay(): void {
+    this.playing = false;
+    this.cg = { active: true, held: false, req: this.cg.req + 1, reqType: 'play' };
+  }
+
+  cgNext(): void {
+    if (this.cg.active) this.cg = { ...this.cg, req: this.cg.req + 1, reqType: 'next' };
+  }
+
+  cgStop(): void {
+    if (this.cg.active) this.cg = { ...this.cg, req: this.cg.req + 1, reqType: 'stop' };
+  }
+
+  cgOff(): void {
+    if (this.cg.active) this.cg = { ...this.cg, active: false, held: false };
+  }
   /** Script preview: stage runs the FULL runtime (actions + previewData). */
   scriptPreview = $state(false);
   selectedLayerId = $state<string | null>(null);
@@ -123,6 +152,7 @@ class EditorState {
     this.scene = doc ? (JSON.parse(JSON.stringify(doc)) as SceneDoc) : null;
     this.frame = this.firstPauseFrame();
     this.playing = false;
+    this.cg = { ...this.cg, active: false, held: false };
     this.selectedLayerId = null;
     this.selectedKf = null;
     this.dirty = false;

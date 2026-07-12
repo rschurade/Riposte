@@ -235,6 +235,7 @@
     const f = Math.round((ev.clientX - r.left) / pxPerFrame);
     ed.frame = Math.min(Math.max(f, 0), comp.duration - 1);
     ed.playing = false;
+    ed.cgOff();
   }
 
   let scrubbing = false;
@@ -260,9 +261,18 @@
 <section>
   {#if comp}
     <div class="transport">
-      <button onclick={() => (ed.playing = !ed.playing)}>{ed.playing ? '⏸' : '▶'}</button>
-      <button onclick={() => { ed.playing = false; ed.frame = 0; }} title="to start">⏮</button>
-      <button onclick={() => { ed.playing = false; ed.frame = ed.firstPauseFrame(); }} title="to pause marker">⇥ pause</button>
+      <button onclick={() => { ed.cgOff(); ed.playing = !ed.playing; }}>{ed.playing ? '⏸' : '▶'}</button>
+      <button onclick={() => { ed.playing = false; ed.cgOff(); ed.frame = 0; }} title="to start">⏮</button>
+      <button onclick={() => { ed.playing = false; ed.cgOff(); ed.frame = ed.firstPauseFrame(); }} title="to pause marker">⇥ pause</button>
+      <span class="tsep"></span>
+      <button
+        class="cg"
+        class:on={ed.cg.active}
+        title="Simulate the CasparCG cycle: build-up parks at pause markers, loop layers keep cycling"
+        onclick={() => ed.cgPlay()}
+      >CG ▶</button>
+      <button class="cg" disabled={!ed.cg.active} title="CasparCG NEXT — resume; off the last pause this plays the outro" onclick={() => ed.cgNext()}>CG ⏭</button>
+      <button class="cg" disabled={!ed.cg.active} title="CasparCG STOP — jump to the outro" onclick={() => ed.cgStop()}>CG ⏹</button>
       <span class="frame">{ed.frame} / {comp.duration - 1}</span>
       <span class="dim">{comp.fps} fps</span>
       <span class="spacer"></span>
@@ -468,6 +478,8 @@
     padding: 5px 10px;
     border-bottom: 1px solid #23262e;
   }
+  .transport .tsep { width: 1px; align-self: stretch; margin: 2px 4px; background: #33363e; }
+  .transport .cg.on { background: #2c6a3f; color: #fff; }
   .transport button {
     background: #23262e;
     border: 1px solid #383c46;

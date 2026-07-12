@@ -64,10 +64,11 @@ export interface Layer {
    * Independent loop region in LAYER-LOCAL frames (relative to startFrame):
    * content before `start` is the entrance, [start, end) cycles on the
    * layer's own clock — it keeps animating while the scene playhead holds
-   * at a pause marker — and the frames after `end` are the exit, played
-   * once (in scene time) when the outro begins.
+   * at a pause marker. When the outro begins the layer keeps cycling and
+   * fades out in place over `exitFade` frames (default 15), in sync with
+   * the scene outro; frames after `end` are never played on air.
    */
-  loop?: { start: number; end: number };
+  loop?: { start: number; end: number; exitFade?: number };
   /** Mask elements clip this layer's element (rectangle or path shapes). */
   masks?: SceneElement[];
   element: SceneElement;

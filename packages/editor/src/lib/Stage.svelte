@@ -47,6 +47,7 @@
   // ---- playback (editor free-run: markers are visualized, not obeyed) ------
   $effect(() => {
     if (!ed.playing || !comp) return;
+    ed.cgOff();
     let raf = 0;
     let last = 0;
     let pos = ed.frame;
@@ -60,6 +61,82 @@
         ed.playing = false;
       }
       ed.frame = Math.floor(pos);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  });
+
+  // ---- CasparCG lifecycle simulation (CG ▶ / ⏭ / ⏹ in the transport) --------
+  // Mirrors the on-air runtime: PLAY parks at pause markers while loop layers
+  // keep cycling (hold clock), NEXT resumes — off the last pause it latches
+  // the loop exit fade — STOP jumps to the outro marker.
+  let cgPos = 0;
+  let cgRunning = false;
+  let cgHandledReq = 0;
+
+  $effect(() => {
+    const { active, req, reqType } = ed.cg;
+    if (!active || !comp || !built) return;
+    const ts = built.timeState;
+    const pauses = comp.markers.filter((m) => m.type === 'pause').map((m) => m.frame).sort((a, b) => a - b);
+    const lastPause = pauses.length > 0 ? pauses[pauses.length - 1]! : -1;
+    const outro = comp.markers.find((m) => m.type === 'outro');
+
+    if (req !== cgHandledReq) {
+      cgHandledReq = req;
+      if (reqType === 'play') {
+        cgPos = 0;
+        ts.hold = 0;
+        ts.exiting = false;
+        cgRunning = true;
+      } else if (reqType === 'next' && !cgRunning) {
+        if (!ts.exiting && lastPause >= 0 && Math.floor(cgPos) >= lastPause) {
+          ts.exiting = true;
+          ts.exitFrom = Math.floor(cgPos);
+        }
+        cgPos = Math.floor(cgPos) + 0.001;
+        cgRunning = true;
+      } else if (reqType === 'stop') {
+        const from = outro ? outro.frame : Math.floor(cgPos);
+        if (!ts.exiting) {
+          ts.exiting = true;
+          ts.exitFrom = from;
+        }
+        cgPos = from + 0.001;
+        cgRunning = true;
+      }
+      ed.cg.held = !cgRunning;
+    }
+
+    let raf = 0;
+    let last = 0;
+    const tick = (t: number) => {
+      if (!ed.cg.active) return;
+      if (last === 0) last = t;
+      const dt = Math.min((t - last) / 1000, 0.25);
+      last = t;
+      if (cgRunning) {
+        const prev = cgPos;
+        cgPos += dt * comp.fps;
+        for (let f = Math.floor(prev) + 1; f <= Math.floor(cgPos); f++) {
+          if (pauses.includes(f)) {
+            cgPos = f;
+            cgRunning = false;
+            ed.cg.held = true;
+            break;
+          }
+        }
+        if (cgPos >= comp.duration - 1) {
+          cgPos = comp.duration - 1;
+          cgRunning = false;
+        }
+        ed.frame = Math.floor(cgPos);
+      } else if (ed.cg.held) {
+        // parked on a pause: loop layers keep cycling
+        ts.hold += dt * comp.fps;
+        built?.setFrame(Math.floor(cgPos));
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

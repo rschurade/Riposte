@@ -64,8 +64,8 @@ export interface LoopTimeState {
 /**
  * Frame warp for a layer with a loop region (pure — unit tested). Entrance
  * plays through once; [start, end) wraps, with `hold` continuing the cycle
- * while the scene playhead is parked; once `exiting`, the layer plays its
- * exit zone in scene time from `exitFrom`.
+ * while the scene playhead is parked. The cycle never stops — the exit is a
+ * fade-in-place applied on the layer wrapper, not a position jump.
  */
 export function loopWarp(
   frame: number,
@@ -74,9 +74,7 @@ export function loopWarp(
   state: LoopTimeState,
 ): number {
   const ls = startFrame + loop.start;
-  const le = startFrame + loop.end;
-  const span = le - ls;
-  if (state.exiting) return le + (frame - state.exitFrom);
+  const span = loop.end - loop.start;
   const local = frame + state.hold;
   return local < ls ? local : ls + ((local - ls) % span);
 }
@@ -251,8 +249,9 @@ function buildLayer(
 
   // Loop region: warp the frame every dynamic of THIS layer sees. Entrance
   // plays through once, [start, end) wraps — `hold` keeps it cycling while
-  // the scene playhead is parked — and once `exiting` latches, the layer
-  // rides the scene outro through its exit zone (frames past `end`).
+  // the scene playhead is parked. Once `exiting` latches (outro), the layer
+  // KEEPS cycling and fades out in place, in sync with the scene outro — a
+  // jump to fixed exit frames looked bad mid-cycle.
   if (layer.loop && layer.loop.end > layer.loop.start) {
     const loop = layer.loop;
     const start = layer.startFrame;
@@ -260,6 +259,19 @@ function buildLayer(
       const inner = dynamics[i]!;
       dynamics[i] = { apply: (frame) => inner.apply(loopWarp(frame, start, loop, timeState)) };
     }
+    const exitFade = Math.max(1, loop.exitFade ?? 15);
+    const restingOpacity = layer.isGuide ? '0.5' : '';
+    // NOT warped: the fade runs on raw scene time alongside the outro.
+    dynamics.push({
+      apply(frame) {
+        if (!timeState.exiting) {
+          layerEl.style.opacity = restingOpacity;
+          return;
+        }
+        const k = Math.max(0, 1 - (frame - timeState.exitFrom) / exitFade);
+        layerEl.style.opacity = String(k);
+      },
+    });
   }
   return layerEl;
 }
