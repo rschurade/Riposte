@@ -392,7 +392,7 @@
         </select>
         <label for="in-color">Color</label>
         <span class="colorrow">
-          <span class="swatch" style="background-color:{colorAt('color') || '#fff'}"></span>
+          <span class="swatch"><span class="swatchfill" style="background-color:{colorAt('color') || '#fff'}"></span></span>
           <input
             id="in-color"
             type="text"
@@ -403,7 +403,7 @@
         </span>
         <label for="in-bg">Background</label>
         <span class="colorrow">
-          <span class="swatch" style="background-color:{colorAt('backgroundColor') || 'transparent'}"></span>
+          <span class="swatch"><span class="swatchfill" style="background-color:{colorAt('backgroundColor') || 'transparent'}"></span></span>
           <input
             id="in-bg"
             type="text"
@@ -413,7 +413,7 @@
           />
         </span>
       </div>
-      <div class="grid three">
+      <div class="grid three spaced">
         {#each TEXT_STYLE_PROPS as np (np.prop)}
           {@render propRow(np)}
         {/each}
@@ -620,11 +620,13 @@
   .colorrow { display: flex; gap: 5px; align-items: center; min-width: 0; }
   .colorrow input { flex: 1; min-width: 0; }
   .swatch {
-    width: 16px; height: 16px; flex: none; border-radius: 3px;
+    width: 16px; height: 16px; flex: none; border-radius: 3px; overflow: hidden;
     border: 1px solid #444a55;
     background-image: repeating-conic-gradient(#3a3f4a 0% 25%, #2a2e38 0% 50%);
     background-size: 8px 8px;
   }
+  .swatchfill { display: block; width: 100%; height: 100%; }
+  .grid.spaced { margin-top: 10px; }
   .padrow { display: flex; gap: 4px; min-width: 0; }
   .padrow input { flex: 1; min-width: 0; width: 100%; }
   .ro { font-size: 12px; color: #aab; }
