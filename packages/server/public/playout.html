@@ -23,6 +23,8 @@
     .dot { width: 9px; height: 9px; border-radius: 50%; background: #666; }
     .dot.on { background: #4caf50; }
     #hud button { background: #23262e; color: #e6e6e6; border: 1px solid #383c46; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; }
+    #portBtn { font-family: Consolas, monospace; }
+    #portBtn.err { color: #ff8080; border-color: #a55; }
     #media {
       position: fixed; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; z-index: 10000;
       font: 11px Consolas, monospace;
@@ -45,6 +47,7 @@
   <div id="hud">
     <b>Playout</b>
     <span id="feedLabel"></span>
+    <button id="portBtn">port ?</button>
     <span class="dot" id="connDot" title="AMCP client connection"></span>
     <span id="layerCount"></span>
     <button id="btnConsole" title="toggle command console (`)">console</button>

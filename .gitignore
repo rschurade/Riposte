@@ -5,5 +5,7 @@ dist/
 /projects/
 /examples/*/export/
 *.local
+# per-machine virtual-CasparCG port config (POST /api/amcp)
+packages/server/.amcp-ports.json
 .DS_Store
 Thumbs.db

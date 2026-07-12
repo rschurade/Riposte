@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { exportSet, syncDir } from '@riposte/exporter';
 import { importLoo } from '@riposte/importer';
-import { startAmcp } from './amcp.ts';
+import { startAmcp, getAmcpState, setAmcpPorts } from './amcp.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverRoot = resolve(here, '..');
@@ -56,10 +56,11 @@ createServer((req, res) => {
 });
 
 // virtual CasparCG: AMCP in → SSE out → /playout renders it
-startAmcp({
+void startAmcp({
   listSets: async () => [...(await listSets(examplesDir, 'examples')), ...(await listSets(projectsDir, 'projects'))],
   broadcast,
   log: (msg) => console.log(msg),
+  persistPath: join(serverRoot, '.amcp-ports.json'),
 });
 
 const ROOTS: Record<string, string> = { examples: '', projects: '' };
@@ -87,6 +88,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/deploy' && req.method === 'POST') return apiDeploy(req, res);
   if (path === '/api/events') return apiEvents(req, res);
   if (path === '/api/mediafile') return apiMediaFile(url, res);
+  if (path === '/api/amcp' && req.method === 'POST') return json(res, await setAmcpPorts((await readBody(req)) as Record<string, unknown>));
+  if (path === '/api/amcp') return json(res, getAmcpState());
   if (path === '/api/open' && req.method === 'POST') return apiOpen(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));

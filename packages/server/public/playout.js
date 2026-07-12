@@ -168,11 +168,73 @@ function rewriteMediaPaths(data) {
   );
 }
 
+// ---- AMCP port (display + configure) ----------------------------------------------
+const portBtn = document.getElementById('portBtn');
+let amcpState = null;
+
+function portUi() {
+  const s = amcpState?.[FEED];
+  if (!s) {
+    portBtn.textContent = 'port ?';
+    return;
+  }
+  portBtn.textContent = `${location.hostname}:${s.port}`;
+  portBtn.classList.toggle('err', !s.listening);
+  portBtn.title = s.listening
+    ? `Point ControlCenter's ${FEED.toUpperCase()} output (or any Caspar client) at this address.\nClick to change the port.`
+    : `NOT LISTENING on ${s.port}: ${s.error || 'unknown error'}\nClick to change the port.`;
+}
+
+async function loadPorts() {
+  try {
+    amcpState = await (await fetch('/api/amcp')).json();
+  } catch {
+    amcpState = null;
+  }
+  portUi();
+  const s = amcpState?.[FEED];
+  if (s) {
+    logLine(
+      s.listening
+        ? `riposte playout — feed "${FEED}", channel ${CHAN}. Point ControlCenter's ${FEED.toUpperCase()} output at ${location.hostname}:${s.port}.`
+        : `feed "${FEED}" is NOT listening on ${s.port}: ${s.error || 'unknown error'}`,
+      s.listening ? 'conn' : 'err',
+    );
+  }
+}
+
+portBtn.onclick = async () => {
+  const cur = amcpState?.[FEED]?.port ?? '';
+  const v = prompt(`AMCP port for the "${FEED}" feed — ControlCenter's ${FEED.toUpperCase()} output connects here:`, cur);
+  if (!v || Number(v) === cur) return;
+  const res = await fetch('/api/amcp', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ [FEED]: Number(v) }),
+  });
+  const r = await res.json();
+  if (!res.ok) {
+    logLine(`port change failed: ${r.error || res.status}`, 'err');
+    consoleEl.classList.add('open');
+    return;
+  }
+  amcpState = r;
+  portUi();
+  const s = amcpState[FEED];
+  logLine(s.listening ? `amcp "${FEED}" now listening on ${s.port} — reconnect the client` : `amcp "${FEED}" failed to bind ${s.port}: ${s.error}`, s.listening ? 'conn' : 'err');
+};
+
 // ---- SSE ------------------------------------------------------------------------
 const dot = document.getElementById('connDot');
 const es = new EventSource('/api/events');
 es.addEventListener('amcp', (msg) => {
   const ev = JSON.parse(msg.data);
+  if (ev.kind === 'ports') {
+    // not feed-scoped: port changes announce the full state to every window
+    amcpState = ev.state;
+    portUi();
+    return;
+  }
   if (ev.feed !== FEED) return;
   if (ev.kind === 'conn') {
     dot.classList.toggle('on', ev.state === 'connected');
@@ -186,5 +248,5 @@ es.addEventListener('amcp', (msg) => {
 });
 es.onerror = () => dot.classList.remove('on');
 
-logLine(`riposte playout — feed "${FEED}", channel ${CHAN}. Point ControlCenter's ${FEED.toUpperCase()} output at this machine, port ${FEED === 'preview' ? 6251 : 6250}.`, 'conn');
+void loadPorts();
 window.__playoutReady = true;

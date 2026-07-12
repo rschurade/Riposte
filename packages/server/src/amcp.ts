@@ -4,19 +4,22 @@
  * the /playout browser page over the existing SSE channel; the page stacks CG
  * layers and drives them with the real runtime.
  *
- * Two listeners mirror a production rig: MAIN (6250) and PREVIEW (6251),
- * overridable via RIPOSTE_AMCP_PORT / RIPOSTE_AMCP_PREVIEW_PORT (0 disables).
+ * Two listeners mirror a production rig: MAIN (6250) and PREVIEW (6251).
  * Deliberately NOT the real CasparCG ports (5250/5251) — real Caspar
  * instances commonly run on the same machine, and node's IPv6 wildcard bind
  * would silently coexist with Caspar's IPv4 one, splitting traffic by
- * address family. Point ControlCenter at 6250/6251 in its Settings tab.
- * A failed bind is a warning, not a crash.
+ * address family. Point ControlCenter at these ports in its Settings tab.
+ *
+ * Ports are runtime-configurable (playout HUD → POST /api/amcp) and persisted
+ * across restarts; RIPOSTE_AMCP_PORT / RIPOSTE_AMCP_PREVIEW_PORT provide the
+ * first-run defaults. A failed bind is a warning, not a crash.
  *
  * Understood: CG ADD/UPDATE/PLAY/STOP/NEXT/REMOVE/INVOKE/CLEAR. Everything
  * else (PLAY/MIXER/CLEAR for the portrait media layers, queries) is
  * acknowledged with 202 and surfaced to the playout console as-is.
  */
-import { createServer as createTcpServer, type Socket } from 'node:net';
+import { createServer as createTcpServer, type Server, type Socket } from 'node:net';
+import { readFile, writeFile } from 'node:fs/promises';
 
 export interface AmcpSetInfo {
   root: string;
@@ -30,6 +33,14 @@ export interface AmcpOptions {
   listSets: () => Promise<AmcpSetInfo[]>;
   broadcast: (event: string, payload: unknown) => void;
   log?: (msg: string) => void;
+  /** JSON file the configured ports survive restarts in. */
+  persistPath?: string;
+}
+
+export interface FeedState {
+  port: number;
+  listening: boolean;
+  error?: string;
 }
 
 interface CgEvent {
@@ -182,23 +193,96 @@ function serveSocket(socket: Socket, feed: string, opts: AmcpOptions): void {
   socket.on('error', () => socket.destroy());
 }
 
-/** Start the MAIN + PREVIEW listeners. Returns the ports that actually bound. */
-export function startAmcp(opts: AmcpOptions): { feed: string; port: number }[] {
-  const feeds = [
-    { feed: 'main', port: Number(process.env['RIPOSTE_AMCP_PORT'] ?? 6250) },
-    { feed: 'preview', port: Number(process.env['RIPOSTE_AMCP_PREVIEW_PORT'] ?? 6251) },
-  ];
-  const bound: { feed: string; port: number }[] = [];
-  for (const { feed, port } of feeds) {
-    if (!port) continue;
-    const server = createTcpServer((socket) => serveSocket(socket, feed, opts));
-    server.on('error', (err) => {
-      opts.log?.(`amcp ${feed}: cannot listen on ${port} (${(err as Error).message}) — virtual CasparCG ${feed} disabled`);
+// ---- feed lifecycle -----------------------------------------------------------
+
+interface FeedEntry {
+  server: Server | null;
+  sockets: Set<Socket>;
+  state: FeedState;
+}
+
+const feeds = new Map<string, FeedEntry>();
+let amcpOpts: AmcpOptions | null = null;
+
+/** (Re)bind one feed's listener; tears down the old listener and its connections. */
+async function bindFeed(feed: string, port: number): Promise<FeedState> {
+  const opts = amcpOpts!;
+  const entry = feeds.get(feed) ?? { server: null, sockets: new Set<Socket>(), state: { port, listening: false } };
+  feeds.set(feed, entry);
+  if (entry.server) {
+    entry.server.close();
+    entry.server = null;
+  }
+  for (const s of entry.sockets) s.destroy();
+  entry.sockets.clear();
+  entry.state = { port, listening: false };
+  if (!port) {
+    entry.state.error = 'disabled';
+    return entry.state;
+  }
+  const server = createTcpServer((socket) => {
+    entry.sockets.add(socket);
+    socket.on('close', () => entry.sockets.delete(socket));
+    serveSocket(socket, feed, opts);
+  });
+  entry.server = server;
+  return await new Promise<FeedState>((resolve) => {
+    server.once('error', (err) => {
+      entry.state.error = (err as Error).message;
+      entry.server = null;
+      opts.log?.(`amcp ${feed}: cannot listen on ${port} (${entry.state.error}) — virtual CasparCG ${feed} disabled`);
+      resolve(entry.state);
     });
     server.listen(port, () => {
+      entry.state.listening = true;
       opts.log?.(`amcp ${feed}: virtual CasparCG listening on ${port}`);
+      resolve(entry.state);
     });
-    bound.push({ feed, port });
+  });
+}
+
+export function getAmcpState(): Record<string, FeedState> {
+  const out: Record<string, FeedState> = {};
+  for (const [feed, e] of feeds) out[feed] = e.state;
+  return out;
+}
+
+/** Change listener ports at runtime (from the playout HUD); persists + broadcasts. */
+export async function setAmcpPorts(ports: Record<string, unknown>): Promise<Record<string, FeedState>> {
+  const wanted: [string, number][] = [];
+  for (const [feed, value] of Object.entries(ports)) {
+    if (!feeds.has(feed)) throw Object.assign(new Error(`unknown feed "${feed}"`), { status: 400 });
+    const port = Number(value);
+    if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+      throw Object.assign(new Error('port must be an integer 1024-65535'), { status: 400 });
+    }
+    wanted.push([feed, port]);
   }
-  return bound;
+  for (const [feed, port] of wanted) {
+    const cur = feeds.get(feed)!.state;
+    if (port !== cur.port || !cur.listening) await bindFeed(feed, port);
+  }
+  const state = getAmcpState();
+  if (amcpOpts?.persistPath) {
+    const persisted: Record<string, number> = {};
+    for (const [f, s] of Object.entries(state)) persisted[f] = s.port;
+    await writeFile(amcpOpts.persistPath, JSON.stringify(persisted, null, 2) + '\n', 'utf8').catch(() => {});
+  }
+  amcpOpts?.broadcast('amcp', { kind: 'ports', state });
+  return state;
+}
+
+/** Start the MAIN + PREVIEW listeners (persisted ports win over env defaults). */
+export async function startAmcp(opts: AmcpOptions): Promise<void> {
+  amcpOpts = opts;
+  let saved: Record<string, number> = {};
+  if (opts.persistPath) {
+    try {
+      saved = JSON.parse(await readFile(opts.persistPath, 'utf8')) as Record<string, number>;
+    } catch {
+      // first run — no persisted ports yet
+    }
+  }
+  await bindFeed('main', saved['main'] ?? Number(process.env['RIPOSTE_AMCP_PORT'] ?? 6250));
+  await bindFeed('preview', saved['preview'] ?? Number(process.env['RIPOSTE_AMCP_PREVIEW_PORT'] ?? 6251));
 }
