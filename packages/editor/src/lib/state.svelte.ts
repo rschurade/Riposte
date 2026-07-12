@@ -231,7 +231,7 @@ class EditorState {
     });
   }
 
-  private async onRemoteOpen(p: { root: string; name: string; file?: string }): Promise<void> {
+  private async onRemoteOpen(p: { root: string; name: string; file?: string; frame?: number }): Promise<void> {
     if (this.setRef?.root !== p.root || this.setRef?.name !== p.name) {
       if (this.sets.length === 0) await this.loadSets();
       const ref = this.sets.find((s) => s.root === p.root && s.name === p.name);
@@ -242,7 +242,13 @@ class EditorState {
     if (p.file && this.sceneFile !== p.file && this.allScenes[p.file] !== undefined) {
       this.openScene(p.file);
     }
-    this.flash(`remote: opened ${p.name}${p.file ? ' / ' + sceneNameOf(p.file) : ''}`);
+    if (p.frame !== undefined && this.scene) {
+      this.playing = false;
+      this.frame = Math.min(Math.max(Math.round(p.frame), 0), this.scene.composition.duration - 1);
+    }
+    this.flash(
+      `remote: opened ${p.name}${p.file ? ' / ' + sceneNameOf(p.file) : ''}${p.frame !== undefined ? ` @ frame ${p.frame}` : ''}`,
+    );
   }
 
   private async onRemoteSaved(p: { root: string; name: string; file: string }): Promise<void> {

@@ -206,20 +206,21 @@ server.tool(
 
 server.tool(
   'open_scene',
-  'Navigate the running Riposte editor UI to a set (and optionally a scene). ' +
+  'Navigate the running Riposte editor UI to a set (and optionally a scene and playhead frame) — ' +
+    'use it so the user is looking at the same thing you are working on. ' +
     'Unsaved edits in the editor are protected by a confirm dialog on its side.',
-  { set: z.string(), scene: z.string().optional() },
-  async ({ set, scene }) => {
+  { set: z.string(), scene: z.string().optional(), frame: z.number().optional().describe('Move the editor playhead to this frame') },
+  async ({ set, scene, frame }) => {
     const { info, scenes } = await loadBundle(set);
     const file = scene ? sceneFileOf(info, scenes, scene) : undefined;
     const r = await api<{ listeners: number }>('/api/open', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ root: info.root, name: info.name, file }),
+      body: JSON.stringify({ root: info.root, name: info.name, file, frame }),
     });
     return text(
       r.listeners > 0
-        ? `editor navigated to ${info.name}${scene ? ' / ' + scene : ''}`
+        ? `editor navigated to ${info.name}${scene ? ' / ' + scene : ''}${frame !== undefined ? ` @ frame ${frame}` : ''}`
         : 'no editor is currently connected — open http://localhost:5719',
     );
   },

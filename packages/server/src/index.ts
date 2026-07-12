@@ -114,13 +114,13 @@ function broadcast(event: string, payload: unknown): void {
   }
 }
 
-/** Navigate the running editor(s) to a set/scene (MCP "open_scene"). */
+/** Navigate the running editor(s) to a set/scene/frame (MCP "open_scene"). */
 async function apiOpen(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; file?: string };
+  const body = (await readBody(req)) as { root: string; name: string; file?: string; frame?: number };
   // validates root+name (throws on bad refs)
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   setDirOf(url);
-  broadcast('open', { root: body.root, name: body.name, file: body.file });
+  broadcast('open', { root: body.root, name: body.name, file: body.file, frame: body.frame });
   return json(res, { ok: true, listeners: sseClients.size });
 }
 
