@@ -417,10 +417,13 @@
     display: flex;
     justify-content: space-between;
     gap: 8px;
-    padding: 2px 8px;
+    padding: 3px 8px;
     color: #aab;
   }
-  .assets li[draggable='true'] { cursor: grab; }
+  /* Default arrow at rest: its hotspot is the precise tip, so the pickup row
+     matches what the user aims at (the grab hand's hotspot sits lower and
+     grabbed the wrong row). The hand only appears once the drag is live. */
+  .assets li[draggable='true']:active { cursor: grabbing; }
   .assets li .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .assets li.unused { color: #e0a34e; }
   .assets li.seq { color: #9fb8d8; }
