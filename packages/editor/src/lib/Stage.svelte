@@ -44,7 +44,10 @@
   });
 
   $effect(() => {
-    built?.setFrame(ed.frame);
+    // read the frame UNCONDITIONALLY: `built?.setFrame(ed.frame)` would skip
+    // the read while built is null (first run) and never track the dependency
+    const f = ed.frame;
+    built?.setFrame(f);
   });
 
   // ---- playback (editor free-run: markers are visualized, not obeyed) ------
