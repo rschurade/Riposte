@@ -795,26 +795,18 @@ class EditorState {
     });
   }
 
+  /** Build CasparCG templates into the set's own export/ folder (incremental). */
   async exportSet(): Promise<void> {
     if (!this.setRef) return;
-    const remembered = localStorage.getItem('riposte.exportDir') ?? '';
-    const outDir = prompt(
-      'Export folder — paste the full path of your CasparCG template directory\n' +
-        '(browsers cannot open a real folder picker for server paths; the last used path is remembered).\n' +
-        'Leave empty for projects/_export/' + this.setRef.name + ':',
-      remembered,
-    );
-    if (outDir === null) return;
     this.flash('exporting…');
     try {
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, outDir }),
+        body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name }),
       });
       const r = await res.json();
       if (!res.ok) throw new Error(r.error ?? `server responded ${res.status}`);
-      if (outDir.trim()) localStorage.setItem('riposte.exportDir', outDir.trim());
       const mb = (r.assetBytes / 1048576).toFixed(1);
       this.flash(
         `exported → ${r.outDir}: ${r.scenesUpdated.length}/${r.scenes.length} templates updated, ` +
@@ -823,6 +815,37 @@ class EditorState {
       if (r.warnings?.length) console.warn('export warnings', r.warnings);
     } catch (err) {
       this.flash(`EXPORT FAILED: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  /** Export, then incrementally sync the export into the CasparCG template dir. */
+  async deploySet(): Promise<void> {
+    if (!this.setRef) return;
+    const remembered = localStorage.getItem('riposte.deployDir') ?? localStorage.getItem('riposte.exportDir') ?? '';
+    const targetDir = prompt(
+      'Deploy target — paste the full path of your CasparCG template directory\n' +
+        '(the last used path is remembered; only changed files are copied, nothing is deleted):',
+      remembered,
+    );
+    if (targetDir === null || !targetDir.trim()) return;
+    this.flash('deploying…');
+    try {
+      const res = await fetch('/api/deploy', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, targetDir }),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new Error(r.error ?? `server responded ${res.status}`);
+      localStorage.setItem('riposte.deployDir', targetDir.trim());
+      const mb = (r.synced.copiedBytes / 1048576).toFixed(1);
+      this.flash(
+        `deployed → ${r.targetDir}: ${r.synced.copied} files copied (${mb} MB), ` +
+          `${r.synced.upToDate} already up to date`,
+      );
+      if (r.exported.warnings?.length) console.warn('export warnings', r.exported.warnings);
+    } catch (err) {
+      this.flash(`DEPLOY FAILED: ${err instanceof Error ? err.message : err}`);
     }
   }
 

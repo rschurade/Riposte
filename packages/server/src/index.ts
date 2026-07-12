@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, extname, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { exportSet } from '@riposte/exporter';
+import { exportSet, syncDir } from '@riposte/exporter';
 import { importLoo } from '@riposte/importer';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -75,6 +75,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/assets/delete' && req.method === 'POST') return apiDeleteAssets(req, res);
   if (path === '/api/assets/rename' && req.method === 'POST') return apiRenameAsset(req, res);
   if (path === '/api/export' && req.method === 'POST') return apiExport(req, res);
+  if (path === '/api/deploy' && req.method === 'POST') return apiDeploy(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
   if (path.startsWith('/projects/')) return file(res, safeJoin(projectsDir, path.slice('/projects/'.length)));
@@ -145,21 +146,37 @@ async function apiSaveScene(req: IncomingMessage, res: ServerResponse): Promise<
   return json(res, { ok: true });
 }
 
-/** Export a set to CasparCG templates. Default target: projects/_export/<name>. */
+/** Export a set to CasparCG templates. Default target: <set-dir>/export. */
 async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked'; outDir?: string };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const setDir = setDirOf(url);
   // relative paths resolve against the repo root, not the server CWD
-  const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(projectsDir, '_export', body.name);
-  const parent = dirname(outDir);
-  try {
-    if (!(await stat(parent)).isDirectory()) throw new Error();
-  } catch {
-    throw Object.assign(new Error(`parent folder does not exist: ${parent}`), { status: 400 });
-  }
+  const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(setDir, 'export');
   const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode } : {});
   return json(res, result);
+}
+
+/**
+ * Deploy = fresh incremental export to <set-dir>/export, then incremental
+ * sync into the CasparCG template dir. Additive only — never deletes files
+ * the target dir has and the export doesn't.
+ */
+async function apiDeploy(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; targetDir: string; mode?: 'external' | 'baked' };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const setDir = setDirOf(url);
+  const targetDir = resolve(repoRoot, (body.targetDir ?? '').trim());
+  if (!body.targetDir?.trim()) throw Object.assign(new Error('targetDir required'), { status: 400 });
+  try {
+    if (!(await stat(targetDir)).isDirectory()) throw new Error();
+  } catch {
+    throw Object.assign(new Error(`target folder does not exist: ${targetDir}`), { status: 400 });
+  }
+  const exportDir = join(setDir, 'export');
+  const exported = await exportSet(setDir, exportDir, body.mode ? { mode: body.mode } : {});
+  const synced = await syncDir(exportDir, targetDir);
+  return json(res, { exported, synced, targetDir });
 }
 
 /** Raw request body as a Buffer (binary uploads). */

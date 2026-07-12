@@ -11,7 +11,7 @@
  * runtime inlined as data URIs (compatibility fallback; big files).
  */
 
-import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
@@ -47,6 +47,42 @@ async function writeIfChanged(path: string, content: string): Promise<boolean> {
   }
   await writeFile(path, content, 'utf8');
   return true;
+}
+
+export interface SyncResult {
+  copied: number;
+  upToDate: number;
+  /** Bytes actually transferred (copied files only). */
+  copiedBytes: number;
+}
+
+/**
+ * Incrementally mirror a directory tree into another (deploy an export to the
+ * CasparCG template dir). Additive only — files that exist solely in the
+ * destination are left alone, since the target dir usually holds other
+ * template families too.
+ */
+export async function syncDir(srcDir: string, dstDir: string): Promise<SyncResult> {
+  const r: SyncResult = { copied: 0, upToDate: 0, copiedBytes: 0 };
+  await mkdir(dstDir, { recursive: true });
+  for (const entry of await readdir(srcDir, { withFileTypes: true })) {
+    const src = join(srcDir, entry.name);
+    const dst = join(dstDir, entry.name);
+    if (entry.isDirectory()) {
+      const sub = await syncDir(src, dst);
+      r.copied += sub.copied;
+      r.upToDate += sub.upToDate;
+      r.copiedBytes += sub.copiedBytes;
+    } else if (entry.isFile()) {
+      if (await copyIfChanged(src, dst)) {
+        r.copied++;
+        r.copiedBytes += (await stat(dst)).size;
+      } else {
+        r.upToDate++;
+      }
+    }
+  }
+  return r;
 }
 
 /** Copy only when the destination is missing or differs (size, then bytes). */

@@ -140,7 +140,8 @@
     <button onclick={() => ed.undo()} title="Ctrl+Z">↶</button>
     <button onclick={() => ed.redo()} title="Ctrl+Y">↷</button>
     <button class="primary" onclick={() => ed.save()} disabled={!ed.dirty} title="Ctrl+S">Save</button>
-    <button onclick={() => ed.exportSet()} disabled={!ed.setRef} title="Export set as CasparCG templates">Export</button>
+    <button onclick={() => ed.exportSet()} disabled={!ed.setRef} title="Build CasparCG templates into the set's export folder (incremental)">Export</button>
+    <button onclick={() => ed.deploySet()} disabled={!ed.setRef} title="Export + copy changed files into the CasparCG template directory">Deploy</button>
   </header>
   <div class="main" style="grid-template-columns:{leftW}px 5px 1fr 5px {rightW}px">
     <Sidebar />
