@@ -164,6 +164,9 @@
     startY: number;
     startElX: number;
     startElY: number;
+    // Shift axis lock, latched at the first clear movement of the drag so it
+    // cannot flip when the cursor passes back near its start point.
+    axis: 'x' | 'y' | null;
     applied: { dx: number; dy: number };
   } | null = null;
 
@@ -184,6 +187,7 @@
         startY: p.y,
         startElX: propNumber(hit.element.style.x, ed.frame, 0),
         startElY: propNumber(hit.element.style.y, ed.frame, 0),
+        axis: null,
         applied: { dx: 0, dy: 0 },
       };
       (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
@@ -198,8 +202,14 @@
     let dx = Math.round(p.x - drag.startX);
     let dy = Math.round(p.y - drag.startY);
     if (ev.shiftKey) {
-      if (Math.abs(dx) > Math.abs(dy)) dy = 0;
-      else dx = 0;
+      if (drag.axis === null && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+        drag.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+      }
+      if (drag.axis === 'x') dy = 0;
+      else if (drag.axis === 'y') dx = 0;
+      else { dx = 0; dy = 0; } // not latched yet: hold still
+    } else {
+      drag.axis = null; // releasing Shift unlocks; pressing again re-latches
     }
     // Snap the element's anchor (x/y = box center) to the grid; Alt bypasses.
     if (snapOn && !ev.altKey) {
