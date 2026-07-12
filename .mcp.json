@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "riposte": {
+      "command": "node",
+      "args": ["packages/mcp/src/index.ts"]
+    }
+  }
+}
