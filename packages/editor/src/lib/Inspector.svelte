@@ -93,8 +93,11 @@
     });
   }
 
-  /** Loop region (layer-local frames); clearing both fields removes it. */
-  function setLoopField(field: 'start' | 'end', raw: string): void {
+  /**
+   * Loop region (layer-local frames); clearing start or end removes it.
+   * exitFade: outro fade-in-place length in frames; empty = default (15).
+   */
+  function setLoopField(field: 'start' | 'end' | 'exitFade', raw: string): void {
     if (!layer) return;
     const id = layer.id;
     const v = raw.trim() === '' ? null : Number(raw);
@@ -102,6 +105,12 @@
     ed.mutate('set loop region', (scene) => {
       const l = scene.composition.layers.find((x) => x.id === id);
       if (!l) return;
+      if (field === 'exitFade') {
+        if (!l.loop) return;
+        if (v === null) delete l.loop.exitFade;
+        else l.loop.exitFade = Math.max(1, Math.round(v));
+        return;
+      }
       const cur = { start: l.loop?.start ?? 0, end: l.loop?.end ?? 0, ...(l.loop ?? {}) };
       if (v === null) {
         delete l.loop;
@@ -529,11 +538,23 @@
         value={layer.loop?.end ?? ''}
         onchange={(e) => setLoopField('end', (e.currentTarget as HTMLInputElement).value)}
       />
+      {#if layer.loop}
+        <label for="loop-fade">Exit fade</label>
+        <input
+          id="loop-fade"
+          type="number"
+          min="1"
+          placeholder="15"
+          value={layer.loop.exitFade ?? ''}
+          onchange={(e) => setLoopField('exitFade', (e.currentTarget as HTMLInputElement).value)}
+        />
+      {/if}
     </div>
     <p class="hint">
       Layer-local frames. Before Start = entrance, Start–End cycles on its own
-      clock while the scene holds, after End = exit (plays with the outro).
-      Clear a field to remove the loop.
+      clock while the scene holds. On the outro the layer keeps cycling and
+      fades out in place over Exit fade frames (empty = 15). Clear Start or
+      End to remove the loop.
     </p>
 
     <h3>Layer</h3>
