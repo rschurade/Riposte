@@ -11,7 +11,7 @@
  * runtime inlined as data URIs (compatibility fallback; big files).
  */
 
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
@@ -26,9 +26,42 @@ export interface ExportResult {
   outDir: string;
   mode: 'external' | 'baked';
   scenes: string[];
+  /** Scenes whose HTML actually changed on disk this run. */
+  scenesUpdated: string[];
+  /** Assets copied this run (missing or different at the destination). */
   assetsCopied: number;
+  /** Assets already byte-identical at the destination. */
+  assetsUpToDate: number;
+  /** Total bytes of all referenced assets (copied or not). */
   assetBytes: number;
+  runtimeUpdated: boolean;
   warnings: string[];
+}
+
+/** Write only when the content differs — unchanged files keep their timestamp. */
+async function writeIfChanged(path: string, content: string): Promise<boolean> {
+  try {
+    if ((await readFile(path, 'utf8')) === content) return false;
+  } catch {
+    /* missing or unreadable — write it */
+  }
+  await writeFile(path, content, 'utf8');
+  return true;
+}
+
+/** Copy only when the destination is missing or differs (size, then bytes). */
+async function copyIfChanged(src: string, dst: string): Promise<boolean> {
+  try {
+    const [s, d] = await Promise.all([stat(src), stat(dst)]);
+    if (s.size === d.size) {
+      const [sb, db] = await Promise.all([readFile(src), readFile(dst)]);
+      if (sb.equals(db)) return false;
+    }
+  } catch {
+    /* destination missing — copy it */
+  }
+  await copyFile(src, dst);
+  return true;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -71,6 +104,7 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
 
   await mkdir(outDir, { recursive: true });
   const scenes: string[] = [];
+  const scenesUpdated: string[] = [];
   const allAssets = new Set<string>();
 
   for (const file of set.scenes) {
@@ -93,30 +127,32 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
         ? externalShell(name, doc, sceneComponents, set, preloadAssets ? [...assets] : [])
         : await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings);
 
-    await writeFile(join(outDir, `${name}.html`), html, 'utf8');
+    if (await writeIfChanged(join(outDir, `${name}.html`), html)) scenesUpdated.push(name);
     scenes.push(name);
   }
 
   let assetsCopied = 0;
+  let assetsUpToDate = 0;
   let assetBytes = 0;
+  let runtimeUpdated = false;
   if (mode === 'external') {
     await mkdir(join(outDir, 'assets'), { recursive: true });
-    await writeFile(join(outDir, 'assets', 'riposte.js'), runtimeJs, 'utf8');
+    runtimeUpdated = await writeIfChanged(join(outDir, 'assets', 'riposte.js'), runtimeJs);
     for (const rel of allAssets) {
       const src = join(setDir, rel);
       const dst = join(outDir, rel);
       try {
         await mkdir(dirname(dst), { recursive: true });
-        await copyFile(src, dst);
-        assetsCopied++;
-        assetBytes += (await readFile(dst)).length;
+        if (await copyIfChanged(src, dst)) assetsCopied++;
+        else assetsUpToDate++;
+        assetBytes += (await stat(dst)).size;
       } catch {
         warnings.push(`missing asset ${rel}`);
       }
     }
   }
 
-  return { outDir, mode, scenes, assetsCopied, assetBytes, warnings };
+  return { outDir, mode, scenes, scenesUpdated, assetsCopied, assetsUpToDate, assetBytes, runtimeUpdated, warnings };
 }
 
 // ---- collection -------------------------------------------------------------

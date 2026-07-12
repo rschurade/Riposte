@@ -816,7 +816,10 @@ class EditorState {
       if (!res.ok) throw new Error(r.error ?? `server responded ${res.status}`);
       if (outDir.trim()) localStorage.setItem('riposte.exportDir', outDir.trim());
       const mb = (r.assetBytes / 1048576).toFixed(1);
-      this.flash(`exported ${r.scenes.length} templates + ${r.assetsCopied} assets (${mb} MB) → ${r.outDir}`);
+      this.flash(
+        `exported → ${r.outDir}: ${r.scenesUpdated.length}/${r.scenes.length} templates updated, ` +
+          `${r.assetsCopied} assets copied (${r.assetsUpToDate} up to date, ${mb} MB total)`,
+      );
       if (r.warnings?.length) console.warn('export warnings', r.warnings);
     } catch (err) {
       this.flash(`EXPORT FAILED: ${err instanceof Error ? err.message : err}`);
