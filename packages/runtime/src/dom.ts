@@ -389,7 +389,9 @@ function buildElement(
         break;
       }
       const sub = buildScene(doc, node, { ...opts, nestingDepth: depth + 1 });
-      sub.rootEl.style.visibility = 'visible';
+      // Inherit, don't force 'visible': an explicit 'visible' would pierce a
+      // visibility binding hiding the composition element itself (prio lights).
+      sub.rootEl.style.visibility = '';
       node.style.width = `${doc.composition.width}px`;
       node.style.height = `${doc.composition.height}px`;
       const subLast = doc.composition.duration - 1;
