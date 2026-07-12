@@ -448,6 +448,14 @@
             <option value={f}>{f}</option>
           {/each}
         </select>
+        <label for="in-placeholder">Placeholder</label>
+        <input
+          id="in-placeholder"
+          type="text"
+          placeholder="assets/…  (design-time image)"
+          value={el.placeholder ?? ''}
+          onchange={(e) => setElementField('placeholder', (e.currentTarget as HTMLInputElement).value.trim() || undefined)}
+        />
       </div>
     {/if}
 

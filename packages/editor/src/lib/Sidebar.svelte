@@ -256,7 +256,7 @@
             <li
               class="seq"
               class:unused={seqUsed.length === 0}
-              title={(seqUsed.length ? `used by: ${seqUsed.join(', ')}` : 'UNUSED') + ` — ${row.files.length} frames, ${seqMb(row.files)} MB. Drag to timeline for an image sequence.`}
+              title={(seqUsed.length ? `used by:\n${seqUsed.join('\n')}` : 'UNUSED') + `\n\n${row.files.length} frames, ${seqMb(row.files)} MB. Drag to stage or timeline for an image sequence.`}
               draggable="true"
               ondragstart={(e) => dragStartSeq(e, row.files)}
             >
@@ -282,7 +282,7 @@
             {@const used = usage.get(a.file)}
             <li
               class:unused={!used}
-              title={(used ? `used by: ${used.join(', ')}` : 'UNUSED') + ' — double-click to rename, drag to timeline'}
+              title={(used ? `used by:\n${used.join('\n')}` : 'UNUSED') + '\n\ndouble-click to rename, drag to stage or timeline'}
               draggable={DRAGGABLE_RE.test(a.file)}
               ondragstart={(e) => dragStart(e, a.file)}
             >

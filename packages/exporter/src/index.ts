@@ -219,6 +219,7 @@ function collectAssets(doc: SceneDoc, out: Set<string>): void {
   const fromElement = (el: SceneElement): void => {
     if (el.type === 'image' && el.asset) out.add(el.asset);
     if (el.type === 'imageSequence') for (const f of el.frames) out.add(f);
+    if (el.type === 'imageLoader' && el.placeholder) out.add(el.placeholder);
   };
   for (const layer of doc.composition.layers) {
     if (layer.isGuide) continue; // guides never render on air

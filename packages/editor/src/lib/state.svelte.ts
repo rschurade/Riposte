@@ -59,22 +59,30 @@ class EditorState {
     return this.setRef ? `/${this.setRef.root}/${this.setRef.name}/` : '';
   }
 
-  /** file → scene names using it (images, sequences, loaders don't count — they're runtime data). */
+  /**
+   * file → usage sites ("scene › element"). Counts image assets, sequence
+   * frames, imageLoader PLACEHOLDERS and fonts; loader runtime data doesn't
+   * count (those images arrive via update()).
+   */
   get assetUsage(): Map<string, string[]> {
     const usage = new Map<string, string[]>();
-    const add = (file: string, scene: string) => {
+    const add = (file: string, site: string) => {
       const list = usage.get(file) ?? [];
-      if (!list.includes(scene)) list.push(scene);
+      if (!list.includes(site)) list.push(site);
       usage.set(file, list);
     };
     for (const [file, doc] of Object.entries(this.allScenes)) {
       if (!doc) continue;
       const sceneName = file.replace(/^scenes\//, '').replace(/\.json$/, '');
       for (const layer of doc.composition.layers) {
+        const label = layer.element.key ?? layer.name ?? layer.element.type;
         const els = [layer.element, ...(layer.masks ?? [])];
         for (const el of els) {
-          if (el.type === 'image' && el.asset) add(el.asset, sceneName);
-          if (el.type === 'imageSequence') for (const f of el.frames) add(f, sceneName);
+          if (el.type === 'image' && el.asset) add(el.asset, `${sceneName} › ${label}`);
+          if (el.type === 'imageSequence') for (const f of el.frames) add(f, `${sceneName} › ${label}`);
+          if (el.type === 'imageLoader' && el.placeholder) {
+            add(el.placeholder, `${sceneName} › ${label} (placeholder)`);
+          }
         }
       }
     }
