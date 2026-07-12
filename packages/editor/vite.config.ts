@@ -12,6 +12,8 @@ export default defineConfig({
       '/examples': backend,
       '/projects': backend,
       '/runtime.js': backend,
+      '/playout.html': backend,
+      '/playout.js': backend,
     },
   },
 });
