@@ -94,6 +94,7 @@ Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `upd
 
 - Unit tests: `npm test` (runtime interpolation/player/visibility/loop, importer convert/migrate). Player tests use a stubbed rAF clock — headless virtual time can't drive animations.
 - Visual: `render_scene`/`render_filmstrip` MCP tools, or `tools/bench-shot.ps1` against the bench. Headless screenshots need `--virtual-time-budget=6000+` or you get a blank PNG; frames past the outro marker are legitimately blank — shoot at the pause frame. Nested comps render blank under headless *play* mode in both runtimes (Edge quirk) — verify those at a seeked frame or visually.
+- **The bench is not the ADD→PLAY lifecycle.** The bench seeks to a visible frame before deferred callbacks (rAF/fonts.ready) run; on air, build-time code executes at frame 0 where layers with `startFrame > 0` are `display:none` and everything measures 0 wide (this silently disabled the tabularNums digit boxing once — measure on `document.body`, never inside the element). To debug the real lifecycle, use the playout page with `?debug=<key>` — it logs the element's measured geometry per update into the backtick console.
 - A/B vs Loopic: `tools/ab-diff.ps1` + `projects/_ab/` harnesses; serve both pages in fixed 1920×1080 iframes (Loopic's fitToWindow otherwise rescales and ruins diffs).
 
 ## Gotchas
