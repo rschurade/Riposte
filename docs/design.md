@@ -1,7 +1,41 @@
 # Riposte — design document
 
-Status: agreed 2026-07-11. This document records the decisions made when the
-project was planned; update it as reality diverges.
+Status: agreed 2026-07-11; as-built notes updated 2026-07-12. This document
+records the decisions made when the project was planned, plus how reality
+diverged. For day-to-day operational guidance (commands, ports, gotchas,
+format essentials) see the repo-root `CLAUDE.md`.
+
+## As-built status (2026-07-12)
+
+All four phases below are DONE, in roughly the planned shape. The full
+`.loo` FIE_2026 set (32 scenes) round-trips: import → edit → export →
+verified on a real CasparCG server (external-asset templates load visibly
+faster than Loopic's baked ones). Shipped beyond the original plan:
+
+- **Visibility bindings** (`element.visibility`) replaced Loopic show/hide
+  scripts entirely; `riposte-migrate` converts old scripts by probe-executing
+  them against recording stubs. Almost all imported action code is now gone.
+- **Nested compositions** render recursively (components in `set.json`,
+  content-deduped files, seekable child playheads — works on seek, which
+  Loopic's own runtime can't do).
+- **Per-layer loop regions** (`layer.loop {start, end, exitFade}`): cycle on a
+  hold clock while the scene pauses, fade in place with the outro. Top-level
+  layers only so far.
+- **MCP server** (`packages/mcp`, 11 tools) over the HTTP API, including
+  live-editor sync via SSE (`open_scene` navigates the running editor) and
+  headless renders (`render_scene` / `render_filmstrip`).
+- **Deploy** flow: export + additive directory sync into the CasparCG
+  template dir (never deletes foreign files).
+- **HTML-export fallback importer** (`riposte-import-html`) for templates
+  whose `.loo` source doesn't exist (used for the hand-converted Schedule).
+- Duration trimming (`trimToContent` + `tools/trim-durations.mjs`) — FIE
+  scenes cut from 250 frames to their real 42–87.
+
+Planned but NOT built yet: near-duplicate asset report (pixel-level);
+distribution/production mode (single-port server serving the built editor;
+plan agreed, deferred at user's request); loops inside nested compositions;
+on-demand sub-animation "play bindings". Still outstanding: full on-air soak
+of the migrated set (Tableau, Schedule, whites, Team-v2 plates).
 
 ## Why
 

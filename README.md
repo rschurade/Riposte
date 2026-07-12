@@ -24,8 +24,9 @@ base64-encoded HTML file. Its core ideas:
 | `packages/runtime` | The rendering engine — zero deps, builds to one IIFE (`riposte.js`) |
 | `packages/importer` | Converts Loopic HTML exports into Riposte set projects |
 | `packages/exporter` | Set project → CasparCG templates (external-assets or baked) |
-| `packages/server` | Local Node server: hosts the editor, file/project/asset API |
-| `packages/editor` | Svelte UI — canvas, timeline, inspector, resources |
+| `packages/server` | Local Node server (:5720): preview bench, file/project/asset API |
+| `packages/editor` | Svelte UI (:5719 dev, proxies to the server) — canvas, timeline, inspector, resources |
+| `packages/mcp` | MCP server — semantic editing/render tools over the HTTP API |
 
 ## Development
 
@@ -38,4 +39,6 @@ npm run dev       # editor (Vite dev server)
 npm run server    # local file/project server
 ```
 
-See [docs/design.md](docs/design.md) for the full design and phase plan.
+See [docs/design.md](docs/design.md) for the design record and as-built status,
+and [CLAUDE.md](CLAUDE.md) for operational guidance (commands, ports, format
+essentials, gotchas).
