@@ -1,6 +1,14 @@
 node_modules/
 dist/
-/projects/
+# Set projects: scene/set JSON is tracked (hand-edited work), heavy binary
+# assets are not — they are re-extracted from the .loo sources on import.
+/projects/*
+!/projects/*/
+/projects/_ab/
+/projects/_export/
+/projects/*/*
+!/projects/*/set.json
+!/projects/*/scenes/
 *.local
 .DS_Store
 Thumbs.db
