@@ -7,8 +7,14 @@
     "fps": 50,
     "duration": 150,
     "markers": [
-      { "frame": 60, "type": "pause" },
-      { "frame": 110, "type": "outro" }
+      {
+        "frame": 60,
+        "type": "pause"
+      },
+      {
+        "frame": 110,
+        "type": "outro"
+      }
     ],
     "layers": [
       {
@@ -21,17 +27,37 @@
           "type": "image",
           "asset": "assets/frame.svg",
           "style": {
-            "x": { "value": 960 },
-            "y": { "value": 510 },
-            "width": { "value": 900 },
-            "height": { "value": 620 },
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 510
+            },
+            "width": {
+              "value": 900
+            },
+            "height": {
+              "value": 620
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 0, "value": 0 },
-                { "frame": 12, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 128, "value": 0 }
+                {
+                  "frame": 0,
+                  "value": 0
+                },
+                {
+                  "frame": 12,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 128,
+                  "value": 0
+                }
               ]
             }
           }
@@ -52,26 +78,63 @@
           "textAlign": "center",
           "autoSqueeze": true,
           "style": {
-            "x": { "value": 960 },
+            "x": {
+              "value": 960
+            },
             "y": {
               "value": 285,
               "keyframes": [
-                { "frame": 5, "value": 320, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
-                { "frame": 22, "value": 285 }
+                {
+                  "frame": 5,
+                  "value": 320,
+                  "easing": {
+                    "p1x": 0.25,
+                    "p1y": 0.1,
+                    "p2x": 0.25,
+                    "p2y": 1
+                  }
+                },
+                {
+                  "frame": 22,
+                  "value": 285
+                }
               ]
             },
-            "width": { "value": 700 },
-            "height": { "value": 70 },
-            "fontSize": { "value": 56 },
-            "letterSpacing": { "value": 10 },
-            "color": { "value": "#ffffff", "unit": "color" },
+            "width": {
+              "value": 700
+            },
+            "height": {
+              "value": 70
+            },
+            "fontSize": {
+              "value": 56
+            },
+            "letterSpacing": {
+              "value": 10
+            },
+            "color": {
+              "value": "#ffffff",
+              "unit": "color"
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 5, "value": 0 },
-                { "frame": 20, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 124, "value": 0 }
+                {
+                  "frame": 5,
+                  "value": 0
+                },
+                {
+                  "frame": 20,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 124,
+                  "value": 0
+                }
               ]
             }
           }
@@ -90,19 +153,47 @@
               "x": {
                 "value": 960,
                 "keyframes": [
-                  { "frame": 15, "value": 550, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
-                  { "frame": 35, "value": 960 }
+                  {
+                    "frame": 15,
+                    "value": 550,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 35,
+                    "value": 960
+                  }
                 ]
               },
-              "y": { "value": 420 },
+              "y": {
+                "value": 420
+              },
               "width": {
                 "value": 820,
                 "keyframes": [
-                  { "frame": 15, "value": 0, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
-                  { "frame": 35, "value": 820 }
+                  {
+                    "frame": 15,
+                    "value": 0,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 35,
+                    "value": 820
+                  }
                 ]
               },
-              "height": { "value": 74 }
+              "height": {
+                "value": 74
+              }
             }
           }
         ],
@@ -111,15 +202,29 @@
           "type": "image",
           "asset": "assets/bar.svg",
           "style": {
-            "x": { "value": 960 },
-            "y": { "value": 420 },
-            "width": { "value": 820 },
-            "height": { "value": 70 },
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 420
+            },
+            "width": {
+              "value": 820
+            },
+            "height": {
+              "value": 70
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 110, "value": 1 },
-                { "frame": 122, "value": 0 }
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 122,
+                  "value": 0
+                }
               ]
             }
           }
@@ -130,16 +235,27 @@
         "name": "shine 1",
         "startFrame": 35,
         "duration": 115,
-        "loop": { "start": 10, "end": 60 },
+        "loop": {
+          "start": 10,
+          "end": 60
+        },
         "masks": [
           {
             "id": "shine1-mask",
             "type": "rectangle",
             "style": {
-              "x": { "value": 960 },
-              "y": { "value": 420 },
-              "width": { "value": 820 },
-              "height": { "value": 70 }
+              "x": {
+                "value": 960
+              },
+              "y": {
+                "value": 420
+              },
+              "width": {
+                "value": 820
+              },
+              "height": {
+                "value": 70
+              }
             }
           }
         ],
@@ -151,18 +267,36 @@
             "x": {
               "value": 460,
               "keyframes": [
-                { "frame": 45, "value": 460 },
-                { "frame": 95, "value": 1470 }
+                {
+                  "frame": 45,
+                  "value": 460
+                },
+                {
+                  "frame": 95,
+                  "value": 1470
+                }
               ]
             },
-            "y": { "value": 420 },
-            "width": { "value": 400 },
-            "height": { "value": 74 },
+            "y": {
+              "value": 420
+            },
+            "width": {
+              "value": 400
+            },
+            "height": {
+              "value": 74
+            },
             "opacity": {
               "value": 0.75,
               "keyframes": [
-                { "frame": 35, "value": 0 },
-                { "frame": 45, "value": 0.75 }
+                {
+                  "frame": 35,
+                  "value": 0
+                },
+                {
+                  "frame": 45,
+                  "value": 0.75
+                }
               ]
             }
           }
@@ -181,19 +315,47 @@
               "x": {
                 "value": 960,
                 "keyframes": [
-                  { "frame": 21, "value": 550, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
-                  { "frame": 41, "value": 960 }
+                  {
+                    "frame": 21,
+                    "value": 550,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 41,
+                    "value": 960
+                  }
                 ]
               },
-              "y": { "value": 505 },
+              "y": {
+                "value": 505
+              },
               "width": {
                 "value": 820,
                 "keyframes": [
-                  { "frame": 21, "value": 0, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
-                  { "frame": 41, "value": 820 }
+                  {
+                    "frame": 21,
+                    "value": 0,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 41,
+                    "value": 820
+                  }
                 ]
               },
-              "height": { "value": 74 }
+              "height": {
+                "value": 74
+              }
             }
           }
         ],
@@ -202,15 +364,29 @@
           "type": "image",
           "asset": "assets/bar.svg",
           "style": {
-            "x": { "value": 960 },
-            "y": { "value": 505 },
-            "width": { "value": 820 },
-            "height": { "value": 70 },
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 505
+            },
+            "width": {
+              "value": 820
+            },
+            "height": {
+              "value": 70
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 110, "value": 1 },
-                { "frame": 122, "value": 0 }
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 122,
+                  "value": 0
+                }
               ]
             }
           }
@@ -229,19 +405,47 @@
               "x": {
                 "value": 960,
                 "keyframes": [
-                  { "frame": 27, "value": 550, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
-                  { "frame": 47, "value": 960 }
+                  {
+                    "frame": 27,
+                    "value": 550,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 47,
+                    "value": 960
+                  }
                 ]
               },
-              "y": { "value": 590 },
+              "y": {
+                "value": 590
+              },
               "width": {
                 "value": 820,
                 "keyframes": [
-                  { "frame": 27, "value": 0, "easing": { "p1x": 0.25, "p1y": 0.1, "p2x": 0.25, "p2y": 1 } },
-                  { "frame": 47, "value": 820 }
+                  {
+                    "frame": 27,
+                    "value": 0,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 47,
+                    "value": 820
+                  }
                 ]
               },
-              "height": { "value": 74 }
+              "height": {
+                "value": 74
+              }
             }
           }
         ],
@@ -250,15 +454,29 @@
           "type": "image",
           "asset": "assets/bar.svg",
           "style": {
-            "x": { "value": 960 },
-            "y": { "value": 590 },
-            "width": { "value": 820 },
-            "height": { "value": 70 },
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 590
+            },
+            "width": {
+              "value": 820
+            },
+            "height": {
+              "value": 70
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 110, "value": 1 },
-                { "frame": 122, "value": 0 }
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 122,
+                  "value": 0
+                }
               ]
             }
           }
@@ -275,17 +493,37 @@
           "key": "_flag1",
           "fit": "contain",
           "style": {
-            "x": { "value": 625 },
-            "y": { "value": 420 },
-            "width": { "value": 100 },
-            "height": { "value": 56 },
+            "x": {
+              "value": 625
+            },
+            "y": {
+              "value": 420
+            },
+            "width": {
+              "value": 100
+            },
+            "height": {
+              "value": 56
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 30, "value": 0 },
-                { "frame": 40, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 30,
+                  "value": 0
+                },
+                {
+                  "frame": 40,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
@@ -306,19 +544,44 @@
           "textAlign": "left",
           "autoSqueeze": true,
           "style": {
-            "x": { "value": 950 },
-            "y": { "value": 420 },
-            "width": { "value": 480 },
-            "height": { "value": 60 },
-            "fontSize": { "value": 34 },
-            "color": { "value": "#ffffff", "unit": "color" },
+            "x": {
+              "value": 950
+            },
+            "y": {
+              "value": 420
+            },
+            "width": {
+              "value": 480
+            },
+            "height": {
+              "value": 60
+            },
+            "fontSize": {
+              "value": 34
+            },
+            "color": {
+              "value": "#ffffff",
+              "unit": "color"
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 30, "value": 0 },
-                { "frame": 40, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 30,
+                  "value": 0
+                },
+                {
+                  "frame": 40,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
@@ -338,19 +601,44 @@
           "fontWeight": 700,
           "textAlign": "center",
           "style": {
-            "x": { "value": 1290 },
-            "y": { "value": 420 },
-            "width": { "value": 140 },
-            "height": { "value": 60 },
-            "fontSize": { "value": 30 },
-            "color": { "value": "#d9a441", "unit": "color" },
+            "x": {
+              "value": 1290
+            },
+            "y": {
+              "value": 420
+            },
+            "width": {
+              "value": 140
+            },
+            "height": {
+              "value": 60
+            },
+            "fontSize": {
+              "value": 30
+            },
+            "color": {
+              "value": "#d9a441",
+              "unit": "color"
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 30, "value": 0 },
-                { "frame": 40, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 30,
+                  "value": 0
+                },
+                {
+                  "frame": 40,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
@@ -367,17 +655,37 @@
           "key": "_flag2",
           "fit": "contain",
           "style": {
-            "x": { "value": 625 },
-            "y": { "value": 505 },
-            "width": { "value": 100 },
-            "height": { "value": 56 },
+            "x": {
+              "value": 625
+            },
+            "y": {
+              "value": 505
+            },
+            "width": {
+              "value": 100
+            },
+            "height": {
+              "value": 56
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 36, "value": 0 },
-                { "frame": 46, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 36,
+                  "value": 0
+                },
+                {
+                  "frame": 46,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
@@ -398,19 +706,44 @@
           "textAlign": "left",
           "autoSqueeze": true,
           "style": {
-            "x": { "value": 950 },
-            "y": { "value": 505 },
-            "width": { "value": 480 },
-            "height": { "value": 60 },
-            "fontSize": { "value": 34 },
-            "color": { "value": "#ffffff", "unit": "color" },
+            "x": {
+              "value": 950
+            },
+            "y": {
+              "value": 505
+            },
+            "width": {
+              "value": 480
+            },
+            "height": {
+              "value": 60
+            },
+            "fontSize": {
+              "value": 34
+            },
+            "color": {
+              "value": "#ffffff",
+              "unit": "color"
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 36, "value": 0 },
-                { "frame": 46, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 36,
+                  "value": 0
+                },
+                {
+                  "frame": 46,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
@@ -430,19 +763,44 @@
           "fontWeight": 700,
           "textAlign": "center",
           "style": {
-            "x": { "value": 1290 },
-            "y": { "value": 505 },
-            "width": { "value": 140 },
-            "height": { "value": 60 },
-            "fontSize": { "value": 30 },
-            "color": { "value": "#d9a441", "unit": "color" },
+            "x": {
+              "value": 1290
+            },
+            "y": {
+              "value": 505
+            },
+            "width": {
+              "value": 140
+            },
+            "height": {
+              "value": 60
+            },
+            "fontSize": {
+              "value": 30
+            },
+            "color": {
+              "value": "#d9a441",
+              "unit": "color"
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 36, "value": 0 },
-                { "frame": 46, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 36,
+                  "value": 0
+                },
+                {
+                  "frame": 46,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
@@ -459,17 +817,37 @@
           "key": "_flag3",
           "fit": "contain",
           "style": {
-            "x": { "value": 625 },
-            "y": { "value": 590 },
-            "width": { "value": 100 },
-            "height": { "value": 56 },
+            "x": {
+              "value": 625
+            },
+            "y": {
+              "value": 590
+            },
+            "width": {
+              "value": 100
+            },
+            "height": {
+              "value": 56
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 42, "value": 0 },
-                { "frame": 52, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 42,
+                  "value": 0
+                },
+                {
+                  "frame": 52,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
@@ -490,19 +868,44 @@
           "textAlign": "left",
           "autoSqueeze": true,
           "style": {
-            "x": { "value": 950 },
-            "y": { "value": 590 },
-            "width": { "value": 480 },
-            "height": { "value": 60 },
-            "fontSize": { "value": 34 },
-            "color": { "value": "#ffffff", "unit": "color" },
+            "x": {
+              "value": 950
+            },
+            "y": {
+              "value": 590
+            },
+            "width": {
+              "value": 480
+            },
+            "height": {
+              "value": 60
+            },
+            "fontSize": {
+              "value": 34
+            },
+            "color": {
+              "value": "#ffffff",
+              "unit": "color"
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 42, "value": 0 },
-                { "frame": 52, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 42,
+                  "value": 0
+                },
+                {
+                  "frame": 52,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
@@ -522,19 +925,44 @@
           "fontWeight": 700,
           "textAlign": "center",
           "style": {
-            "x": { "value": 1290 },
-            "y": { "value": 590 },
-            "width": { "value": 140 },
-            "height": { "value": 60 },
-            "fontSize": { "value": 30 },
-            "color": { "value": "#d9a441", "unit": "color" },
+            "x": {
+              "value": 1290
+            },
+            "y": {
+              "value": 590
+            },
+            "width": {
+              "value": 140
+            },
+            "height": {
+              "value": 60
+            },
+            "fontSize": {
+              "value": 30
+            },
+            "color": {
+              "value": "#d9a441",
+              "unit": "color"
+            },
             "opacity": {
               "value": 1,
               "keyframes": [
-                { "frame": 42, "value": 0 },
-                { "frame": 52, "value": 1 },
-                { "frame": 110, "value": 1 },
-                { "frame": 120, "value": 0 }
+                {
+                  "frame": 42,
+                  "value": 0
+                },
+                {
+                  "frame": 52,
+                  "value": 1
+                },
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 120,
+                  "value": 0
+                }
               ]
             }
           }
