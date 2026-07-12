@@ -225,6 +225,8 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
         templateData[k] = v;
         applyUpdateKey(k, v);
       }
+      // text content may have changed — size-bound bars follow it
+      built.applySizeBinds();
     },
     play() {
       flags.play = true;

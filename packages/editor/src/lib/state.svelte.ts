@@ -606,6 +606,15 @@ class EditorState {
     });
   }
 
+  /** Locked layers can't be selected or dragged on the stage. */
+  setLayerLocked(id: string, locked: boolean): void {
+    this.mutate(locked ? 'lock layer' : 'unlock layer', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === id);
+      if (l) l.locked = locked || undefined;
+    });
+    if (locked && this.selectedLayerId === id) this.selectLayer(null);
+  }
+
   /**
    * One name per layer: for BOUND elements the key is the name, so renaming
    * edits the key (a deliberate data-contract change); unbound layers keep a

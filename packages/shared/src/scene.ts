@@ -17,6 +17,8 @@ export interface SceneDoc {
    * bench apply it like an on-air update(); never shipped to CasparCG.
    */
   previewData?: Record<string, string>;
+  /** Design-time ruler guides (editor only; renderers and exports ignore them). */
+  guides?: { v: number[]; h: number[]; locked?: boolean };
   composition: Composition;
 }
 
@@ -60,6 +62,8 @@ export interface Layer {
   isGuide?: boolean;
   /** Hidden layers exist in the scene but never render (Loopic isVisible=false). */
   hidden?: boolean;
+  /** Locked layers can't be selected or moved on the editor stage (editor only). */
+  locked?: boolean;
   /**
    * Independent loop region in LAYER-LOCAL frames (relative to startFrame):
    * content before `start` is the entrance, [start, end) cycles on the
@@ -184,6 +188,11 @@ export interface TextElement extends BaseElement {
   autoSize?: boolean;
   /** Single-line only: shrink text to fit width — the CasparCG name-squeeze. */
   autoSqueeze?: boolean;
+  /**
+   * Fixed-advance digits (font-variant-numeric: tabular-nums): scores,
+   * clocks and counters don't jitter horizontally as their digits change.
+   */
+  tabularNums?: boolean;
 }
 
 /** Static image from the set's shared asset pool. */
@@ -212,6 +221,24 @@ export interface RectangleElement extends BaseElement {
   type: 'rectangle';
   fill?: string;
   borderRadius?: StyleProperty;
+  /**
+   * Dynamic size binding: the rectangle resizes to the measured content of a
+   * text element (by element id) plus padding — re-evaluated on build and on
+   * every update(), so a background bar always fits the name it carries.
+   */
+  sizeBind?: SizeBind;
+}
+
+export interface SizeBind {
+  /** Element id of the source text layer. */
+  sourceId: string;
+  /** Which dimensions follow the text. Default 'x'. */
+  axis?: 'x' | 'y' | 'both';
+  /** Padding added around the measured text, per side, in px. Default 0. */
+  padX?: number;
+  padY?: number;
+  /** Which edge stays put when the width changes. Default 'center'. */
+  grow?: 'center' | 'left' | 'right';
 }
 
 export interface EllipseElement extends BaseElement {

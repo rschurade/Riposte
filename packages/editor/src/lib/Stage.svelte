@@ -192,6 +192,7 @@
     if (!comp) return null;
     for (let i = comp.layers.length - 1; i >= 0; i--) {
       const layer = comp.layers[i]!;
+      if (layer.locked) continue;
       if (!visibleAtFrame(layer)) continue;
       const r = layerRect(layer);
       if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) return layer;
@@ -243,6 +244,62 @@
     localStorage.setItem('riposte.grid', JSON.stringify({ on: gridOn, size: gridSize, snap: snapOn }));
   });
   const gridStep = $derived(Math.max(2, Number(gridSize) || 50) * scale);
+
+  // ---- ruler guides (design-time only, stored in the scene doc) ----------------
+  const guides = $derived(ed.scene?.guides ?? null);
+  let guideDrag = $state<{ axis: 'v' | 'h'; index: number; pos: number } | null>(null);
+
+  function guidePos(axis: 'v' | 'h', index: number, authored: number): number {
+    return guideDrag?.axis === axis && guideDrag.index === index ? guideDrag.pos : authored;
+  }
+
+  function addGuide(axis: 'v' | 'h'): void {
+    if (!comp) return;
+    const pos = Math.round(axis === 'v' ? comp.width / 2 : comp.height / 2);
+    ed.mutate('add guide', (scene) => {
+      const g = (scene.guides ??= { v: [], h: [] });
+      (axis === 'v' ? g.v : g.h).push(pos);
+    });
+  }
+
+  function guidePointerDown(ev: PointerEvent, axis: 'v' | 'h', index: number): void {
+    if (!guides || guides.locked) return;
+    ev.stopPropagation();
+    guideDrag = { axis, index, pos: (axis === 'v' ? guides.v : guides.h)[index] ?? 0 };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  }
+
+  function guidePointerMove(ev: PointerEvent): void {
+    if (!guideDrag) return;
+    const p = toComp(ev);
+    guideDrag.pos = Math.round(guideDrag.axis === 'v' ? p.x : p.y);
+  }
+
+  function guidePointerUp(): void {
+    if (!guideDrag) return;
+    const { axis, index, pos } = guideDrag;
+    guideDrag = null;
+    ed.mutate('move guide', (scene) => {
+      const arr = axis === 'v' ? scene.guides?.v : scene.guides?.h;
+      if (arr && index < arr.length) arr[index] = pos;
+    });
+  }
+
+  function removeGuide(axis: 'v' | 'h', index: number): void {
+    ed.mutate('remove guide', (scene) => {
+      const g = scene.guides;
+      if (!g) return;
+      (axis === 'v' ? g.v : g.h).splice(index, 1);
+      if (g.v.length === 0 && g.h.length === 0) delete scene.guides;
+    });
+  }
+
+  function toggleGuideLock(): void {
+    ed.mutate('toggle guide lock', (scene) => {
+      const g = scene.guides;
+      if (g) g.locked = g.locked ? undefined : true;
+    });
+  }
 
   // ---- pointer interaction ---------------------------------------------------
   let drag: {
@@ -337,6 +394,24 @@
       if (dx !== 0) dx = Math.round((drag.startElX + dx) / g) * g - drag.startElX;
       if (dy !== 0) dy = Math.round((drag.startElY + dy) / g) * g - drag.startElY;
     }
+    // Guides snap the anchor too (after grid — a guide wins nearby); Alt bypasses.
+    if (!ev.altKey && guides) {
+      const t = 6 / scale;
+      const nx = drag.startElX + dx;
+      const ny = drag.startElY + dy;
+      for (const gx of guides.v) {
+        if (Math.abs(nx - gx) <= t) {
+          dx = gx - drag.startElX;
+          break;
+        }
+      }
+      for (const gy of guides.h) {
+        if (Math.abs(ny - gy) <= t) {
+          dy = gy - drag.startElY;
+          break;
+        }
+      }
+    }
     // live feedback: nudge the built DOM node directly; doc mutated on drop
     const handle = built?.byId.get(layer.element.id);
     if (handle) {
@@ -382,6 +457,30 @@
       {#if gridOn && gridStep >= 4}
         <div class="grid" style="background-size:{gridStep}px {gridStep}px"></div>
       {/if}
+      {#each guides?.v ?? [] as gx, i (`v${i}`)}
+        <div
+          class="guide v"
+          class:lockedguide={guides?.locked}
+          style="left:{guidePos('v', i, gx) * scale}px"
+          title="guide x={guidePos('v', i, gx)}{guides?.locked ? ' (locked)' : ' — drag to move, double-click to remove'}"
+          onpointerdown={(e) => guidePointerDown(e, 'v', i)}
+          onpointermove={guidePointerMove}
+          onpointerup={guidePointerUp}
+          ondblclick={() => !guides?.locked && removeGuide('v', i)}
+        ></div>
+      {/each}
+      {#each guides?.h ?? [] as gy, i (`h${i}`)}
+        <div
+          class="guide h"
+          class:lockedguide={guides?.locked}
+          style="top:{guidePos('h', i, gy) * scale}px"
+          title="guide y={guidePos('h', i, gy)}{guides?.locked ? ' (locked)' : ' — drag to move, double-click to remove'}"
+          onpointerdown={(e) => guidePointerDown(e, 'h', i)}
+          onpointermove={guidePointerMove}
+          onpointerup={guidePointerUp}
+          ondblclick={() => !guides?.locked && removeGuide('h', i)}
+        ></div>
+      {/each}
       {#if selectionRect}
         <div
           class="selection"
@@ -396,6 +495,13 @@
       <label title="snap dragged elements to the grid (hold Alt to bypass)">
         <input type="checkbox" bind:checked={snapOn} /> snap
       </label>
+      <button class="gbtn" title="Add a vertical guide (dragged elements snap to it)" onclick={() => addGuide('v')}>+V</button>
+      <button class="gbtn" title="Add a horizontal guide" onclick={() => addGuide('h')}>+H</button>
+      {#if guides}
+        <label title="Locked guides can't be moved or removed">
+          <input type="checkbox" checked={guides.locked ?? false} onchange={toggleGuideLock} /> 🔒
+        </label>
+      {/if}
     </div>
   {:else}
     <p class="empty">Select a set and a scene</p>
@@ -445,6 +551,40 @@
     font-size: 11px;
     padding: 1px 4px;
   }
+  .guide {
+    position: absolute;
+    z-index: 5;
+  }
+  .guide.v {
+    top: 0;
+    bottom: 0;
+    width: 7px;
+    margin-left: -3px;
+    cursor: ew-resize;
+    background: linear-gradient(to right, transparent 3px, rgba(53, 182, 232, 0.85) 3px, rgba(53, 182, 232, 0.85) 4px, transparent 4px);
+  }
+  .guide.h {
+    left: 0;
+    right: 0;
+    height: 7px;
+    margin-top: -3px;
+    cursor: ns-resize;
+    background: linear-gradient(to bottom, transparent 3px, rgba(53, 182, 232, 0.85) 3px, rgba(53, 182, 232, 0.85) 4px, transparent 4px);
+  }
+  .guide.lockedguide {
+    cursor: default;
+    opacity: 0.55;
+  }
+  .gbtn {
+    background: none;
+    border: 1px solid #3a3e48;
+    border-radius: 3px;
+    color: #aab;
+    font-size: 10px;
+    padding: 1px 5px;
+    cursor: pointer;
+  }
+  .gbtn:hover { color: #e6e6e6; border-color: #d9a441; }
   .selection {
     position: absolute;
     border: 1.5px solid #d9a441;

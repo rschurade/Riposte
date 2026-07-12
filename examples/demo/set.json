@@ -1,9 +1,10 @@
 {
   "formatVersion": 1,
   "name": "demo",
-  "scenes": ["scenes/Schedule.json"],
+  "scenes": ["scenes/Schedule.json", "scenes/BoundBar.json"],
   "export": {
     "mode": "external",
     "preloadAssets": true
   }
 }
+

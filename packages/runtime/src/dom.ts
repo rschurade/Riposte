@@ -13,6 +13,7 @@ import type {
   Composition,
   ElementStyle,
   Layer,
+  RectangleElement,
   SceneDoc,
   SceneElement,
   StyleProperty,
@@ -117,6 +118,11 @@ export interface BuiltScene {
   readonly timeState: LoopTimeState;
   /** True when any top-level layer has a loop region (hold clock needed). */
   readonly hasLoops: boolean;
+  /**
+   * Re-measure size-bound rectangles against their source text. Run once
+   * after build/fonts and after every update() that may change text.
+   */
+  applySizeBinds(): void;
   setFrame(frame: number): void;
   show(): void;
   hide(): void;
@@ -126,6 +132,16 @@ export interface BuiltScene {
 
 interface DynamicBinding {
   apply(frame: number): void;
+}
+
+/** Build-time registry threaded through buildLayer/buildElement. */
+interface BuildRegistry {
+  /** Text content spans by element id — measurement targets for size binds. */
+  textContent: Map<string, HTMLElement>;
+  /** Rectangles with a sizeBind, resolved after all layers are built. */
+  sizeBinds: { el: RectangleElement; node: HTMLElement }[];
+  /** Nested compositions' own applySizeBinds, re-run with the parent's. */
+  nestedSizeBinds: (() => void)[];
 }
 
 const SQUEEZE_ORIGIN: Record<string, string> = { left: 'left center', center: 'center center', right: 'right center' };
@@ -153,11 +169,51 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
   const dynamics: DynamicBinding[] = [];
   const boundVisibility: BoundVisibility[] = [];
   const timeState: LoopTimeState = { hold: 0, exiting: false, exitFrom: 0 };
+  const registry: BuildRegistry = { textContent: new Map(), sizeBinds: [], nestedSizeBinds: [] };
 
   for (const layer of comp.layers) {
     if (layer.isGuide && !opts.showGuides) continue;
-    const node = buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, boundVisibility, timeState, opts);
+    const node = buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, boundVisibility, timeState, opts, registry);
     layers.push({ doc: layer, node });
+  }
+
+  // Dynamic size binding: rectangle follows its source text's measured
+  // content box (offsetWidth/Height — layout px, transform-free, i.e.
+  // composition space) plus padding. grow=left/right pins that edge by
+  // countering the symmetric width change with a margin shift, leaving the
+  // animated transform untouched.
+  const sizeAppliers: (() => void)[] = [];
+  for (const { el, node } of registry.sizeBinds) {
+    const bind = el.sizeBind!;
+    const src = registry.textContent.get(bind.sourceId);
+    if (!src) {
+      console.warn(`riposte: sizeBind source "${bind.sourceId}" is not a text element — ignored`);
+      continue;
+    }
+    const axis = bind.axis ?? 'x';
+    const authoredW = Number(el.style.width?.value) || 0;
+    sizeAppliers.push(() => {
+      if (axis !== 'y') {
+        const w = src.offsetWidth + 2 * (bind.padX ?? 0);
+        node.style.width = `${w}px`;
+        const grow = bind.grow ?? 'center';
+        if (grow !== 'center' && authoredW > 0) {
+          const off = (w - authoredW) / 2;
+          node.style.marginLeft = `${grow === 'left' ? off : -off}px`;
+        }
+      }
+      if (axis !== 'x') {
+        node.style.height = `${src.offsetHeight + 2 * (bind.padY ?? 0)}px`;
+      }
+    });
+  }
+  const applySizeBinds = () => {
+    for (const f of sizeAppliers) f();
+    for (const f of registry.nestedSizeBinds) f();
+  };
+  if (sizeAppliers.length > 0) {
+    requestAnimationFrame(applySizeBinds);
+    document.fonts?.ready.then(applySizeBinds).catch(() => {});
   }
 
   let visible = false;
@@ -169,6 +225,7 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
     boundVisibility,
     timeState,
     hasLoops: comp.layers.some((l) => l.loop),
+    applySizeBinds,
     setFrame(frame) {
       for (const d of dynamics) d.apply(frame);
     },
@@ -198,6 +255,7 @@ function buildLayer(
   boundVisibility: BoundVisibility[],
   timeState: LoopTimeState,
   opts: BuildOptions,
+  registry: BuildRegistry,
 ): HTMLElement {
   const dynamicsFrom = dynamics.length;
   const layerEl = document.createElement('div');
@@ -234,7 +292,7 @@ function buildLayer(
     parent = buildMask(mask, parent, dynamics);
   }
 
-  const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics, opts, byKey, boundVisibility);
+  const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics, opts, byKey, boundVisibility, registry);
   if (handle) {
     byId.set(layer.element.id, handle);
     if (layer.element.key) byKey.set(layer.element.key, handle);
@@ -324,6 +382,7 @@ function buildElement(
   opts: BuildOptions,
   parentByKey: Map<string, ElementHandle>,
   parentBound: BoundVisibility[],
+  registry: BuildRegistry,
 ): ElementHandle | null {
   let node: HTMLElement;
   let contentEl: HTMLElement | null = null;
@@ -336,6 +395,7 @@ function buildElement(
       contentEl = document.createElement('span');
       contentEl.innerHTML = el.content;
       node.appendChild(contentEl);
+      registry.textContent.set(el.id, contentEl);
       Object.assign(node.style, {
         display: 'flex',
         // Loopic text box model: border-box, whitespace preserved, and an
@@ -346,6 +406,8 @@ function buildElement(
         justifyContent: el.textAlign === 'left' ? 'flex-start' : el.textAlign === 'right' ? 'flex-end' : 'center',
         whiteSpace: el.multiline ? 'pre-wrap' : 'pre',
         lineHeight: '1.2',
+        // fixed-advance digits: scores/clocks don't jitter as digits change
+        fontVariantNumeric: el.tabularNums ? 'tabular-nums' : '',
         textAlign: el.textAlign ?? 'center',
         fontFamily: el.fontFamily ?? 'sans-serif',
         fontWeight: el.fontWeight != null ? String(el.fontWeight) : '',
@@ -418,6 +480,7 @@ function buildElement(
     case 'rectangle': {
       node = document.createElement('div');
       node.style.background = el.fill ?? 'transparent';
+      if (el.sizeBind) registry.sizeBinds.push({ el, node });
       if (el.borderRadius) {
         const br = el.borderRadius;
         if (br.keyframes?.length) {
@@ -459,6 +522,7 @@ function buildElement(
         break;
       }
       const sub = buildScene(doc, node, { ...opts, nestingDepth: depth + 1 });
+      registry.nestedSizeBinds.push(() => sub.applySizeBinds());
       // Inherit, don't force 'visible': an explicit 'visible' would pierce a
       // visibility binding hiding the composition element itself (prio lights).
       sub.rootEl.style.visibility = '';
@@ -587,6 +651,8 @@ const SHADOW_PROPS = ['shadowX', 'shadowY', 'shadowBlur', 'shadowColor'] as cons
 function bindStyle(el: SceneElement, node: HTMLElement, dynamics: DynamicBinding[]): void {
   const s = el.style;
   const autoSized = el.type === 'text' && el.autoSize;
+  // size-bound axes belong to the bind, not the keyframed geometry
+  const bindAxis = el.type === 'rectangle' && el.sizeBind ? (el.sizeBind.axis ?? 'x') : null;
 
   const applyGeometry = (frame: number) => {
     const x = numberAtFrame(s.x, frame, 0);
@@ -595,8 +661,8 @@ function bindStyle(el: SceneElement, node: HTMLElement, dynamics: DynamicBinding
     const sy = numberAtFrame(s.scaleY, frame, 1);
     const rot = numberAtFrame(s.rotation, frame, 0);
     if (!autoSized) {
-      if (s.width) node.style.width = `${numberAtFrame(s.width, frame, 0)}px`;
-      if (s.height) node.style.height = `${numberAtFrame(s.height, frame, 0)}px`;
+      if (s.width && bindAxis !== 'x' && bindAxis !== 'both') node.style.width = `${numberAtFrame(s.width, frame, 0)}px`;
+      if (s.height && bindAxis !== 'y' && bindAxis !== 'both') node.style.height = `${numberAtFrame(s.height, frame, 0)}px`;
     }
     // translate to center point, center self, then rotate/scale about center
     node.style.transform =

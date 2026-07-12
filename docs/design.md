@@ -79,6 +79,35 @@ templates; ControlCenter drives them), ranked:
    For handing a set to another operator; possibly importable by a future
    ControlCenter mapping editor.
 
+## Roadmap additions from the DJ HTML Creator survey (2026-07-12)
+
+Surveyed djhtmlcreator.com (another Loopic alternative; €300/y, Windows
+desktop, single-file exports — their delivery model is what we left behind,
+but several feature ideas fit us). Adopted, in order:
+
+- **Small-wins batch (IN PROGRESS 2026-07-12):** tabular numerals toggle on
+  text (fixed-advance digits — score/clock fields stop jittering on update);
+  dynamic size binding (rectangle width/height follows a text layer's
+  measured content + padding on every update — the "bar always fits the
+  name" problem Loopic never solved); ruler guides (lockable, design-time
+  only) + layer lock in the editor.
+- **WebP re-encoding on export** — recompress PNG sequences to WebP (~6-8×
+  smaller; CEF-native): ~200 MB set assets → ~30 MB, faster first ADD.
+  Needs an encoder dep (sharp/cwebp). Do before the next big event.
+- **Alpha matte** — any layer's alpha (soft edges included) masks another
+  layer; editor-visible, CSS mask-image based. Build when a design pulls
+  it in.
+- **Two-part text + dynamic anchoring** (pin right edge / follow another
+  text's end, runtime-corrected from measured width) — the most
+  sophisticated thing they have; only when a concrete graphic demands it.
+- **Transition/animation presets** (generate keyframes, pure editor sugar);
+  **layered PSD import** (ag-psd) — designer-workflow shortcut.
+
+Explicitly rejected: video loaders (clips stay on the Caspar media layer —
+locked decision), Lottie/OGraf/SPX/vMix export targets (CasparCG-only;
+revisit OGraf only if Riposte goes public), crawl/roll ticker layers (no
+fencing use case yet), 3D rotate/perspective (Caspar MIXER covers it).
+
 ## Why
 
 Loopic (loopic.io) is a capable web-based editor for CasparCG HTML templates,

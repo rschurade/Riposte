@@ -364,6 +364,19 @@
                 >✕</button>
                 <button
                   class="eye"
+                  class:off={layer.locked}
+                  title={layer.locked ? 'Locked — click to unlock' : 'Unlocked — click to lock (stage-proof)'}
+                  onpointerdown={(e) => e.stopPropagation()}
+                  onclick={() => ed.setLayerLocked(layer.id, !layer.locked)}
+                >
+                  {#if layer.locked}
+                    <svg viewBox="0 0 16 16" width="12" height="12"><rect x="3.5" y="7" width="9" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+                  {:else}
+                    <svg viewBox="0 0 16 16" width="12" height="12"><rect x="3.5" y="7" width="9" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>
+                  {/if}
+                </button>
+                <button
+                  class="eye"
                   class:off={layer.hidden}
                   title={layer.hidden ? 'Hidden — click to show' : 'Visible — click to hide'}
                   onpointerdown={(e) => e.stopPropagation()}

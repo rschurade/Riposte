@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { contentEnd, type StyleProperty, type VisibilityBinding } from '@riposte/shared';
+  import { contentEnd, type SizeBind, type StyleProperty, type VisibilityBinding } from '@riposte/shared';
   import { ed, layerLabel, propNumber } from './state.svelte.ts';
 
   const layer = $derived(ed.selectedLayer);
   const el = $derived(layer?.element ?? null);
+  const textLayers = $derived(ed.scene?.composition.layers.filter((l) => l.element.type === 'text') ?? []);
 
   function isAnimated(p: StyleProperty | undefined): boolean {
     return (p?.keyframes?.length ?? 0) > 0;
@@ -93,6 +94,17 @@
     });
   }
 
+  /** Size binding on rectangles; picking "(none)" as the source removes it. */
+  function setSizeBind(patch: Partial<SizeBind>): void {
+    if (!layer || layer.element.type !== 'rectangle') return;
+    if (patch.sourceId === '') {
+      setElementField('sizeBind', undefined);
+      return;
+    }
+    const cur = layer.element.sizeBind;
+    setElementField('sizeBind', { sourceId: cur?.sourceId ?? '', ...cur, ...patch });
+  }
+
   /**
    * Loop region (layer-local frames); clearing start or end removes it.
    * exitFade: outro fade-in-place length in frames; empty = default (15).
@@ -121,7 +133,7 @@
     });
   }
 
-  function setLayerField(field: 'hidden' | 'isGuide', value: boolean): void {
+  function setLayerField(field: 'hidden' | 'isGuide' | 'locked', value: boolean): void {
     if (!layer) return;
     const id = layer.id;
     ed.mutate(`set ${field}`, (scene) => {
@@ -404,6 +416,13 @@
           checked={el.multiline ?? false}
           onchange={(e) => setElementField('multiline', (e.currentTarget as HTMLInputElement).checked || undefined)}
         />
+        <label for="in-tabnums" title="Fixed-advance digits — scores/clocks don't jitter as digits change">Tab. nums</label>
+        <input
+          id="in-tabnums"
+          type="checkbox"
+          checked={el.tabularNums ?? false}
+          onchange={(e) => setElementField('tabularNums', (e.currentTarget as HTMLInputElement).checked || undefined)}
+        />
         <label for="in-transform">Case</label>
         <select
           id="in-transform"
@@ -492,6 +511,45 @@
       <p class="asset">{el.asset}</p>
     {/if}
 
+    {#if el.type === 'rectangle'}
+      <h3>Size binding <span class="dim">bar follows a text layer</span></h3>
+      <div class="grid">
+        <label for="sb-src">Text layer</label>
+        <select
+          id="sb-src"
+          value={el.sizeBind?.sourceId ?? ''}
+          onchange={(e) => setSizeBind({ sourceId: (e.currentTarget as HTMLSelectElement).value })}
+        >
+          <option value="">(none)</option>
+          {#each textLayers as t (t.id)}
+            <option value={t.element.id}>{layerLabel(t)}</option>
+          {/each}
+        </select>
+        {#if el.sizeBind}
+          <label for="sb-axis">Axis</label>
+          <select id="sb-axis" value={el.sizeBind.axis ?? 'x'}
+            onchange={(e) => setSizeBind({ axis: (e.currentTarget as HTMLSelectElement).value as 'x' | 'y' | 'both' })}>
+            <option value="x">width</option>
+            <option value="y">height</option>
+            <option value="both">both</option>
+          </select>
+          <label for="sb-padx">Pad X</label>
+          <input id="sb-padx" type="number" step="1" value={el.sizeBind.padX ?? 0}
+            onchange={(e) => setSizeBind({ padX: Number((e.currentTarget as HTMLInputElement).value) || 0 })} />
+          <label for="sb-pady">Pad Y</label>
+          <input id="sb-pady" type="number" step="1" value={el.sizeBind.padY ?? 0}
+            onchange={(e) => setSizeBind({ padY: Number((e.currentTarget as HTMLInputElement).value) || 0 })} />
+          <label for="sb-grow" title="Which edge stays put when the width changes">Grow</label>
+          <select id="sb-grow" value={el.sizeBind.grow ?? 'center'}
+            onchange={(e) => setSizeBind({ grow: (e.currentTarget as HTMLSelectElement).value as 'center' | 'left' | 'right' })}>
+            <option value="center">from center</option>
+            <option value="left">keep left edge</option>
+            <option value="right">keep right edge</option>
+          </select>
+        {/if}
+      </div>
+    {/if}
+
     {#if ed.selectedKf}
       {@const sel = ed.selectedKf}
       {@const kfStyle = layer ? (sel.targetKey === 'el' ? layer.element.style : layer.masks?.[Number(sel.targetKey.slice(4))]?.style) : null}
@@ -565,6 +623,9 @@
       <label for="in-guide">Guide</label>
       <input id="in-guide" type="checkbox" checked={layer.isGuide ?? false}
         onchange={(e) => setLayerField('isGuide', (e.currentTarget as HTMLInputElement).checked)} />
+      <label for="in-locked" title="Locked layers can't be selected or moved on the stage">Locked</label>
+      <input id="in-locked" type="checkbox" checked={layer.locked ?? false}
+        onchange={(e) => setLayerField('locked', (e.currentTarget as HTMLInputElement).checked)} />
     </div>
     <p class="hint">
       Animate: move the playhead, click ◆ to set a keyframe (click again to

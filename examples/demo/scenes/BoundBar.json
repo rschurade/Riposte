@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "name": "BoundBar",
+  "previewData": { "_name": "SMITH, John", "_score": "12:45" },
+  "guides": { "v": [400], "h": [540] },
+  "composition": { "width": 1920, "height": 1080, "fps": 50, "duration": 50, "markers": [{ "frame": 40, "type": "pause" }], "layers": [
+    { "id": "lbar", "startFrame": 0, "duration": 50, "element": { "id": "bar", "type": "rectangle", "fill": "#2c4a75",
+      "sizeBind": { "sourceId": "nameText", "padX": 30, "grow": "left" },
+      "style": { "x": { "value": 960 }, "y": { "value": 640 }, "width": { "value": 400 }, "height": { "value": 96 } } } },
+    { "id": "lname", "startFrame": 0, "duration": 50, "element": { "id": "nameText", "type": "text", "key": "_name",
+      "content": "SMITH, John", "textAlign": "left", "fontFamily": "Arial",
+      "style": { "x": { "value": 960 }, "y": { "value": 640 }, "width": { "value": 400 }, "height": { "value": 96 }, "fontSize": { "value": 56 }, "color": { "value": "#ffffff", "unit": "color" } } } },
+    { "id": "lscore", "startFrame": 0, "duration": 50, "element": { "id": "score", "type": "text", "key": "_score",
+      "content": "12:45", "tabularNums": true, "fontFamily": "Arial",
+      "style": { "x": { "value": 960 }, "y": { "value": 400 }, "width": { "value": 500 }, "height": { "value": 120 }, "fontSize": { "value": 90 }, "color": { "value": "#ffffff", "unit": "color" } } } }
+  ] }
+}
+
