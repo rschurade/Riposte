@@ -9,6 +9,7 @@ dist/
 /projects/*/*
 !/projects/*/set.json
 !/projects/*/scenes/
+/examples/*/export/
 *.local
 .DS_Store
 Thumbs.db
