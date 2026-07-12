@@ -157,6 +157,17 @@ function onMedia(ev) {
   }
 }
 
+// ---- media path rewriting --------------------------------------------------------
+/** ControlCenter sends absolute disk paths for flags/logos (real Caspar's CEF
+ * loads them from disk). A browser can't — route them through the server. */
+function rewriteMediaPaths(data) {
+  if (!data) return data;
+  return data.replace(
+    /(?:file:\/{2,3})?((?:[A-Za-z]:|\\\\)[^"'<>\n]*?\.(?:png|jpe?g|webp|gif|svg|bmp))/gi,
+    (_, p) => '/api/mediafile?p=' + encodeURIComponent(p.replace(/\\\\/g, '\\')),
+  );
+}
+
 // ---- SSE ------------------------------------------------------------------------
 const dot = document.getElementById('connDot');
 const es = new EventSource('/api/events');
@@ -168,6 +179,7 @@ es.addEventListener('amcp', (msg) => {
     logLine(`${ev.state}: ${ev.peer}`, 'conn');
   } else {
     logLine(ev.raw, 'in');
+    if (ev.data) ev.data = rewriteMediaPaths(ev.data);
     if (ev.kind === 'cg') onCg(ev);
     else if (ev.kind === 'media') onMedia(ev);
   }

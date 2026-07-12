@@ -86,6 +86,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/export' && req.method === 'POST') return apiExport(req, res);
   if (path === '/api/deploy' && req.method === 'POST') return apiDeploy(req, res);
   if (path === '/api/events') return apiEvents(req, res);
+  if (path === '/api/mediafile') return apiMediaFile(url, res);
   if (path === '/api/open' && req.method === 'POST') return apiOpen(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
@@ -612,6 +613,20 @@ async function apiDeleteAssets(req: IncomingMessage, res: ServerResponse): Promi
     }
   }
   return json(res, { deleted });
+}
+
+/**
+ * Serve a local media file by absolute path — the playout page rewrites
+ * ControlCenter's absolute CasparCG media paths (flags, logos) to this
+ * endpoint, since a browser page cannot load disk paths the way Caspar's
+ * CEF can. Image/font extensions only.
+ */
+const MEDIA_EXT_RE = /\.(png|jpe?g|webp|gif|svg|bmp|ttf|otf|woff2?)$/i;
+async function apiMediaFile(url: URL, res: ServerResponse): Promise<void> {
+  const p = url.searchParams.get('p') ?? '';
+  const abs = /^([A-Za-z]:[\\/]|\\\\)/.test(p);
+  if (!abs || p.includes('..') || !MEDIA_EXT_RE.test(p)) throw Object.assign(new Error('bad media path'), { status: 400 });
+  return file(res, p);
 }
 
 function safeJoin(root: string, rel: string): string {
