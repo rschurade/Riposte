@@ -6,7 +6,7 @@
  * construction). `version` bumps trigger a Stage rebuild.
  */
 
-import type { BezierEasing, ElementStyle, Layer, SceneDoc, StyleProperty } from '@riposte/shared';
+import { trimToContent, type BezierEasing, type ElementStyle, type Layer, type SceneDoc, type StyleProperty } from '@riposte/shared';
 
 export interface SetRef {
   root: string;
@@ -868,6 +868,15 @@ class EditorState {
     this.mutate(`set ${field}`, (scene) => {
       scene.composition[field] = Math.round(v);
     });
+  }
+
+  /** Shrink the duration to the content (markers/keyframes/sequences/loops). */
+  trimDuration(): void {
+    this.mutate('trim duration', (scene) => {
+      trimToContent(scene.composition);
+    });
+    const last = (this.scene?.composition.duration ?? 1) - 1;
+    if (this.frame > last) this.frame = last;
   }
 
   /** Composition action: JS run once at template load (middleware, globals). */

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { StyleProperty, VisibilityBinding } from '@riposte/shared';
+  import { contentEnd, type StyleProperty, type VisibilityBinding } from '@riposte/shared';
   import { ed, layerLabel, propNumber } from './state.svelte.ts';
 
   const layer = $derived(ed.selectedLayer);
@@ -589,6 +589,13 @@
       <input id="sc-dur" type="number" value={comp.duration}
         onchange={(e) => ed.setCompositionNumber('duration', Number((e.currentTarget as HTMLInputElement).value))} />
     </div>
+    {#if contentEnd(comp) + 2 < comp.duration}
+      <button
+        class="minor"
+        title="Shrink the duration to the last used frame (markers, keyframes, sequences) — kills the dead tail of Loopic workspace durations"
+        onclick={() => ed.trimDuration()}
+      >Trim to content ({contentEnd(comp) + 2})</button>
+    {/if}
 
     <h3>Markers</h3>
     {#each comp.markers as m, i (i)}
