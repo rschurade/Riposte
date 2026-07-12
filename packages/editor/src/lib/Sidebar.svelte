@@ -284,7 +284,7 @@
                     {@render renameInput()}
                   {:else}
                     <span class="name" role="button" tabindex="-1" ondblclick={() => startRename('asset', a.file)}>
-                      {a.file.replace(/^assets\//, '')}
+                      {a.file.split('/').pop()}
                     </span>
                   {/if}
                 </li>
