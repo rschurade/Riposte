@@ -14,10 +14,10 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -289,6 +289,65 @@ server.tool(
         { type: 'image' as const, data: png.toString('base64'), mimeType: 'image/png' },
       ],
     };
+  },
+);
+
+const ASSET_EXT_RE = /\.(png|jpe?g|webp|svg|gif|ttf|otf|woff2?)$/i;
+const IMPORT_CAP = 500;
+
+server.tool(
+  'import_assets',
+  'Import image/font files from a local folder (USB stick, downloads, …) into a set\'s shared asset pool. ' +
+    'Scans recursively; same policy as the editor upload: identical bytes are skipped, name clashes get a ' +
+    'content-hash suffix, fonts are registered in the set automatically.',
+  {
+    set: z.string(),
+    sourceDir: z.string().describe('Absolute folder to scan, e.g. "E:\\\\" or "E:\\\\logos"'),
+    filter: z.string().optional().describe('Only files whose name contains this text (case-insensitive)'),
+  },
+  async ({ set, sourceDir, filter }) => {
+    const info = await findSet(set);
+    if (!existsSync(sourceDir)) throw new Error(`folder not found: ${sourceDir}`);
+
+    const entries = await readdir(sourceDir, { recursive: true, withFileTypes: true });
+    const needle = filter?.toLowerCase();
+    const files = entries
+      .filter((e) => e.isFile() && ASSET_EXT_RE.test(e.name))
+      .filter((e) => !needle || e.name.toLowerCase().includes(needle))
+      .map((e) => join(e.parentPath, e.name));
+    const capped = files.length > IMPORT_CAP;
+    const batch = files.slice(0, IMPORT_CAP);
+
+    const added: string[] = [];
+    const skippedIdentical: string[] = [];
+    const renamed: string[] = [];
+    const fonts: string[] = [];
+    const failed: string[] = [];
+    const q = `root=${encodeURIComponent(info.root)}&name=${encodeURIComponent(info.name)}`;
+    for (const path of batch) {
+      try {
+        const bytes = await readFile(path);
+        const r = await api<{ file: string; status: string; family?: string }>(
+          `/api/assets/upload?${q}&filename=${encodeURIComponent(basename(path))}`,
+          { method: 'POST', body: new Uint8Array(bytes) },
+        );
+        if (r.status === 'written') added.push(r.file);
+        else if (r.status.startsWith('identical')) skippedIdentical.push(basename(path));
+        else renamed.push(`${basename(path)} → ${r.file}`);
+        if (r.family) fonts.push(r.family);
+      } catch (err) {
+        failed.push(`${basename(path)}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    return text({
+      scanned: files.length,
+      ...(capped ? { note: `more than ${IMPORT_CAP} matches — imported the first ${IMPORT_CAP}, run again with a filter` } : {}),
+      added,
+      skippedIdentical: skippedIdentical.length,
+      renamed,
+      fontsRegistered: fonts,
+      failed,
+    });
   },
 );
 
