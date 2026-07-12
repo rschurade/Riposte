@@ -170,9 +170,42 @@
     applied: { dx: number; dy: number };
   } | null = null;
 
-  function toComp(ev: PointerEvent): { x: number; y: number } {
+  function toComp(ev: { clientX: number; clientY: number }): { x: number; y: number } {
     const r = wrapEl.getBoundingClientRect();
     return { x: (ev.clientX - r.left - offset.x) / scale, y: (ev.clientY - r.top - offset.y) / scale };
+  }
+
+  // ---- asset drop → new layer at the drop position ---------------------------
+  function onDragOver(ev: DragEvent): void {
+    const types = ev.dataTransfer?.types ?? [];
+    if (types.includes('text/riposte-asset') || types.includes('text/riposte-sequence')) {
+      ev.preventDefault();
+      ev.dataTransfer!.dropEffect = 'copy';
+    }
+  }
+
+  function onDrop(ev: DragEvent): void {
+    if (!comp) return;
+    const p = toComp(ev);
+    const at = {
+      x: Math.min(Math.max(p.x, 0), comp.width),
+      y: Math.min(Math.max(p.y, 0), comp.height),
+    };
+    if (snapOn) {
+      const g = Math.max(2, Number(gridSize) || 50);
+      at.x = Math.round(at.x / g) * g;
+      at.y = Math.round(at.y / g) * g;
+    }
+    const seq = ev.dataTransfer?.getData('text/riposte-sequence');
+    if (seq) {
+      ev.preventDefault();
+      ed.addSequenceLayer(JSON.parse(seq) as string[], at);
+      return;
+    }
+    const file = ev.dataTransfer?.getData('text/riposte-asset');
+    if (!file) return;
+    ev.preventDefault();
+    ed.addImageLayer(file, at);
   }
 
   function onPointerDown(ev: PointerEvent): void {
@@ -250,6 +283,8 @@
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
+  ondragover={onDragOver}
+  ondrop={onDrop}
 >
   {#if comp}
     <div

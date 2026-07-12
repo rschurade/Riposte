@@ -334,7 +334,7 @@ class EditorState {
 
   /** Create an image-sequence layer from a dragged sequence group: the
    * layer's span is exactly one timeline frame per image. */
-  addSequenceLayer(files: string[]): void {
+  addSequenceLayer(files: string[], at?: { x: number; y: number }): void {
     const scene = this.scene;
     if (!scene || files.length === 0) return;
     const comp = scene.composition;
@@ -353,8 +353,8 @@ class EditorState {
             type: 'imageSequence',
             frames: [...files],
             style: {
-              x: { value: Math.round(comp.width / 2) },
-              y: { value: Math.round(comp.height / 2) },
+              x: { value: Math.round(at?.x ?? comp.width / 2) },
+              y: { value: Math.round(at?.y ?? comp.height / 2) },
               width: { value: w },
               height: { value: h },
             },
@@ -576,7 +576,7 @@ class EditorState {
   }
 
   /** Create an image layer from an asset (drag & drop) — topmost, full span. */
-  addImageLayer(assetFile: string): void {
+  addImageLayer(assetFile: string, at?: { x: number; y: number }): void {
     const scene = this.scene;
     if (!scene) return;
     const comp = scene.composition;
@@ -595,8 +595,8 @@ class EditorState {
             type: 'image',
             asset: assetFile,
             style: {
-              x: { value: Math.round(comp.width / 2) },
-              y: { value: Math.round(comp.height / 2) },
+              x: { value: Math.round(at?.x ?? comp.width / 2) },
+              y: { value: Math.round(at?.y ?? comp.height / 2) },
               width: { value: w },
               height: { value: h },
             },
