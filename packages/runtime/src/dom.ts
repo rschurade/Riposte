@@ -273,9 +273,14 @@ function buildElement(
       node.appendChild(contentEl);
       Object.assign(node.style, {
         display: 'flex',
+        // Loopic text box model: border-box, whitespace preserved, and an
+        // ALWAYS-set line-height (its default 1.2) — leaving CSS 'normal'
+        // makes the line box font-dependent and shifts vertical alignment.
+        boxSizing: 'border-box',
         alignItems: el.verticalAlign === 'top' ? 'flex-start' : el.verticalAlign === 'bottom' ? 'flex-end' : 'center',
         justifyContent: el.textAlign === 'left' ? 'flex-start' : el.textAlign === 'right' ? 'flex-end' : 'center',
-        whiteSpace: el.multiline ? 'pre-wrap' : 'nowrap',
+        whiteSpace: el.multiline ? 'pre-wrap' : 'pre',
+        lineHeight: '1.2',
         textAlign: el.textAlign ?? 'center',
         fontFamily: el.fontFamily ?? 'sans-serif',
         fontWeight: el.fontWeight != null ? String(el.fontWeight) : '',

@@ -49,6 +49,41 @@
     { prop: 'height', label: 'H', fallback: 0 },
   ];
 
+  /** Current color-style value ('' when unset). */
+  function colorAt(prop: string): string {
+    const p = el?.style[prop];
+    return p && typeof p.value === 'string' ? p.value : '';
+  }
+
+  /** Set/clear a color style property (any CSS color string; empty clears). */
+  function setStyleColor(prop: string, raw: string): void {
+    if (!layer) return;
+    const id = layer.id;
+    const value = raw.trim();
+    ed.mutate(`set ${prop}`, (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === id);
+      if (!l) return;
+      if (!value) delete l.element.style[prop];
+      else l.element.style[prop] = { value, unit: 'color' };
+    });
+  }
+
+  const PAD_LABELS = ['top', 'right', 'bottom', 'left'] as const;
+
+  function setPadding(index: number, raw: string): void {
+    if (!layer || el?.type !== 'text') return;
+    const v = Number(raw);
+    if (!Number.isFinite(v)) return;
+    const pads = [...(el.padding ?? [0, 0, 0, 0])] as [number, number, number, number];
+    pads[index] = v;
+    setElementField('padding', pads.every((p) => p === 0) ? undefined : pads);
+  }
+
+  const TEXT_STYLE_PROPS: PropDef[] = [
+    { prop: 'lineHeight', label: 'Line height', fallback: 1.2 },
+    { prop: 'letterSpacing', label: 'Letter spacing', fallback: 0 },
+  ];
+
   function setElementField(field: string, value: unknown): void {
     if (!layer) return;
     const id = layer.id;
@@ -317,6 +352,16 @@
           <option value="center">center</option>
           <option value="right">right</option>
         </select>
+        <label for="in-valign">V-Align</label>
+        <select
+          id="in-valign"
+          value={el.verticalAlign ?? 'middle'}
+          onchange={(e) => setElementField('verticalAlign', (e.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value="top">top</option>
+          <option value="middle">middle</option>
+          <option value="bottom">bottom</option>
+        </select>
         <label for="in-squeeze">Squeeze</label>
         <input
           id="in-squeeze"
@@ -324,6 +369,69 @@
           checked={el.autoSqueeze ?? false}
           onchange={(e) => setElementField('autoSqueeze', (e.currentTarget as HTMLInputElement).checked || undefined)}
         />
+        <label for="in-wrap">Wrap</label>
+        <input
+          id="in-wrap"
+          type="checkbox"
+          checked={el.multiline ?? false}
+          onchange={(e) => setElementField('multiline', (e.currentTarget as HTMLInputElement).checked || undefined)}
+        />
+        <label for="in-transform">Case</label>
+        <select
+          id="in-transform"
+          value={el.textTransform ?? 'none'}
+          onchange={(e) => {
+            const v = (e.currentTarget as HTMLSelectElement).value;
+            setElementField('textTransform', v === 'none' ? undefined : v);
+          }}
+        >
+          <option value="none">none</option>
+          <option value="uppercase">UPPERCASE</option>
+          <option value="lowercase">lowercase</option>
+          <option value="capitalize">Capitalize</option>
+        </select>
+        <label for="in-color">Color</label>
+        <span class="colorrow">
+          <span class="swatch" style="background-color:{colorAt('color') || '#fff'}"></span>
+          <input
+            id="in-color"
+            type="text"
+            placeholder="e.g. #ffffff / hsl(…)"
+            value={colorAt('color')}
+            onchange={(e) => setStyleColor('color', (e.currentTarget as HTMLInputElement).value)}
+          />
+        </span>
+        <label for="in-bg">Background</label>
+        <span class="colorrow">
+          <span class="swatch" style="background-color:{colorAt('backgroundColor') || 'transparent'}"></span>
+          <input
+            id="in-bg"
+            type="text"
+            placeholder="(none)"
+            value={colorAt('backgroundColor')}
+            onchange={(e) => setStyleColor('backgroundColor', (e.currentTarget as HTMLInputElement).value)}
+          />
+        </span>
+      </div>
+      <div class="grid three">
+        {#each TEXT_STYLE_PROPS as np (np.prop)}
+          {@render propRow(np)}
+        {/each}
+      </div>
+      <div class="grid">
+        <label for="in-pad-top">Padding</label>
+        <span class="padrow">
+          {#each PAD_LABELS as side, i (side)}
+            <input
+              id="in-pad-{side}"
+              type="number"
+              step="1"
+              title="padding {side}"
+              value={el.padding?.[i] ?? 0}
+              onchange={(e) => setPadding(i, (e.currentTarget as HTMLInputElement).value)}
+            />
+          {/each}
+        </span>
       </div>
     {/if}
 
@@ -509,6 +617,16 @@
   input[type='checkbox'] { width: auto; justify-self: start; }
   textarea { margin-bottom: 6px; font-family: inherit; }
   .asset { font: 11px Consolas, monospace; color: #aab; word-break: break-all; }
+  .colorrow { display: flex; gap: 5px; align-items: center; min-width: 0; }
+  .colorrow input { flex: 1; min-width: 0; }
+  .swatch {
+    width: 16px; height: 16px; flex: none; border-radius: 3px;
+    border: 1px solid #444a55;
+    background-image: repeating-conic-gradient(#3a3f4a 0% 25%, #2a2e38 0% 50%);
+    background-size: 8px 8px;
+  }
+  .padrow { display: flex; gap: 4px; min-width: 0; }
+  .padrow input { flex: 1; min-width: 0; width: 100%; }
   .ro { font-size: 12px; color: #aab; }
   .dim { color: #676c76; font-size: 10px; text-transform: none; letter-spacing: 0; }
   .code {
