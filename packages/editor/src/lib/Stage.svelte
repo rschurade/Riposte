@@ -147,8 +147,25 @@
     selectionRect = layerRect(layer);
   });
 
+  // ---- grid / snap ------------------------------------------------------------
+  const gridStored = JSON.parse(localStorage.getItem('riposte.grid') ?? '{}');
+  let gridOn = $state(gridStored.on ?? true);
+  let gridSize = $state(gridStored.size ?? 50);
+  let snapOn = $state(gridStored.snap ?? true);
+  $effect(() => {
+    localStorage.setItem('riposte.grid', JSON.stringify({ on: gridOn, size: gridSize, snap: snapOn }));
+  });
+  const gridStep = $derived(Math.max(2, Number(gridSize) || 50) * scale);
+
   // ---- pointer interaction ---------------------------------------------------
-  let drag: { id: string; startX: number; startY: number; applied: { dx: number; dy: number } } | null = null;
+  let drag: {
+    id: string;
+    startX: number;
+    startY: number;
+    startElX: number;
+    startElY: number;
+    applied: { dx: number; dy: number };
+  } | null = null;
 
   function toComp(ev: PointerEvent): { x: number; y: number } {
     const r = wrapEl.getBoundingClientRect();
@@ -161,7 +178,14 @@
     const hit = hitTest(p.x, p.y);
     ed.selectLayer(hit?.id ?? null);
     if (hit) {
-      drag = { id: hit.id, startX: p.x, startY: p.y, applied: { dx: 0, dy: 0 } };
+      drag = {
+        id: hit.id,
+        startX: p.x,
+        startY: p.y,
+        startElX: propNumber(hit.element.style.x, ed.frame, 0),
+        startElY: propNumber(hit.element.style.y, ed.frame, 0),
+        applied: { dx: 0, dy: 0 },
+      };
       (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
     }
   }
@@ -176,6 +200,12 @@
     if (ev.shiftKey) {
       if (Math.abs(dx) > Math.abs(dy)) dy = 0;
       else dx = 0;
+    }
+    // Snap the element's anchor (x/y = box center) to the grid; Alt bypasses.
+    if (snapOn && !ev.altKey) {
+      const g = Math.max(2, Number(gridSize) || 50);
+      if (dx !== 0) dx = Math.round((drag.startElX + dx) / g) * g - drag.startElX;
+      if (dy !== 0) dy = Math.round((drag.startElY + dy) / g) * g - drag.startElY;
     }
     // live feedback: nudge the built DOM node directly; doc mutated on drop
     const handle = built?.byId.get(layer.element.id);
@@ -217,6 +247,9 @@
       style="left:{offset.x}px;top:{offset.y}px;width:{comp.width * scale}px;height:{comp.height * scale}px"
     >
       <div class="stage" bind:this={stageEl} style="transform:scale({scale});width:{comp.width}px;height:{comp.height}px"></div>
+      {#if gridOn && gridStep >= 4}
+        <div class="grid" style="background-size:{gridStep}px {gridStep}px"></div>
+      {/if}
       {#if selectionRect}
         <div
           class="selection"
@@ -224,6 +257,13 @@
           style="left:{selectionRect.x * scale}px;top:{selectionRect.y * scale}px;width:{selectionRect.w * scale}px;height:{selectionRect.h * scale}px"
         ></div>
       {/if}
+    </div>
+    <div class="gridbar" onpointerdown={(e) => e.stopPropagation()}>
+      <label><input type="checkbox" bind:checked={gridOn} /> grid</label>
+      <input class="size" type="number" min="2" step="1" bind:value={gridSize} title="grid size (px)" />
+      <label title="snap dragged elements to the grid (hold Alt to bypass)">
+        <input type="checkbox" bind:checked={snapOn} /> snap
+      </label>
     </div>
   {:else}
     <p class="empty">Select a set and a scene</p>
@@ -241,6 +281,38 @@
   }
   .board { position: absolute; outline: 1px solid #3a3e48; }
   .stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, rgba(148, 158, 170, 0.22) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 158, 170, 0.22) 1px, transparent 1px);
+  }
+  .gridbar {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 3px 8px;
+    background: rgba(24, 26, 32, 0.85);
+    border: 1px solid #3a3e48;
+    border-radius: 4px;
+    color: #aab;
+    font-size: 11px;
+  }
+  .gridbar label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
+  .gridbar .size {
+    width: 48px;
+    background: #14161b;
+    color: #ccd;
+    border: 1px solid #3a3e48;
+    border-radius: 3px;
+    font-size: 11px;
+    padding: 1px 4px;
+  }
   .selection {
     position: absolute;
     border: 1.5px solid #d9a441;
