@@ -28,6 +28,15 @@ base64-encoded HTML file. Its core ideas:
 | `packages/editor` | Svelte UI (:5719 dev, proxies to the server) — canvas, timeline, inspector, resources |
 | `packages/mcp` | MCP server — semantic editing/render tools over the HTTP API |
 
+## Running it (no development setup)
+
+`npm run dist` produces `dist/riposte-<version>.zip`. Recipients need only
+[Node.js LTS](https://nodejs.org): unzip, run `start.cmd` (Windows) or
+`./start.sh` (Mac/Linux) — the browser opens the editor at
+`http://localhost:5720`. Sets are shared by copying set folders into
+`projects/`. The bench lives at `/bench`, the virtual-CasparCG playout at
+`/playout.html`.
+
 ## Development
 
 Requires Node ≥ 24 (TypeScript runs natively in `server`/`importer`).

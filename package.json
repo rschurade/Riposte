@@ -12,7 +12,8 @@
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "dev": "npm run dev --workspace @riposte/editor",
-    "server": "npm run dev --workspace @riposte/server"
+    "server": "npm run dev --workspace @riposte/server",
+    "dist": "npm run build && node tools/pack-dist.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

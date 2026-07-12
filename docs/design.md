@@ -31,11 +31,19 @@ faster than Loopic's baked ones). Shipped beyond the original plan:
 - Duration trimming (`trimToContent` + `tools/trim-durations.mjs`) — FIE
   scenes cut from 250 frames to their real 42–87.
 
+- **Distribution mode** (2026-07-12): `npm run dist` builds a portable zip —
+  esbuild-bundled `server.js` (kills the Node-24 and npm-install requirements;
+  any Node LTS runs it), built editor served at `/` (bench at `/bench`),
+  start scripts, demo set, empty `projects/`. Packaged layout auto-detected;
+  dev repo behavior unchanged. `RIPOSTE_PROJECTS_DIR` overrides the set root
+  (needed later for an installer putting sets in a user-writable location).
+
 Planned but NOT built yet: near-duplicate asset report (pixel-level);
-distribution/production mode (single-port server serving the built editor;
-plan agreed, deferred at user's request); loops inside nested compositions;
-on-demand sub-animation "play bindings". Still outstanding: full on-air soak
-of the migrated set (Tableau, Schedule, whites, Team-v2 plates).
+a real Windows installer (Inno Setup wrapping the portable dist + a bundled
+node.exe — build when there's an actual non-developer user); loops inside
+nested compositions; on-demand sub-animation "play bindings". Still
+outstanding: full on-air soak of the migrated set (Tableau, Schedule, whites,
+Team-v2 plates).
 
 ## Roadmap candidates (agreed 2026-07-12)
 

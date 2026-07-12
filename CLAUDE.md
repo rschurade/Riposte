@@ -36,10 +36,15 @@ TypeScript ESM monorepo (npm workspaces, Node ≥ 24 — server/importer/mcp run
 ```bash
 npm run check     # typecheck all packages (tsc -p . each)
 npm test          # node:test — runtime + importer only
-npm run build     # runtime IIFE (packages/runtime/dist/riposte.js) + editor vite build
+npm run build     # runtime IIFE (packages/runtime/dist/riposte.js) + editor vite build + server bundle
 npm run server    # node --watch server on :5720
 npm run dev       # vite editor on :5719
+npm run dist      # portable distribution: dist/riposte/ + dist/riposte-<version>.zip
 ```
+
+### Distribution (portable zip)
+
+`npm run dist` packs a folder that runs anywhere with only a Node.js LTS install: the esbuild-bundled `server.js` (no native TS → no Node-24 requirement, no npm install), the built editor, runtime, bench/playout, the demo set, an empty `projects/`, and `start.cmd`/`start.sh` (run `node server.js --open`). **Packaged layout is auto-detected** (a `public/` dir next to `server.js`): the editor is then served at `/` and the bench moves to `/bench`; in the dev repo, `/` stays the bench (bench-shot.ps1 and A/B tooling depend on that) and the editor stays on vite. `RIPOSTE_PROJECTS_DIR` / `RIPOSTE_EXAMPLES_DIR` override the set roots in both modes. Recipients share sets by copying folders into `projects/`.
 
 CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html <set-dir> <export.html>`, `riposte-migrate <set-dir>`, `riposte-export <set-dir> [outDir] [--baked]`, `riposte-mcp`.
 

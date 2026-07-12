@@ -13,6 +13,8 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { mkdir, readFile, readdir, stat, writeFile, unlink, rename, rmdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve, extname, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,12 +24,21 @@ import { importLoo } from '@riposte/importer';
 import { startAmcp, getAmcpState, setAmcpPorts } from './amcp.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverRoot = resolve(here, '..');
-const repoRoot = resolve(serverRoot, '..', '..');
+/**
+ * Two layouts:
+ * - repo (dev): src/index.ts inside packages/server — bench at /, editor via vite :5719
+ * - packaged (portable zip): server.js at the dist root with public/, editor/,
+ *   runtime/, projects/, examples/ as siblings — the built editor is served at /
+ *   and the bench moves to /bench. Detection: a public/ dir next to the script.
+ */
+const packaged = existsSync(join(here, 'public'));
+const serverRoot = packaged ? here : resolve(here, '..');
+const repoRoot = packaged ? here : resolve(serverRoot, '..', '..');
 const publicDir = join(serverRoot, 'public');
-const examplesDir = join(repoRoot, 'examples');
-const projectsDir = join(repoRoot, 'projects');
-const runtimeJs = join(repoRoot, 'packages', 'runtime', 'dist', 'riposte.js');
+const examplesDir = process.env['RIPOSTE_EXAMPLES_DIR'] ?? join(repoRoot, 'examples');
+const projectsDir = process.env['RIPOSTE_PROJECTS_DIR'] ?? join(repoRoot, 'projects');
+const runtimeJs = packaged ? join(here, 'runtime', 'riposte.js') : join(repoRoot, 'packages', 'runtime', 'dist', 'riposte.js');
+const editorDist = packaged ? join(here, 'editor') : null;
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -52,8 +63,18 @@ createServer((req, res) => {
     res.end(JSON.stringify({ error: err.message ?? 'internal error' }));
   });
 }).listen(port, () => {
-  console.log(`riposte server listening on http://localhost:${port}`);
+  console.log(`riposte server listening on http://localhost:${port}${packaged ? ' (packaged mode: editor at /, bench at /bench)' : ''}`);
+  if (process.argv.includes('--open')) {
+    const url = `http://localhost:${port}`;
+    const [cmd, args] =
+      process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] :
+      process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+    spawn(cmd, args as string[], { detached: true, stdio: 'ignore' }).unref();
+  }
 });
+
+// the zip ships without a projects dir (empty dirs don't survive archives)
+void mkdir(projectsDir, { recursive: true }).catch(() => {});
 
 // virtual CasparCG: AMCP in → SSE out → /playout renders it
 void startAmcp({
@@ -94,6 +115,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
   if (path.startsWith('/projects/')) return file(res, safeJoin(projectsDir, path.slice('/projects/'.length)));
+
+  if (editorDist) {
+    // packaged: the built editor owns / (its bundles live under /assets/); bench keeps working at /bench
+    if (path === '/' || path === '/index.html') return file(res, join(editorDist, 'index.html'));
+    if (path === '/bench') return file(res, join(publicDir, 'index.html'));
+    if (path.startsWith('/assets/')) return file(res, safeJoin(editorDist, path.slice(1)));
+  }
 
   const rel = path === '/' ? 'index.html' : path.replace(/^\//, '');
   return file(res, safeJoin(publicDir, rel));
