@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { exportSet, syncDir } from '@riposte/exporter';
 import { importLoo } from '@riposte/importer';
+import { startAmcp } from './amcp.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverRoot = resolve(here, '..');
@@ -52,6 +53,13 @@ createServer((req, res) => {
   });
 }).listen(port, () => {
   console.log(`riposte server listening on http://localhost:${port}`);
+});
+
+// virtual CasparCG: AMCP in → SSE out → /playout renders it
+startAmcp({
+  listSets: async () => [...(await listSets(examplesDir, 'examples')), ...(await listSets(projectsDir, 'projects'))],
+  broadcast,
+  log: (msg) => console.log(msg),
 });
 
 const ROOTS: Record<string, string> = { examples: '', projects: '' };

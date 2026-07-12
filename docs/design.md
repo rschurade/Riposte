@@ -37,6 +37,37 @@ plan agreed, deferred at user's request); loops inside nested compositions;
 on-demand sub-animation "play bindings". Still outstanding: full on-air soak
 of the migrated set (Tableau, Schedule, whites, Team-v2 plates).
 
+## Roadmap candidates (agreed 2026-07-12)
+
+Ideas that exist because we own both sides of the wire (Riposte makes the
+templates; ControlCenter drives them), ranked:
+
+1. **Virtual CasparCG** (IN PROGRESS) — the Riposte server listens on AMCP
+   TCP ports (main 6250 / preview 6251, `RIPOSTE_AMCP_PORT` /
+   `RIPOSTE_AMCP_PREVIEW_PORT`; NOT 5250/5251 — real Caspar instances often
+   run on the same machine) and speaks just enough AMCP
+   (`CG ADD/UPDATE/PLAY/NEXT/STOP/REMOVE/INVOKE`, OK/error replies) to let
+   ControlCenter connect to it as if it were a real CasparCG server. Commands
+   are routed via SSE to a `/playout` browser page that stacks CG layers and
+   drives them with the real runtime. Rehearse the full stack — real buttons,
+   real mappings, real Cyrano data — on any laptop, no broadcast rig; at the
+   venue it doubles as a wire-tap for debugging what a graphic actually
+   receives. Media-layer commands (PLAY/MIXER/CLEAR for portrait videos) are
+   acknowledged and logged, not rendered.
+2. **Set snapshot + visual regression** — render every scene at its hold frame
+   (with `previewData`) into a stored baseline; after edits, re-render and
+   pixel-diff the whole set, flagging changed scenes (catches "touched a
+   shared component, silently broke three graphics"). Bonus: contact-sheet
+   gallery of the set for design review.
+3. **Mapping-contract audit** — cross-reference a ControlCenter
+   `graphics_sets/*.json` against the set's binding keys: template keys no
+   mapping fills, and mappings pointing at keys that no longer exist. The
+   on-air symptom of a contract break is a silently blank field.
+4. **Operator sheet** — auto-generated per-scene documentation: data keys with
+   preview values, markers (what PLAY/NEXT does at each stop), loops, fonts.
+   For handing a set to another operator; possibly importable by a future
+   ControlCenter mapping editor.
+
 ## Why
 
 Loopic (loopic.io) is a capable web-based editor for CasparCG HTML templates,

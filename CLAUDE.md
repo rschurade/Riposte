@@ -54,6 +54,10 @@ Registered via `.mcp.json` (here relative, in TV-Grafik absolute+gitignored). Re
 
 **When the server is up, prefer these tools** over hand-editing scene JSON or `bench-shot.ps1`: `set_element` saves + live-syncs the editor; `render_scene` returns a PNG (default frame = the hold/pause frame) — that is the visual feedback loop.
 
+## Virtual CasparCG
+
+The server doubles as a fake CasparCG: AMCP TCP listeners on **6250 (main)** and **6251 (preview)** (`RIPOSTE_AMCP_PORT` / `RIPOSTE_AMCP_PREVIEW_PORT`, 0 disables; deliberately NOT 5250/5251 — real Caspar instances often run on the same machine, and node's IPv6 bind would silently coexist with Caspar's IPv4 one). Point ControlCenter's Main/Preview outputs at these ports and open **`/playout?feed=main`** and **`/playout?feed=preview`** (`&chan=` selects the channel, default 1) — CG ADD/UPDATE/PLAY/NEXT/STOP/REMOVE/INVOKE render as stacked layers via the real runtime; template names resolve case-insensitively across all sets (folder prefix narrows to a set). Media-layer commands (portrait PLAY/MIXER/CLEAR) show as chips, not video. The backtick key (or the console button) toggles a command console — the wire-tap view of exactly what a graphic receives. Command processing is strictly per-connection sequential (an UPDATE must never overtake its own ADD). Code: `packages/server/src/amcp.ts` + `public/playout.{html,js}`.
+
 ## Scene Format Essentials
 
 Types in `packages/shared/src/scene.ts` + `set.ts`. `SceneDoc { formatVersion, name, previewData?, composition }`.

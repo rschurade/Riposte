@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Riposte Playout</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: #101216; color: #e6e6e6; overflow: hidden; height: 100vh; }
+    /* checkerboard = transparency, like a keyer would see */
+    #stageWrap {
+      position: fixed; inset: 0;
+      background: repeating-conic-gradient(#15171c 0% 25%, #1b1e24 0% 50%) 0 0 / 24px 24px;
+    }
+    #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+    #stage .cglayer { position: absolute; left: 0; top: 0; }
+    #hud {
+      position: fixed; top: 8px; left: 8px; display: flex; gap: 8px; align-items: center;
+      font-size: 12px; background: #16181dcc; border: 1px solid #383c46; border-radius: 6px; padding: 5px 10px;
+      z-index: 10000;
+    }
+    #hud b { color: #d9a441; letter-spacing: 0.2em; font-weight: 400; text-transform: uppercase; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #666; }
+    .dot.on { background: #4caf50; }
+    #hud button { background: #23262e; color: #e6e6e6; border: 1px solid #383c46; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; }
+    #media {
+      position: fixed; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; z-index: 10000;
+      font: 11px Consolas, monospace;
+    }
+    #media .chip { background: #2c4a75cc; border: 1px solid #46648f; border-radius: 4px; padding: 3px 8px; }
+    #console {
+      position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; overflow-y: auto;
+      background: #0c0d10ee; border-top: 1px solid #383c46; padding: 6px 10px;
+      font: 11px/1.5 Consolas, monospace; white-space: pre-wrap; word-break: break-all; z-index: 9999;
+      display: none;
+    }
+    #console.open { display: block; }
+    #console .in { color: #9ecbff; }
+    #console .conn { color: #d9a441; }
+    #console .err { color: #ff8080; }
+  </style>
+</head>
+<body>
+  <div id="stageWrap"><div id="stage"></div></div>
+  <div id="hud">
+    <b>Playout</b>
+    <span id="feedLabel"></span>
+    <span class="dot" id="connDot" title="AMCP client connection"></span>
+    <span id="layerCount"></span>
+    <button id="btnConsole" title="toggle command console (`)">console</button>
+  </div>
+  <div id="media"></div>
+  <div id="console"></div>
+  <script src="/runtime.js"></script>
+  <script src="/playout.js"></script>
+</body>
+</html>
