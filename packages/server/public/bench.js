@@ -46,7 +46,11 @@ async function injectFonts(baseUrl, fonts) {
 }
 
 async function load(opt) {
-  if (rt) { rt.destroy(); rt = null; }
+  // a dead runtime (e.g. the server restarted mid-session) must never block
+  // loading the next scene
+  try { if (rt) rt.destroy(); } catch { /* already broken */ }
+  rt = null;
+  $('stage').innerHTML = '';
   const base = `/${opt.root}/${opt.set}/`;
   await injectFonts(base, opt.fonts);
   scene = await (await fetch(`${base}scenes/${opt.scene}.json`)).json();
@@ -108,6 +112,7 @@ function seedRawData() {
 }
 
 function sendForm() {
+  if (!rt) return;
   const data = {};
   for (const input of $('dataForm').querySelectorAll('input')) {
     if (input.value !== '') data[input.dataset.key] = input.value;
@@ -148,20 +153,22 @@ async function main() {
   await load(want);
 
   select.addEventListener('change', () => void load(byValue(select.value)));
-  $('btnPlay').addEventListener('click', () => rt.play());
-  $('btnNext').addEventListener('click', () => rt.next());
-  $('btnStop').addEventListener('click', () => rt.stop());
+  $('btnPlay').addEventListener('click', () => rt && rt.play());
+  $('btnNext').addEventListener('click', () => rt && rt.next());
+  $('btnStop').addEventListener('click', () => rt && rt.stop());
   $('btnReset').addEventListener('click', () => void load(byValue(select.value)));
   $('btnSendForm').addEventListener('click', sendForm);
-  $('btnSendRaw').addEventListener('click', () => rt.update($('rawData').value));
+  $('btnSendRaw').addEventListener('click', () => rt && rt.update($('rawData').value));
   const slider = $('frameSlider');
   slider.addEventListener('pointerdown', () => (sliderHeld = true));
   slider.addEventListener('pointerup', () => (sliderHeld = false));
   slider.addEventListener('input', () => {
+    if (!rt) return;
     rt.composition.pause();
     rt.composition.goTo(Number(slider.value));
     // scrubbing implies wanting to see the frame even before play()
-    document.querySelector('.riposte-comp').style.visibility = 'visible';
+    const comp = document.querySelector('.riposte-comp');
+    if (comp) comp.style.visibility = 'visible';
   });
   window.addEventListener('resize', fitStage);
 
