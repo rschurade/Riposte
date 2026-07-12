@@ -42,7 +42,8 @@ of the migrated set (Tableau, Schedule, whites, Team-v2 plates).
 Ideas that exist because we own both sides of the wire (Riposte makes the
 templates; ControlCenter drives them), ranked:
 
-1. **Virtual CasparCG** (IN PROGRESS) — the Riposte server listens on AMCP
+1. **Virtual CasparCG** (SHIPPED 2026-07-12, verified live against
+   ControlCenter) — the Riposte server listens on AMCP
    TCP ports (main 6250 / preview 6251, `RIPOSTE_AMCP_PORT` /
    `RIPOSTE_AMCP_PREVIEW_PORT`; NOT 5250/5251 — real Caspar instances often
    run on the same machine) and speaks just enough AMCP
@@ -53,7 +54,9 @@ templates; ControlCenter drives them), ranked:
    real mappings, real Cyrano data — on any laptop, no broadcast rig; at the
    venue it doubles as a wire-tap for debugging what a graphic actually
    receives. Media-layer commands (PLAY/MIXER/CLEAR for portrait videos) are
-   acknowledged and logged, not rendered.
+   acknowledged and shown as chips, not rendered — agreed cut, don't build
+   video playout unless it's asked for. Absolute flag/logo paths in update
+   data are rewritten to the server's /api/mediafile endpoint.
 2. **Set snapshot + visual regression** — render every scene at its hold frame
    (with `previewData`) into a stored baseline; after edits, re-render and
    pixel-diff the whole set, flagging changed scenes (catches "touched a
