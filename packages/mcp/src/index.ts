@@ -292,6 +292,30 @@ server.tool(
   },
 );
 
+// Probe intrinsic size of set assets (PNG header / SVG attributes) so new
+// image layers land at natural size; other formats fall back to a default.
+async function probeAssetSize(info: SetInfo, asset: string): Promise<{ w: number; h: number } | null> {
+  try {
+    const res = await fetch(`${BASE}/${info.root}/${encodeURIComponent(info.name)}/${asset}`);
+    if (!res.ok) return null;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length > 24 && bytes.readUInt32BE(0) === 0x89504e47) {
+      return { w: bytes.readUInt32BE(16), h: bytes.readUInt32BE(20) };
+    }
+    if (/\.svg$/i.test(asset)) {
+      const head = bytes.subarray(0, 2048).toString('utf8');
+      const w = /width="([\d.]+)/.exec(head)?.[1];
+      const h = /height="([\d.]+)/.exec(head)?.[1];
+      if (w && h) return { w: Number(w), h: Number(h) };
+      const vb = /viewBox="[\d. -]*?([\d.]+)\s+([\d.]+)"/.exec(head);
+      if (vb) return { w: Number(vb[1]), h: Number(vb[2]) };
+    }
+  } catch {
+    /* fall through to default */
+  }
+  return null;
+}
+
 const ASSET_EXT_RE = /\.(png|jpe?g|webp|svg|gif|ttf|otf|woff2?)$/i;
 const IMPORT_CAP = 500;
 
@@ -348,6 +372,108 @@ server.tool(
       fontsRegistered: fonts,
       failed,
     });
+  },
+);
+
+server.tool(
+  'add_layer',
+  'Add a new topmost layer to a scene: an image from the set\'s asset pool, or a text element. ' +
+    'Position is the box CENTER (defaults to scene center); images default to their natural size. ' +
+    'An open editor updates live; render_scene afterwards to verify.',
+  {
+    set: z.string(),
+    scene: z.string(),
+    type: z.enum(['image', 'text']),
+    asset: z.string().optional().describe('Image only: asset path from the pool, e.g. "assets/logo.png"'),
+    content: z.string().optional().describe('Text only: the text to show'),
+    key: z.string().optional().describe('Data key so update() can address it, e.g. "_sponsor"'),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    fontSize: z.number().optional().describe('Text only (default 40)'),
+    color: z.string().optional().describe('Text only: CSS color (default #ffffff)'),
+  },
+  async ({ set, scene, type, asset, content, key, x, y, width, height, fontSize, color }) => {
+    const { info, scenes } = await loadBundle(set);
+    const file = sceneFileOf(info, scenes, scene);
+    const doc = scenes[file];
+    if (!doc) throw new Error(`scene file ${file} is unreadable`);
+    if (type === 'image' && !asset) throw new Error('image layers need an `asset` (see list_scenes / the assets pool)');
+
+    let w = width ?? 300;
+    let h = height ?? 100;
+    if (type === 'image' && asset && (width === undefined || height === undefined)) {
+      const nat = await probeAssetSize(info, asset);
+      if (nat) {
+        w = width ?? nat.w;
+        h = height ?? nat.h;
+      }
+    }
+    const comp = doc.composition;
+    const id = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    const style: Record<string, unknown> = {
+      x: { value: Math.round(x ?? comp.width / 2) },
+      y: { value: Math.round(y ?? comp.height / 2) },
+      width: { value: Math.round(w) },
+      height: { value: Math.round(h) },
+    };
+    const element =
+      type === 'image'
+        ? { id: `${id}-el`, type: 'image', asset: asset!, ...(key ? { key } : {}), style }
+        : {
+            id: `${id}-el`,
+            type: 'text',
+            ...(key ? { key } : {}),
+            content: content ?? 'Text',
+            textAlign: 'center',
+            style: { ...style, fontSize: { value: fontSize ?? 40 }, color: { value: color ?? '#ffffff', unit: 'color' } },
+          };
+    doc.composition.layers.push({
+      id,
+      startFrame: 0,
+      duration: comp.duration,
+      element,
+    } as unknown as Layer);
+    await api('/api/scene', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: info.root, name: info.name, file, doc }),
+    });
+    return text({ layerId: id, key: key ?? null, at: { x: x ?? comp.width / 2, y: y ?? comp.height / 2, w, h } });
+  },
+);
+
+server.tool(
+  'render_filmstrip',
+  'Render a scene at several frames in ONE call — review the whole animation (intro, hold, outro), ' +
+    'not just a single frame. Defaults to 5 frames spread across the timeline around the pause marker.',
+  {
+    set: z.string(),
+    scene: z.string(),
+    frames: z.array(z.number()).max(10).optional().describe('Frames to render (max 10); omit for an automatic spread'),
+    data: z.record(z.string()).optional().describe('Template data applied before rendering'),
+  },
+  async ({ set, scene, frames, data }) => {
+    const { info, scenes } = await loadBundle(set);
+    const file = sceneFileOf(info, scenes, scene);
+    const doc = scenes[file];
+    if (!doc) throw new Error(`scene file ${file} is unreadable`);
+    const dur = doc.composition.duration;
+    const pause = doc.composition.markers.find((m) => m.type === 'pause')?.frame ?? Math.floor(dur / 2);
+    const list =
+      frames && frames.length > 0
+        ? frames
+        : [...new Set([0, Math.floor(pause / 2), pause, Math.floor((pause + dur - 1) / 2), dur - 1])];
+    const dataQ = data && Object.keys(data).length > 0 ? `&data=${encodeURIComponent(JSON.stringify(data))}` : '';
+    const content: ({ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string })[] = [];
+    for (const f of list) {
+      const url = `${BASE}/?set=${encodeURIComponent(info.name)}&scene=${encodeURIComponent(scene)}&frame=${f}&bare=1${dataQ}`;
+      const png = await renderPng(url);
+      content.push({ type: 'text', text: `frame ${f}${f === pause ? ' (hold)' : ''}:` });
+      content.push({ type: 'image', data: png.toString('base64'), mimeType: 'image/png' });
+    }
+    return { content };
   },
 );
 
