@@ -12,7 +12,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { mkdir, readFile, readdir, stat, writeFile, unlink, rename } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile, unlink, rename, rmdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, extname, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,6 +74,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/scene/rename' && req.method === 'POST') return apiRenameScene(req, res);
   if (path === '/api/assets/delete' && req.method === 'POST') return apiDeleteAssets(req, res);
   if (path === '/api/assets/rename' && req.method === 'POST') return apiRenameAsset(req, res);
+  if (path === '/api/assets/rename-sequence' && req.method === 'POST') return apiRenameSequence(req, res);
   if (path === '/api/export' && req.method === 'POST') return apiExport(req, res);
   if (path === '/api/deploy' && req.method === 'POST') return apiDeploy(req, res);
   if (path === '/api/events') return apiEvents(req, res);
@@ -508,6 +509,84 @@ async function apiRenameAsset(req: IncomingMessage, res: ServerResponse): Promis
     changed.push('set.json');
   }
   return json(res, { ok: true, changed });
+}
+
+/**
+ * Rename a whole image sequence: every frame moves to assets/<newName>/<frame#>.<ext>
+ * — the folder carries the sequence name, so frame files keep only their number —
+ * and every reference across the set (asset/placeholder/frames) is rewritten.
+ */
+async function apiRenameSequence(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; files: string[]; newName: string };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  const newName = (body.newName ?? '').trim();
+  if (!/^[\w .()-]+$/.test(newName)) throw Object.assign(new Error('bad new name'), { status: 400 });
+  const files = body.files ?? [];
+  if (files.length === 0) throw Object.assign(new Error('no files'), { status: 400 });
+
+  // target = frame number + extension; a frame without a number keeps its basename
+  const targetOf = new Map<string, string>(); // to → from, catches number collisions
+  const mapping = new Map<string, string>(); // from → to, only real moves
+  for (const from of files) {
+    if (!ASSET_FILE_RE.test(from) || from.includes('..')) throw Object.assign(new Error('bad asset path'), { status: 400 });
+    const base = basename(from);
+    const m = /^.*?(\d{2,})(\.\w+)$/.exec(base);
+    const to = `assets/${newName}/${m ? `${m[1] ?? ''}${m[2] ?? ''}` : base}`;
+    if (targetOf.has(to)) throw Object.assign(new Error(`frame numbers collide: "${to}"`), { status: 400 });
+    targetOf.set(to, from);
+    if (to !== from) mapping.set(from, to);
+  }
+  if (mapping.size === 0) return json(res, { ok: true, changed: [], moved: 0 });
+
+  const sources = new Set(files);
+  for (const to of mapping.values()) {
+    if (sources.has(to)) continue; // occupied by a frame of this sequence (handled above)
+    try {
+      await stat(join(dir, to));
+      throw Object.assign(new Error(`"${to}" already exists`), { status: 409 });
+    } catch (err) {
+      if ((err as { status?: number }).status === 409) throw err;
+    }
+  }
+
+  await mkdir(join(dir, 'assets', newName), { recursive: true });
+  for (const [from, to] of mapping) await rename(join(dir, from), join(dir, to));
+
+  // drop source folders the move left empty
+  for (const d of new Set(files.map((f) => dirname(f)))) {
+    if (d === 'assets' || d === '.') continue;
+    try {
+      if ((await readdir(join(dir, d))).length === 0) await rmdir(join(dir, d));
+    } catch {
+      // still in use or already gone — keep
+    }
+  }
+
+  const changed = await rewriteDocs(dir, (doc) => {
+    let touched = false;
+    for (const el of docElements(doc)) {
+      for (const k of ['asset', 'placeholder']) {
+        const v = el[k];
+        if (typeof v === 'string' && mapping.has(v)) {
+          el[k] = mapping.get(v);
+          touched = true;
+        }
+      }
+      const frames = el['frames'];
+      if (Array.isArray(frames)) {
+        for (let i = 0; i < frames.length; i++) {
+          const v = frames[i] as unknown;
+          if (typeof v === 'string' && mapping.has(v)) {
+            frames[i] = mapping.get(v);
+            touched = true;
+          }
+        }
+      }
+    }
+    return touched;
+  });
+  return json(res, { ok: true, changed, moved: mapping.size });
 }
 
 async function apiDeleteAssets(req: IncomingMessage, res: ServerResponse): Promise<void> {

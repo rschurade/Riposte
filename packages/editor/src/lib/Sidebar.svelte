@@ -91,18 +91,27 @@
   }
 
   // ---- inline renaming -------------------------------------------------------
-  /** What is being renamed: a scene/component file or an asset file. */
-  let renaming = $state<{ kind: 'scene' | 'asset'; file: string; value: string } | null>(null);
+  /** What is being renamed: a scene/component file, an asset file, or a whole sequence. */
+  let renaming = $state<{ kind: 'scene' | 'asset' | 'seq'; file: string; value: string; files?: string[] } | null>(null);
 
   function startRename(kind: 'scene' | 'asset', file: string): void {
     renaming = { kind, file, value: kind === 'scene' ? sceneName(file) : file.replace(/^assets\//, '') };
   }
 
+  /** Suggest the folder name if all frames share one, else the filename prefix. */
+  function startRenameSeq(row: { id: string; label: string; files: AssetInfo[] }): void {
+    const folders = new Set(row.files.map((f) => f.file.split('/').slice(1, -1).join('/')));
+    const folder = folders.size === 1 ? [...folders][0] : '';
+    const prefix = (row.label.split('/').pop() ?? '').replace(/#+\.\w+$/, '').replace(/[_\-. ]+$/, '');
+    renaming = { kind: 'seq', file: row.id, value: folder || prefix, files: row.files.map((f) => f.file) };
+  }
+
   function commitRename(): void {
     if (!renaming) return;
-    const { kind, file, value } = renaming;
+    const { kind, file, value, files } = renaming;
     renaming = null;
     if (kind === 'scene') void ed.renameScene(file, value);
+    else if (kind === 'seq') void ed.renameSequence(files ?? [], value);
     else void ed.renameAsset(file, `assets/${value.trim()}`);
   }
 
@@ -256,13 +265,17 @@
             <li
               class="seq"
               class:unused={seqUsed.length === 0}
-              title={(seqUsed.length ? `used by:\n${seqUsed.join('\n')}` : 'UNUSED') + `\n\n${row.files.length} frames, ${seqMb(row.files)} MB. Drag to stage or timeline for an image sequence.`}
+              title={(seqUsed.length ? `used by:\n${seqUsed.join('\n')}` : 'UNUSED') + `\n\n${row.files.length} frames, ${seqMb(row.files)} MB. Double-click to rename the sequence, drag to stage or timeline for an image sequence.`}
               draggable="true"
               ondragstart={(e) => dragStartSeq(e, row.files)}
             >
               <button class="fold" onclick={() => (openSeqs[row.id] = !openSeqs[row.id])}>{openSeqs[row.id] ? '▾' : '▸'}</button>
-              <span class="name">▶ {row.label} ({row.files.length})</span>
-              <span class="dim">{seqUsed.length || '—'}</span>
+              {#if renaming?.kind === 'seq' && renaming.file === row.id}
+                {@render renameInput()}
+              {:else}
+                <span class="name" role="button" tabindex="-1" ondblclick={() => startRenameSeq(row)}>▶ {row.label} ({row.files.length})</span>
+                <span class="dim">{seqUsed.length || '—'}</span>
+              {/if}
             </li>
             {#if openSeqs[row.id]}
               {#each row.files as a (a.file)}

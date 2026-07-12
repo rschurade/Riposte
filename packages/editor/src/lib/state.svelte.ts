@@ -580,6 +580,24 @@ class EditorState {
     this.flash(`renamed asset${changed ? ` — ${changed} file(s) updated` : ''}`);
   }
 
+  /**
+   * Rename a whole image sequence: the server moves every frame to
+   * assets/<newName>/<frame#>.<ext> and rewrites all references across the set.
+   */
+  async renameSequence(files: string[], newName: string): Promise<void> {
+    newName = newName.trim();
+    if (files.length === 0 || !newName) return;
+    if (this.dirty) {
+      this.flash('save your changes before renaming assets');
+      return;
+    }
+    const r = await this.post('/api/assets/rename-sequence', { files, newName });
+    if (!r) return;
+    await this.reloadBundle();
+    const changed = (r['changed'] as string[]).length;
+    this.flash(`renamed sequence to ${newName}${changed ? ` — ${changed} file(s) updated` : ''}`);
+  }
+
   /** Timeline eye toggle — same flag as the inspector's Hidden checkbox. */
   setLayerHidden(id: string, hidden: boolean): void {
     this.mutate(hidden ? 'hide layer' : 'show layer', (scene) => {
