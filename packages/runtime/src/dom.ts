@@ -146,6 +146,21 @@ interface BuildRegistry {
 
 const SQUEEZE_ORIGIN: Record<string, string> = { left: 'left center', center: 'center center', right: 'right center' };
 
+/**
+ * Digit boxing — the tabularNums fallback for fonts without the OpenType
+ * `tnum` feature (League Spartan: "1" is half as wide as "0"). Every digit
+ * is wrapped in a fixed-width inline-block sized to the widest digit (em, so
+ * it scales with font size), centered like real tabular figures. Only text
+ * OUTSIDE markup tags is transformed, so setContent HTML stays intact.
+ */
+export function boxDigits(html: string, em: number): string {
+  const style = `display:inline-block;width:${em.toFixed(4)}em;text-align:center`;
+  return html
+    .split(/(<[^>]*>)/)
+    .map((part, i) => (i % 2 ? part : part.replace(/[0-9]/g, (d) => `<span style="${style}">${d}</span>`)))
+    .join('');
+}
+
 export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOptions = {}): BuiltScene {
   const comp = scene.composition;
   const assetBase = opts.assetBase ?? '';
@@ -388,6 +403,7 @@ function buildElement(
   let contentEl: HTMLElement | null = null;
   let img: HTMLImageElement | null = null;
   let squeeze: (() => void) | null = null;
+  let setText: ((html: string) => void) | null = null;
 
   switch (el.type) {
     case 'text': {
@@ -396,6 +412,37 @@ function buildElement(
       contentEl.innerHTML = el.content;
       node.appendChild(contentEl);
       registry.textContent.set(el.id, contentEl);
+      if (el.tabularNums) {
+        // Prefer native tabular figures; measure whether the font honors
+        // them — if digits still differ, fall back to digit boxing.
+        let boxEm = 0;
+        let raw = el.content;
+        const c = contentEl;
+        setText = (html) => {
+          raw = html;
+          c.innerHTML = boxEm > 0 ? boxDigits(raw, boxEm) : raw;
+          if (squeeze) squeeze();
+        };
+        const measure = () => {
+          const probe = document.createElement('span');
+          probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+          node.appendChild(probe);
+          let min = Infinity;
+          let max = 0;
+          for (let d = 0; d <= 9; d++) {
+            probe.textContent = String(d).repeat(10);
+            const w = probe.offsetWidth / 10;
+            if (w < min) min = w;
+            if (w > max) max = w;
+          }
+          probe.remove();
+          const fontSize = parseFloat(getComputedStyle(node).fontSize) || 16;
+          boxEm = max - min < 0.15 ? 0 : max / fontSize;
+          setText!(raw);
+        };
+        requestAnimationFrame(measure);
+        document.fonts?.ready.then(measure).catch(() => {});
+      }
       Object.assign(node.style, {
         display: 'flex',
         // Loopic text box model: border-box, whitespace preserved, and an
@@ -571,7 +618,9 @@ function buildElement(
     node,
     domNode: node,
     setContent(html) {
-      if (contentTarget) {
+      if (setText) {
+        setText(html);
+      } else if (contentTarget) {
         contentTarget.innerHTML = html;
         if (squeeze) squeeze();
       }
