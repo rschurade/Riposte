@@ -1121,6 +1121,28 @@ function sceneNameOf(file: string): string {
   return file.replace(/^scenes\//, '').replace(/\.json$/, '');
 }
 
+/**
+ * Files that belong to an image sequence (numbered runs of ≥3 sharing a
+ * prefix — the sidebar's grouping rule). Used to exclude frames from
+ * single-image pickers like the loader-placeholder autocomplete.
+ */
+export function sequenceFrameFiles(assets: AssetInfo[]): Set<string> {
+  const groups = new Map<string, string[]>();
+  for (const a of assets) {
+    const m = /^(.*?)\d{2,}\.(png|jpe?g|webp|gif)$/i.exec(a.file);
+    if (!m) continue;
+    const key = `${m[1]}#.${m[2]}`;
+    const list = groups.get(key) ?? [];
+    list.push(a.file);
+    groups.set(key, list);
+  }
+  const frames = new Set<string>();
+  for (const list of groups.values()) {
+    if (list.length >= 3) for (const f of list) frames.add(f);
+  }
+  return frames;
+}
+
 export function layerLabel(layer: Layer): string {
   const el = layer.element;
   if (el.key) return el.key;

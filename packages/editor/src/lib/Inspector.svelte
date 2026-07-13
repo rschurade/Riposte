@@ -1,10 +1,15 @@
 <script lang="ts">
   import { contentEnd, type SizeBind, type StyleProperty, type VisibilityBinding } from '@riposte/shared';
-  import { ed, layerLabel, propNumber } from './state.svelte.ts';
+  import { ed, layerLabel, propNumber, sequenceFrameFiles } from './state.svelte.ts';
 
   const layer = $derived(ed.selectedLayer);
   const el = $derived(layer?.element ?? null);
   const textLayers = $derived(ed.scene?.composition.layers.filter((l) => l.element.type === 'text') ?? []);
+  /** Single images only — sequence frames are no placeholder candidates. */
+  const placeholderAssets = $derived.by(() => {
+    const frames = sequenceFrameFiles(ed.assets);
+    return ed.assets.filter((a) => /\.(png|jpe?g|webp|svg|gif)$/i.test(a.file) && !frames.has(a.file));
+  });
 
   function isAnimated(p: StyleProperty | undefined): boolean {
     return (p?.keyframes?.length ?? 0) > 0;
@@ -505,7 +510,7 @@
           onchange={(e) => setElementField('placeholder', (e.currentTarget as HTMLInputElement).value.trim() || undefined)}
         />
         <datalist id="asset-images">
-          {#each ed.assets.filter((a) => /\.(png|jpe?g|webp|svg|gif)$/i.test(a.file)) as a (a.file)}
+          {#each placeholderAssets as a (a.file)}
             <option value={a.file}></option>
           {/each}
         </datalist>
