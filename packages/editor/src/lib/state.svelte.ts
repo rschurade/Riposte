@@ -631,6 +631,7 @@ class EditorState {
    */
   addMask(layerId: string): void {
     let fitted = false;
+    let count = 0;
     this.mutate('add mask', (scene) => {
       const l = scene.composition.layers.find((x) => x.id === layerId);
       if (!l) return;
@@ -640,37 +641,49 @@ class EditorState {
       const h = Number(s.height?.value) || 0;
       fitted = w > 0 && h > 0;
       const id = `mask-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
-      (l.masks ??= []).push({
-        id,
-        type: 'rectangle',
-        style: fitted
-          ? {
-              x: { value: Number(s.x?.value) || 0 },
-              y: { value: Number(s.y?.value) || 0 },
-              width: { value: w },
-              height: { value: h },
-            }
-          : {
-              x: { value: c.width / 2 },
-              y: { value: c.height / 2 },
-              width: { value: c.width },
-              height: { value: c.height },
-            },
-      });
+      // reassign (not push) — most robust way to signal the masks change
+      l.masks = [
+        ...(l.masks ?? []),
+        {
+          id,
+          type: 'rectangle',
+          style: fitted
+            ? {
+                x: { value: Number(s.x?.value) || 0 },
+                y: { value: Number(s.y?.value) || 0 },
+                width: { value: w },
+                height: { value: h },
+              }
+            : {
+                x: { value: c.width / 2 },
+                y: { value: c.height / 2 },
+                width: { value: c.width },
+                height: { value: c.height },
+              },
+        },
+      ];
+      count = l.masks.length;
     });
-    this.flash(fitted ? 'mask added, fitted to the element' : 'mask added (full frame)');
+    if (count === 0) {
+      this.flash('add mask FAILED — layer not found');
+      return;
+    }
+    this.flash(`mask added (${count} on this layer${fitted ? ', fitted to the element' : ', full frame'})`);
   }
 
   deleteMask(layerId: string, index: number): void {
     // mask indices shift on delete — drop a possibly-stale keyframe selection
     if (this.selectedKf?.targetKey.startsWith('mask')) this.selectedKf = null;
+    let count = -1;
     this.mutate('delete mask', (scene) => {
       const l = scene.composition.layers.find((x) => x.id === layerId);
       if (!l?.masks || index >= l.masks.length) return;
-      l.masks.splice(index, 1);
-      if (l.masks.length === 0) delete l.masks;
+      const next = l.masks.filter((_, i) => i !== index);
+      if (next.length === 0) delete l.masks;
+      else l.masks = next;
+      count = next.length;
     });
-    this.flash('mask deleted');
+    this.flash(count < 0 ? 'delete mask FAILED — not found' : `mask deleted (${count} left on this layer)`);
   }
 
   /** Set an image loader's design-time placeholder (drag-drop or inspector). */
