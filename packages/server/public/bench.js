@@ -83,10 +83,24 @@ function fitStage() {
   $('stage').style.transform = `scale(${scale})`;
 }
 
+/* The template's real input surface: content keys of updatable elements
+ * (text, imageLoader) plus visibility binding keys. Plain image/shape keys
+ * are element identities — updates to them are no-ops, so they'd only
+ * clutter the form. */
 function sceneKeys() {
   const keys = [];
+  const seen = new Set();
+  const add = (k) => {
+    if (k && !seen.has(k)) {
+      seen.add(k);
+      keys.push(k);
+    }
+  };
   for (const layer of scene.composition.layers) {
-    if (layer.element && layer.element.key) keys.push(layer.element.key);
+    const el = layer.element;
+    if (!el) continue;
+    if (el.key && (el.type === 'text' || el.type === 'imageLoader')) add(el.key);
+    if (el.visibility) add(el.visibility.bindKey);
   }
   return keys;
 }

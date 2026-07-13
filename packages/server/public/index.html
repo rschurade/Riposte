@@ -29,7 +29,7 @@
     #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
     aside { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
     aside h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: #8a8f98; margin: 8px 0 2px; }
-    .kv { display: grid; grid-template-columns: 90px 1fr; gap: 4px 8px; align-items: center; }
+    .kv { display: grid; grid-template-columns: minmax(90px, max-content) 1fr; gap: 4px 8px; align-items: center; }
     .kv label { font-size: 12px; color: #aab; overflow: hidden; text-overflow: ellipsis; }
     .kv input { width: 100%; padding: 4px 8px; }
     textarea {
