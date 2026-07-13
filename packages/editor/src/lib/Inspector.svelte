@@ -337,7 +337,10 @@
     </div>
 
     {#each layer.masks ?? [] as mask, mi (mask.id)}
-      <h3>Mask{(layer.masks?.length ?? 0) > 1 ? ` ${mi + 1}` : ''} <span class="dim">{mask.type} · clips this element</span></h3>
+      <h3>
+        Mask{(layer.masks?.length ?? 0) > 1 ? ` ${mi + 1}` : ''} <span class="dim">{mask.type} · clips this element</span>
+        <button class="minor inline" title="Delete this mask (the element stops being clipped by it)" onclick={() => ed.deleteMask(layer.id, mi)}>✕</button>
+      </h3>
       {#if mask.type === 'path'}
         <p class="hint">Path mask — geometry not editable yet.</p>
       {:else}
@@ -364,6 +367,11 @@
         </div>
       {/if}
     {/each}
+    <button
+      class="minor"
+      title="Add a rectangle mask covering the whole frame — resize/keyframe it for reveal animations"
+      onclick={() => ed.addMask(layer.id)}
+    >+ Add mask</button>
 
     {#if el.type === 'text'}
       <h3>Text</h3>
@@ -748,6 +756,12 @@
   .kfbtn.animated { color: #8a6a2a; }
   .kfbtn.on { color: #d9a441; }
   .kfbtn:hover { color: #d9a441; }
+  .minor.inline {
+    margin: 0 0 0 8px;
+    padding: 0 7px;
+    float: right;
+  }
+  .minor.inline:hover { color: #e07777; }
   .minor {
     margin-top: 6px;
     background: #23262e;

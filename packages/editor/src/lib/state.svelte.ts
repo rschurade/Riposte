@@ -624,6 +624,42 @@ class EditorState {
     this.flash(`renamed sequence to ${newName}${changed ? ` — ${changed} file(s) updated` : ''}`);
   }
 
+  /**
+   * Add a rectangle mask covering the whole composition — no visible change
+   * until the user resizes/animates it (the classic reveal setup).
+   */
+  addMask(layerId: string): void {
+    this.mutate('add mask', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === layerId);
+      if (!l) return;
+      const c = scene.composition;
+      const id = `mask-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+      (l.masks ??= []).push({
+        id,
+        type: 'rectangle',
+        style: {
+          x: { value: c.width / 2 },
+          y: { value: c.height / 2 },
+          width: { value: c.width },
+          height: { value: c.height },
+        },
+      });
+    });
+    this.flash('mask added (full frame — resize or keyframe it)');
+  }
+
+  deleteMask(layerId: string, index: number): void {
+    // mask indices shift on delete — drop a possibly-stale keyframe selection
+    if (this.selectedKf?.targetKey.startsWith('mask')) this.selectedKf = null;
+    this.mutate('delete mask', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === layerId);
+      if (!l?.masks || index >= l.masks.length) return;
+      l.masks.splice(index, 1);
+      if (l.masks.length === 0) delete l.masks;
+    });
+    this.flash('mask deleted');
+  }
+
   /** Set an image loader's design-time placeholder (drag-drop or inspector). */
   setLoaderPlaceholder(layerId: string, file: string): void {
     this.mutate('set placeholder', (scene) => {
