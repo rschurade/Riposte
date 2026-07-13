@@ -106,4 +106,5 @@ Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `upd
 - Component files are content-deduped on import: same name + different content → `name-<hash8>.json`.
 - Loopic text box model: line-height 1.2 must always be set explicitly (CSS `normal` is font-dependent and shifts vertical alignment).
 - Editor stage perf: element reads of `ed.frame` must stay tracked — a `built?.setFrame(ed.frame)`-style short-circuit kills effect dependencies and freezes the preview.
+- Editor mutations that CREATE a nested array and push into it in one go (`(l.masks ??= []).push(x)`) can miss Svelte 5 reactivity — the UI updates one interaction late. REASSIGN instead (`l.masks = [...(l.masks ?? []), x]`); same for deletes (filter to a new array). Bit the mask add/delete feature once.
 - Pre-2026-07-12 commit SHAs found in old notes are stale (history was rewritten to strip user data).
