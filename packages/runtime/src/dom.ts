@@ -136,8 +136,8 @@ interface DynamicBinding {
 
 /** Build-time registry threaded through buildLayer/buildElement. */
 interface BuildRegistry {
-  /** Text content spans by element id — measurement targets for size binds. */
-  textContent: Map<string, HTMLElement>;
+  /** Text content span + styled node by element id — size-bind measurement targets. */
+  textContent: Map<string, { span: HTMLElement; node: HTMLElement }>;
   /** Rectangles with a sizeBind, resolved after all layers are built. */
   sizeBinds: { el: RectangleElement; node: HTMLElement }[];
   /** Nested compositions' own applySizeBinds, re-run with the parent's. */
@@ -145,6 +145,33 @@ interface BuildRegistry {
 }
 
 const SQUEEZE_ORIGIN: Record<string, string> = { left: 'left center', center: 'center center', right: 'right center' };
+
+/**
+ * Measure rendered content size with a probe on document.body carrying the
+ * element's computed font. NEVER measure via the live element (scrollWidth/
+ * offsetWidth): during the ADD→PLAY lifecycle layers with startFrame > 0 are
+ * display:none, where every measurement is 0 — that silently disabled the
+ * name-squeeze and the digit boxing once.
+ */
+function measureContent(node: HTMLElement, html: string): { w: number; h: number } {
+  const cs = getComputedStyle(node);
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden';
+  probe.style.fontFamily = cs.fontFamily;
+  probe.style.fontSize = cs.fontSize;
+  probe.style.fontWeight = cs.fontWeight;
+  probe.style.fontStyle = cs.fontStyle;
+  probe.style.letterSpacing = cs.letterSpacing;
+  probe.style.textTransform = cs.textTransform;
+  probe.style.fontVariantNumeric = cs.fontVariantNumeric;
+  probe.style.lineHeight = cs.lineHeight;
+  probe.style.whiteSpace = 'pre';
+  probe.innerHTML = html;
+  document.body.appendChild(probe);
+  const size = { w: probe.offsetWidth, h: probe.offsetHeight };
+  probe.remove();
+  return size;
+}
 
 /**
  * Digit boxing — the tabularNums fallback for fonts without the OpenType
@@ -193,10 +220,10 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
   }
 
   // Dynamic size binding: rectangle follows its source text's measured
-  // content box (offsetWidth/Height — layout px, transform-free, i.e.
-  // composition space) plus padding. grow=left/right pins that edge by
-  // countering the symmetric width change with a margin shift, leaving the
-  // animated transform untouched.
+  // content (body-probe measurement — composition-space px, immune to the
+  // layer being display:none mid-lifecycle) plus padding. grow=left/right
+  // pins that edge by countering the symmetric width change with a margin
+  // shift, leaving the animated transform untouched.
   const sizeAppliers: (() => void)[] = [];
   for (const { el, node } of registry.sizeBinds) {
     const bind = el.sizeBind!;
@@ -208,8 +235,10 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
     const axis = bind.axis ?? 'x';
     const authoredW = Number(el.style.width?.value) || 0;
     sizeAppliers.push(() => {
+      const m = measureContent(src.node, src.span.innerHTML);
+      if (m.w <= 0 && m.h <= 0) return; // font mid-swap — keep current size
       if (axis !== 'y') {
-        const w = src.offsetWidth + 2 * (bind.padX ?? 0);
+        const w = m.w + 2 * (bind.padX ?? 0);
         node.style.width = `${w}px`;
         const grow = bind.grow ?? 'center';
         if (grow !== 'center' && authoredW > 0) {
@@ -218,7 +247,7 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
         }
       }
       if (axis !== 'x') {
-        node.style.height = `${src.offsetHeight + 2 * (bind.padY ?? 0)}px`;
+        node.style.height = `${m.h + 2 * (bind.padY ?? 0)}px`;
       }
     });
   }
@@ -411,7 +440,7 @@ function buildElement(
       contentEl = document.createElement('span');
       contentEl.innerHTML = el.content;
       node.appendChild(contentEl);
-      registry.textContent.set(el.id, contentEl);
+      registry.textContent.set(el.id, { span: contentEl, node });
       if (el.tabularNums) {
         // Prefer native tabular figures; measure whether the font honors
         // them — if digits still differ, fall back to digit boxing.
@@ -424,32 +453,15 @@ function buildElement(
           if (squeeze) squeeze();
         };
         const measure = () => {
-          // Probe on document.body, NOT inside the element: the layer may be
-          // display:none at measure time (startFrame > 0 during the ADD→PLAY
-          // lifecycle), where everything measures 0 wide and digit widths
-          // would look "equal". Copy the font from computed style — that
-          // resolves even inside hidden subtrees.
-          const cs = getComputedStyle(node);
-          const probe = document.createElement('span');
-          probe.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;white-space:pre';
-          probe.style.fontFamily = cs.fontFamily;
-          probe.style.fontSize = cs.fontSize;
-          probe.style.fontWeight = cs.fontWeight;
-          probe.style.fontStyle = cs.fontStyle;
-          probe.style.letterSpacing = cs.letterSpacing;
-          probe.style.fontVariantNumeric = cs.fontVariantNumeric;
-          document.body.appendChild(probe);
           let min = Infinity;
           let max = 0;
           for (let d = 0; d <= 9; d++) {
-            probe.textContent = String(d).repeat(10);
-            const w = probe.offsetWidth / 10;
+            const w = measureContent(node, String(d).repeat(10)).w / 10;
             if (w < min) min = w;
             if (w > max) max = w;
           }
-          probe.remove();
           if (max <= 0) return; // no metrics (font mid-swap) — keep current state
-          const fontSize = parseFloat(cs.fontSize) || 16;
+          const fontSize = parseFloat(getComputedStyle(node).fontSize) || 16;
           boxEm = max - min < 0.15 ? 0 : max / fontSize;
           setText!(raw);
         };
@@ -480,13 +492,13 @@ function buildElement(
         const align = el.textAlign ?? 'center';
         contentEl.style.transformOrigin = SQUEEZE_ORIGIN[align]!;
         const target = el;
+        const squeezeNode = node;
         squeeze = () => {
           const c = contentEl!;
-          c.style.transform = '';
           const box = numberAtFrame(target.style.width, 0, 0);
-          if (box > 0 && c.scrollWidth > box) {
-            c.style.transform = `scaleX(${box / c.scrollWidth})`;
-          }
+          if (box <= 0) return;
+          const { w } = measureContent(squeezeNode, c.innerHTML);
+          c.style.transform = w > box ? `scaleX(${box / w})` : '';
         };
       }
       break;
