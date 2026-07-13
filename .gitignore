@@ -7,5 +7,7 @@ dist/
 *.local
 # per-machine virtual-CasparCG port config (POST /api/amcp)
 packages/server/.amcp-ports.json
+# per-machine ControlCenter graphics_sets folder (POST /api/contract-config)
+packages/server/.contract-config.json
 .DS_Store
 Thumbs.db

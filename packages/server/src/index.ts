@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, extname, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { exportSet, syncDir } from '@riposte/exporter';
+import { exportSet, syncDir, checkContract, type ContractReport } from '@riposte/exporter';
 import { importLoo } from '@riposte/importer';
 import { startAmcp, getAmcpState, setAmcpPorts } from './amcp.ts';
 
@@ -111,6 +111,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/mediafile') return apiMediaFile(url, res);
   if (path === '/api/amcp' && req.method === 'POST') return json(res, await setAmcpPorts((await readBody(req)) as Record<string, unknown>));
   if (path === '/api/amcp') return json(res, getAmcpState());
+  if (path === '/api/contract-config' && req.method === 'POST') return apiContractConfig(req, res);
+  if (path === '/api/contract') return apiContract(url, res);
   if (path === '/api/open' && req.method === 'POST') return apiOpen(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
@@ -236,7 +238,63 @@ async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<voi
   // relative paths resolve against the repo root, not the server CWD
   const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(setDir, 'export');
   const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode } : {});
-  return json(res, result);
+  return json(res, { ...result, contract: await runContractChecks(setDir) });
+}
+
+// ---- mapping-contract check ---------------------------------------------------
+// The ControlCenter graphics_sets folder is per-machine config, persisted like
+// the AMCP ports. Every export/deploy re-checks the contract and the editor
+// surfaces dead mappings — a break shows on air as a silently blank field.
+const contractConfigPath = join(serverRoot, '.contract-config.json');
+
+async function getContractDir(): Promise<string | null> {
+  try {
+    const cfg = JSON.parse(await readFile(contractConfigPath, 'utf8')) as { dir?: string };
+    return cfg.dir ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Run the contract check against every graphics-set config in the folder. */
+async function runContractChecks(setDir: string): Promise<ContractReport[] | null> {
+  const dir = await getContractDir();
+  if (!dir) return null;
+  const reports: ContractReport[] = [];
+  try {
+    for (const f of await readdir(dir)) {
+      if (!f.toLowerCase().endsWith('.json')) continue;
+      try {
+        const r = await checkContract(setDir, join(dir, f));
+        if (r.scenes.length > 0) reports.push(r); // configs for other sets: skip
+      } catch {
+        // unparseable config — not ours to police
+      }
+    }
+  } catch {
+    return null; // folder missing/unreadable — behave like "not configured"
+  }
+  return reports;
+}
+
+async function apiContract(url: URL, res: ServerResponse): Promise<void> {
+  const setDir = setDirOf(url);
+  const dir = await getContractDir();
+  return json(res, { dir, reports: await runContractChecks(setDir) });
+}
+
+async function apiContractConfig(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { dir?: string };
+  const dir = (body.dir ?? '').trim();
+  if (dir) {
+    try {
+      if (!(await stat(dir)).isDirectory()) throw new Error();
+    } catch {
+      throw Object.assign(new Error(`not a folder: ${dir}`), { status: 400 });
+    }
+  }
+  await writeFile(contractConfigPath, JSON.stringify({ dir: dir || null }, null, 2) + '\n', 'utf8');
+  return json(res, { dir: dir || null });
 }
 
 /**
@@ -258,7 +316,7 @@ async function apiDeploy(req: IncomingMessage, res: ServerResponse): Promise<voi
   const exportDir = join(setDir, 'export');
   const exported = await exportSet(setDir, exportDir, body.mode ? { mode: body.mode } : {});
   const synced = await syncDir(exportDir, targetDir);
-  return json(res, { exported, synced, targetDir });
+  return json(res, { exported, synced, targetDir, contract: await runContractChecks(setDir) });
 }
 
 /** Raw request body as a Buffer (binary uploads). */

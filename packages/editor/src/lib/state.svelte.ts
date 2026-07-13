@@ -958,9 +958,30 @@ class EditorState {
           `${r.assetsCopied} assets copied (${r.assetsUpToDate} up to date, ${mb} MB total)`,
       );
       if (r.warnings?.length) console.warn('export warnings', r.warnings);
+      this.reportContract(r.contract);
     } catch (err) {
       this.flash(`EXPORT FAILED: ${err instanceof Error ? err.message : err}`);
     }
+  }
+
+  /**
+   * Mapping-contract results from export/deploy: dead mappings (ControlCenter
+   * sends a variable the template doesn't have) are the on-air-blank-field
+   * class of bug — flash a warning and put the details in the devtools console.
+   */
+  private reportContract(reports: unknown): void {
+    if (!Array.isArray(reports) || reports.length === 0) return;
+    let dead = 0;
+    for (const rep of reports as { configName: string; deadCount: number; scenes: unknown[] }[]) {
+      dead += rep.deadCount;
+      console.group(`mapping contract vs "${rep.configName}" (${rep.deadCount} dead mappings)`);
+      for (const s of rep.scenes as { ccScene: string; templateName: string; deadMappings: string[]; unfilledKeys: string[] }[]) {
+        if (s.deadMappings.length) console.warn(`${s.ccScene} → ${s.templateName}: DEAD ${s.deadMappings.join(', ')}`);
+        if (s.unfilledKeys.length) console.info(`${s.ccScene} → ${s.templateName}: unfilled ${s.unfilledKeys.join(', ')}`);
+      }
+      console.groupEnd();
+    }
+    if (dead > 0) this.flash(`⚠ contract: ${dead} dead mapping(s) across ${reports.length} config(s) — details in devtools console`);
   }
 
   /** Export, then incrementally sync the export into the CasparCG template dir. */
@@ -989,6 +1010,7 @@ class EditorState {
           `${r.synced.upToDate} already up to date`,
       );
       if (r.exported.warnings?.length) console.warn('export warnings', r.exported.warnings);
+      this.reportContract(r.contract);
     } catch (err) {
       this.flash(`DEPLOY FAILED: ${err instanceof Error ? err.message : err}`);
     }

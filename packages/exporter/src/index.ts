@@ -16,6 +16,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
 
+export { checkContract, collectSceneKeys, type ContractReport, type ContractSceneReport } from './contract.ts';
+
 export interface ExportOptions {
   mode?: 'external' | 'baked';
   /** Path to the runtime IIFE; defaults to the workspace build. */
