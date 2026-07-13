@@ -405,9 +405,27 @@ function buildMask(mask: SceneElement, parent: HTMLElement, dynamics: DynamicBin
     wrap.style.height = `${h}px`;
     inner.style.transform = `translate(${-left}px, ${-top}px)`;
   };
+  // Rounded mask corners: a number is uniform, a string is CSS shorthand with
+  // per-corner values ("40 0 0 0" = top-left only); bare numbers get px.
+  const br = s['borderRadius'];
+  if (br) {
+    if (br.keyframes?.length) {
+      dynamics.push({ apply: (f) => (wrap.style.borderRadius = `${numberAtFrame(br, f, 0)}px`) });
+    } else {
+      wrap.style.borderRadius = cssRadius(br.value);
+    }
+  }
   if (hasAnimatedGeometry(s)) dynamics.push({ apply });
   else apply(0);
   return inner;
+}
+
+/** "40" → "40px", "40 0 0 0" → "40px 0px 0px 0px"; anything with units passes through. */
+function cssRadius(value: number | string): string {
+  return String(value)
+    .split(/\s+/)
+    .map((t) => (/^\d+(\.\d+)?$/.test(t) ? `${t}px` : t))
+    .join(' ');
 }
 
 function hasAnimatedGeometry(s: ElementStyle): boolean {

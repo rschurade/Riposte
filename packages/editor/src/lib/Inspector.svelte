@@ -42,6 +42,19 @@
     return !!layer?.masks?.[mi]?.style[prop]?.keyframes?.some((k) => k.frame === ed.frame);
   }
 
+  /** Mask corner radius: number = uniform, "40 0 0 0" = per corner; empty removes. */
+  function setMaskRadius(mi: number, raw: string): void {
+    if (!layer) return;
+    const id = layer.id;
+    const value = raw.trim();
+    ed.mutate('set mask radius', (scene) => {
+      const m = scene.composition.layers.find((x) => x.id === id)?.masks?.[mi];
+      if (!m) return;
+      if (!value) delete m.style['borderRadius'];
+      else m.style['borderRadius'] = { value: /^\d+(\.\d+)?$/.test(value) ? Number(value) : value };
+    });
+  }
+
   function setMaskNumber(mi: number, prop: string, raw: string): void {
     const v = Number(raw);
     if (!Number.isFinite(v)) return;
@@ -364,6 +377,16 @@
               onclick={() => ed.toggleKeyframe(`mask${mi}`, np.prop, np.fallback)}
             >◆</button>
           {/each}
+        </div>
+        <div class="grid">
+          <label for="mask{mi}-radius" title="Corner radius in px — one value for all corners, or four (TL TR BR BL), e.g. '40 0 0 0' to round only the top-left">Radius</label>
+          <input
+            id="mask{mi}-radius"
+            type="text"
+            placeholder="e.g. 40  or  40 0 0 0"
+            value={mask.style['borderRadius']?.value ?? ''}
+            onchange={(e) => setMaskRadius(mi, (e.currentTarget as HTMLInputElement).value)}
+          />
         </div>
       {/if}
     {/each}
