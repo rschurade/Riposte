@@ -625,27 +625,40 @@ class EditorState {
   }
 
   /**
-   * Add a rectangle mask covering the whole composition — no visible change
-   * until the user resizes/animates it (the classic reveal setup).
+   * Add a rectangle mask fitted to the element's box (falls back to the full
+   * frame when the element has no width/height, e.g. auto-sized text) — no
+   * visible change until it's resized, rounded or animated.
    */
   addMask(layerId: string): void {
+    let fitted = false;
     this.mutate('add mask', (scene) => {
       const l = scene.composition.layers.find((x) => x.id === layerId);
       if (!l) return;
       const c = scene.composition;
+      const s = l.element.style;
+      const w = Number(s.width?.value) || 0;
+      const h = Number(s.height?.value) || 0;
+      fitted = w > 0 && h > 0;
       const id = `mask-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
       (l.masks ??= []).push({
         id,
         type: 'rectangle',
-        style: {
-          x: { value: c.width / 2 },
-          y: { value: c.height / 2 },
-          width: { value: c.width },
-          height: { value: c.height },
-        },
+        style: fitted
+          ? {
+              x: { value: Number(s.x?.value) || 0 },
+              y: { value: Number(s.y?.value) || 0 },
+              width: { value: w },
+              height: { value: h },
+            }
+          : {
+              x: { value: c.width / 2 },
+              y: { value: c.height / 2 },
+              width: { value: c.width },
+              height: { value: c.height },
+            },
       });
     });
-    this.flash('mask added (full frame — resize or keyframe it)');
+    this.flash(fitted ? 'mask added, fitted to the element' : 'mask added (full frame)');
   }
 
   deleteMask(layerId: string, index: number): void {
