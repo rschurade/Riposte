@@ -32,8 +32,9 @@ base64-encoded HTML file. Its core ideas:
 
 `npm run dist` produces `dist/riposte-<version>.zip`. Recipients need only
 [Node.js LTS](https://nodejs.org): unzip, run `start.cmd` (Windows) or
-`./start.sh` (Mac/Linux) — the browser opens the editor at
-`http://localhost:5720`. Sets are shared by copying set folders into
+`sh start.sh` (Mac/Linux — the Windows-built zip can't carry the executable
+bit, so plain `./start.sh` needs a `chmod +x` first) — the browser opens the
+editor at `http://localhost:5720`. Sets are shared by copying set folders into
 `projects/`. The bench lives at `/bench`, the virtual-CasparCG playout at
 `/playout.html`.
 

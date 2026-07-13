@@ -73,7 +73,10 @@ await writeFile(
 
 Requirements: Node.js LTS (https://nodejs.org). Nothing else.
 
-Run:      start.cmd (Windows) or ./start.sh (Mac/Linux)
+Run:      Windows:   start.cmd
+          Mac/Linux: sh start.sh
+          (the zip is built on Windows and can't carry the Unix executable
+          bit, so "sh start.sh" — or chmod +x start.sh once — is the way)
           Your browser opens the editor at http://localhost:5720
 Bench:    http://localhost:5720/bench   (manual template testing)
 Playout:  http://localhost:5720/playout.html
