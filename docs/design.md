@@ -106,6 +106,14 @@ but several feature ideas fit us). Adopted, in order:
   sophisticated thing they have; only when a concrete graphic demands it.
 - **Transition/animation presets** (generate keyframes, pure editor sugar);
   **layered PSD import** (ag-psd) — designer-workflow shortcut.
+- **More mask options** (user, 2026-07-13 — after add/delete + per-corner
+  radius shipped): candidates in rough order of pull — on-stage mask handles
+  (drag/resize the clip box directly instead of typing numbers); editable
+  path-mask geometry (imported ones are view-only); feathered/soft edges;
+  invert; multiple masks with add/subtract modes; animatable per-corner
+  radius. Overlaps the alpha-matte roadmap item (any layer's alpha masks
+  another) — build that first, it covers the fancy shapes without a vector
+  editor.
 
 Explicitly rejected: video loaders (clips stay on the Caspar media layer —
 locked decision), Lottie/OGraf/SPX/vMix export targets (CasparCG-only;
