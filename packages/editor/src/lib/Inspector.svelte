@@ -495,14 +495,20 @@
             <option value={f}>{f}</option>
           {/each}
         </select>
-        <label for="in-placeholder">Placeholder</label>
+        <label for="in-placeholder" title="Design-time image shown until update() provides a source — type to search the set's assets, or drag an asset onto the loader on stage">Placeholder</label>
         <input
           id="in-placeholder"
           type="text"
+          list="asset-images"
           placeholder="assets/…  (design-time image)"
           value={el.placeholder ?? ''}
           onchange={(e) => setElementField('placeholder', (e.currentTarget as HTMLInputElement).value.trim() || undefined)}
         />
+        <datalist id="asset-images">
+          {#each ed.assets.filter((a) => /\.(png|jpe?g|webp|svg|gif)$/i.test(a.file)) as a (a.file)}
+            <option value={a.file}></option>
+          {/each}
+        </datalist>
       </div>
     {/if}
 

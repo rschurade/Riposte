@@ -349,6 +349,13 @@
     const file = ev.dataTransfer?.getData('text/riposte-asset');
     if (!file) return;
     ev.preventDefault();
+    // Dropping onto an image loader loads the asset INTO it (as its design-time
+    // placeholder); anywhere else creates a new image layer as before.
+    const hit = hitTest(p.x, p.y);
+    if (hit?.element.type === 'imageLoader') {
+      ed.setLoaderPlaceholder(hit.id, file);
+      return;
+    }
     ed.addImageLayer(file, at);
   }
 

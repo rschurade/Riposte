@@ -624,6 +624,15 @@ class EditorState {
     this.flash(`renamed sequence to ${newName}${changed ? ` — ${changed} file(s) updated` : ''}`);
   }
 
+  /** Set an image loader's design-time placeholder (drag-drop or inspector). */
+  setLoaderPlaceholder(layerId: string, file: string): void {
+    this.mutate('set placeholder', (scene) => {
+      const l = scene.composition.layers.find((x) => x.id === layerId);
+      if (l && l.element.type === 'imageLoader') l.element.placeholder = file || undefined;
+    });
+    this.flash(file ? `placeholder → ${file.replace(/^assets\//, '')}` : 'placeholder cleared');
+  }
+
   /** Timeline eye toggle — same flag as the inspector's Hidden checkbox. */
   setLayerHidden(id: string, hidden: boolean): void {
     this.mutate(hidden ? 'hide layer' : 'show layer', (scene) => {
