@@ -171,7 +171,8 @@
         <li>
           <button
             class:active={ed.setRef?.root === s.root && ed.setRef?.name === s.name}
-            onclick={() => ed.openSet(s)}
+            title="Opens the set and its options — pick a scene from the list below"
+            onclick={() => ed.openSet(s, { showOptions: true })}
           >
             {s.name}
             <span class="dim">{s.root === 'examples' ? 'demo' : ''}</span>

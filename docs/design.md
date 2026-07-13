@@ -92,9 +92,12 @@ but several feature ideas fit us). Adopted, in order:
   measured content + padding on every update — the "bar always fits the
   name" problem Loopic never solved); ruler guides (lockable, design-time
   only) + layer lock in the editor.
-- **WebP re-encoding on export** — recompress PNG sequences to WebP (~6-8×
-  smaller; CEF-native): ~200 MB set assets → ~30 MB, faster first ADD.
-  Needs an encoder dep (sharp/cwebp). Do before the next big event.
+- **WebP re-encoding on export — SHIPPED 2026-07-13.** Per-set opt-in
+  (`set.json` export.imageFormat, edited via the new Set Options dialog —
+  sidebar set click opens it). jsquash/libwebp WASM (no native deps, packaged
+  dist ships the wasm), content-hash cache per set, lossy+lossless race per
+  image. Measured on FIE_2026 at q92: 213 MB PNG → 26.9 MB WebP (12.6%),
+  974 images, zero warnings, exported template render-verified.
 - **Alpha matte** — any layer's alpha (soft edges included) masks another
   layer; editor-visible, CSS mask-image based. Build when a design pulls
   it in.

@@ -78,6 +78,7 @@ Types in `packages/shared/src/scene.ts` + `set.ts`. `SceneDoc { formatVersion, n
 - Hidden layer semantics (Loopic parity): hidden = CSS **visibility**, not display; a binding on a hidden layer's element toggles the wrapper, respecting span + fades. Data-shown "white light" layers rely on this.
 - Actions (`composition.action`, action markers) are the escape hatch for genuinely dynamic behavior (e.g. Schedule's row relayout). Scope: `useOnPlay/useOnUpdate/useOnStop/useOnNext/useOnInvoke`, `find(key)`, `riposte`; `loopic`/`runtime` are deprecated aliases. **The editor deliberately does not execute actions or bindings — design view shows everything.**
 - `set.json`: `{ formatVersion, name, scenes[], components?, fonts?, export? }` — `components` are nested-composition-only scenes, not exported as templates. Optional fields vary across real files.
+- `export.imageFormat: 'webp'` re-encodes PNG assets to WebP **at export time only** (FIE set: 213 MB → 27 MB; scene files keep their PNGs, exported refs are rewritten). `webpQuality` 1–100 (default 92; lossy exports also try lossless per image and ship the smaller) or `'lossless'`. Encoder = jsquash/libwebp WASM (no native deps — packaged dist ships `webp_enc_simd.wasm` next to server.js); encodes cached in `<set>/.webp-cache/` (gitignored) — first export is slow (~10 min for the FIE set), repeats are instant. Edit these in the **Set Options dialog: clicking a set in the sidebar opens it** (it no longer auto-opens the first scene).
 
 ## CasparCG Contract
 

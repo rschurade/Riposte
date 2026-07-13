@@ -14,6 +14,14 @@ export interface SetRef {
   scenes: string[];
   components: string[];
   fonts: { family: string; file: string }[];
+  export?: SetExportSettings;
+}
+
+export interface SetExportSettings {
+  mode?: 'external' | 'baked';
+  preloadAssets?: boolean;
+  imageFormat?: 'png' | 'webp';
+  webpQuality?: number | 'lossless';
 }
 
 export interface AssetInfo {
@@ -128,7 +136,10 @@ class EditorState {
     this.sets = await (await fetch('/api/sets')).json();
   }
 
-  async openSet(ref: SetRef): Promise<void> {
+  /** Set-options dialog (sidebar set click opens it instead of a scene). */
+  setOptionsOpen = $state(false);
+
+  async openSet(ref: SetRef, opts: { showOptions?: boolean } = {}): Promise<void> {
     if (!(await this.confirmDiscard())) return;
     this.setRef = ref;
     this.scene = null;
@@ -138,8 +149,23 @@ class EditorState {
     const bundle = await (await fetch(`/api/set?${q}`)).json();
     this.allScenes = bundle.scenes;
     this.assets = await (await fetch(`/api/assets?${q}`)).json();
+    if (opts.showOptions) {
+      this.setOptionsOpen = true;
+      return; // the user picks a scene from the list when they're done here
+    }
     const first = ref.scenes[0];
     if (first) this.openScene(first);
+  }
+
+  /** Persist export settings into the set's set.json. */
+  async saveSetSettings(patch: SetExportSettings): Promise<void> {
+    if (!this.setRef) return;
+    const r = await this.post('/api/set/settings', { export: patch });
+    if (!r) return;
+    this.setRef.export = r['export'] as SetExportSettings;
+    const inList = this.sets.find((s) => s.root === this.setRef!.root && s.name === this.setRef!.name);
+    if (inList) inList.export = this.setRef.export;
+    this.flash('set options saved');
   }
 
   openScene(file: string): void {

@@ -113,6 +113,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/amcp') return json(res, getAmcpState());
   if (path === '/api/contract-config' && req.method === 'POST') return apiContractConfig(req, res);
   if (path === '/api/contract') return apiContract(url, res);
+  if (path === '/api/set/settings' && req.method === 'POST') return apiSetSettings(req, res);
   if (path === '/api/open' && req.method === 'POST') return apiOpen(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
@@ -317,6 +318,40 @@ async function apiDeploy(req: IncomingMessage, res: ServerResponse): Promise<voi
   const exported = await exportSet(setDir, exportDir, body.mode ? { mode: body.mode } : {});
   const synced = await syncDir(exportDir, targetDir);
   return json(res, { exported, synced, targetDir, contract: await runContractChecks(setDir) });
+}
+
+/** Merge validated export settings into a set's set.json. */
+async function apiSetSettings(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as {
+    root: string;
+    name: string;
+    export?: { mode?: string; preloadAssets?: boolean; imageFormat?: string; webpQuality?: number | string };
+  };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  const e = body.export ?? {};
+  const patch: Record<string, unknown> = {};
+  if (e.mode !== undefined) {
+    if (e.mode !== 'external' && e.mode !== 'baked') throw Object.assign(new Error('bad mode'), { status: 400 });
+    patch['mode'] = e.mode;
+  }
+  if (e.preloadAssets !== undefined) patch['preloadAssets'] = !!e.preloadAssets;
+  if (e.imageFormat !== undefined) {
+    if (e.imageFormat !== 'png' && e.imageFormat !== 'webp') throw Object.assign(new Error('bad imageFormat'), { status: 400 });
+    patch['imageFormat'] = e.imageFormat;
+  }
+  if (e.webpQuality !== undefined) {
+    const q = e.webpQuality === 'lossless' ? 'lossless' : Number(e.webpQuality);
+    if (q !== 'lossless' && (!Number.isFinite(q) || q < 1 || q > 100)) {
+      throw Object.assign(new Error('webpQuality must be 1-100 or "lossless"'), { status: 400 });
+    }
+    patch['webpQuality'] = q;
+  }
+  const setPath = join(dir, 'set.json');
+  const set = JSON.parse(await readFile(setPath, 'utf8')) as { export?: Record<string, unknown> };
+  set.export = { mode: 'external', preloadAssets: true, ...set.export, ...patch };
+  await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
+  return json(res, { ok: true, export: set.export });
 }
 
 /** Raw request body as a Buffer (binary uploads). */
@@ -748,6 +783,7 @@ interface SetInfo {
   name: string;
   scenes: string[];
   components: string[];
+  export?: Record<string, unknown>;
   fonts: { family: string; file: string }[];
 }
 
@@ -768,8 +804,16 @@ async function listSets(dir: string, root: string): Promise<SetInfo[]> {
         scenes?: string[];
         components?: string[];
         fonts?: { family: string; file: string }[];
+        export?: Record<string, unknown>;
       };
-      out.push({ root, name: entry, scenes: doc.scenes ?? [], components: doc.components ?? [], fonts: doc.fonts ?? [] });
+      out.push({
+        root,
+        name: entry,
+        scenes: doc.scenes ?? [],
+        components: doc.components ?? [],
+        fonts: doc.fonts ?? [],
+        ...(doc.export ? { export: doc.export } : {}),
+      });
     } catch {
       // not a set folder — skip
     }

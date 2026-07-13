@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 import type { SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
 
 export { checkContract, collectSceneKeys, type ContractReport, type ContractSceneReport } from './contract.ts';
+import { webpAvailable, webpCached, type WebpStats } from './webp.ts';
+export { webpAvailable, type WebpStats } from './webp.ts';
 
 export interface ExportOptions {
   mode?: 'external' | 'baked';
@@ -38,6 +40,8 @@ export interface ExportResult {
   assetBytes: number;
   runtimeUpdated: boolean;
   warnings: string[];
+  /** Present when PNG→WebP re-encoding ran (set.export.imageFormat = 'webp'). */
+  webp?: WebpStats;
 }
 
 /** Write only when the content differs — unchanged files keep their timestamp. */
@@ -125,6 +129,33 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
   const preloadAssets = set.export?.preloadAssets ?? true;
   const runtimeJs = await readFile(opts.runtimeJs ?? DEFAULT_RUNTIME, 'utf8');
 
+  // PNG→WebP re-encoding: exported copies only, references rewritten in the
+  // shells — the set project on disk stays untouched.
+  let webpOn = (set.export?.imageFormat ?? 'png') === 'webp';
+  const webpQuality = set.export?.webpQuality ?? 92;
+  const webpStats: WebpStats = { encoded: 0, cacheHits: 0, pngBytes: 0, webpBytes: 0 };
+  if (webpOn && !(await webpAvailable())) {
+    webpOn = false;
+    warnings.push('webp encoder unavailable (wasm not found) — exported PNG instead');
+  }
+  const renameRef = (rel: string): string => (webpOn && /\.png$/i.test(rel) ? rel.replace(/\.png$/i, '.webp') : rel);
+
+  /** Deep-copy a doc with asset references mapped through renameRef. */
+  const rewriteRefs = (doc: SceneDoc): SceneDoc => {
+    if (!webpOn) return doc;
+    const copy = JSON.parse(JSON.stringify(doc)) as SceneDoc;
+    const mapEl = (el: SceneElement): void => {
+      if (el.type === 'image' && el.asset) el.asset = renameRef(el.asset);
+      if (el.type === 'imageSequence') el.frames = el.frames.map(renameRef);
+      if (el.type === 'imageLoader' && el.placeholder) el.placeholder = renameRef(el.placeholder);
+    };
+    for (const layer of copy.composition.layers) {
+      mapEl(layer.element);
+      for (const m of layer.masks ?? []) mapEl(m);
+    }
+    return copy;
+  };
+
   const readScene = async (file: string): Promise<SceneDoc | null> => {
     try {
       return JSON.parse(await readFile(join(setDir, file), 'utf8')) as SceneDoc;
@@ -160,10 +191,18 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     for (const f of set.fonts ?? []) assets.add(f.file);
     for (const a of assets) allAssets.add(a);
 
+    // external: refs rewritten to the re-encoded names; baked: original refs
+    // (assets become data URIs — only the bytes and mime change).
     const html =
       mode === 'external'
-        ? externalShell(name, doc, sceneComponents, set, preloadAssets ? [...assets] : [])
-        : await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings);
+        ? externalShell(
+            name,
+            rewriteRefs(doc),
+            webpOn ? Object.fromEntries(Object.entries(sceneComponents).map(([k, v]) => [k, rewriteRefs(v)])) : sceneComponents,
+            set,
+            preloadAssets ? [...assets].map(renameRef) : [],
+          )
+        : await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null);
 
     if (await writeIfChanged(join(outDir, `${name}.html`), html)) scenesUpdated.push(name);
     scenes.push(name);
@@ -176,10 +215,18 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
   if (mode === 'external') {
     await mkdir(join(outDir, 'assets'), { recursive: true });
     runtimeUpdated = await writeIfChanged(join(outDir, 'assets', 'riposte.js'), runtimeJs);
+    const written = new Set<string>();
     for (const rel of allAssets) {
-      const src = join(setDir, rel);
-      const dst = join(outDir, rel);
+      const reencode = webpOn && /\.png$/i.test(rel);
+      const outRel = renameRef(rel);
+      if (written.has(outRel)) {
+        warnings.push(`asset name clash after webp rename: ${outRel} — kept the first`);
+        continue;
+      }
+      written.add(outRel);
+      const dst = join(outDir, outRel);
       try {
+        const src = reencode ? await webpCached(setDir, join(setDir, rel), webpQuality, webpStats) : join(setDir, rel);
         await mkdir(dirname(dst), { recursive: true });
         if (await copyIfChanged(src, dst)) assetsCopied++;
         else assetsUpToDate++;
@@ -190,7 +237,7 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     }
   }
 
-  return { outDir, mode, scenes, scenesUpdated, assetsCopied, assetsUpToDate, assetBytes, runtimeUpdated, warnings };
+  return { outDir, mode, scenes, scenesUpdated, assetsCopied, assetsUpToDate, assetBytes, runtimeUpdated, warnings, ...(webpOn ? { webp: webpStats } : {}) };
 }
 
 // ---- collection -------------------------------------------------------------
@@ -279,14 +326,18 @@ async function bakedShell(
   setDir: string,
   runtimeJs: string,
   warnings: string[],
+  webp: { quality: number | 'lossless'; stats: WebpStats } | null = null,
 ): Promise<string> {
   const dataUris = new Map<string, string>();
   const toDataUri = async (rel: string): Promise<string> => {
     const cached = dataUris.get(rel);
     if (cached) return cached;
     try {
-      const bytes = await readFile(join(setDir, rel));
-      const ext = rel.slice(rel.lastIndexOf('.') + 1).toLowerCase();
+      const reencode = webp && /\.png$/i.test(rel);
+      const bytes = reencode
+        ? await readFile(await webpCached(setDir, join(setDir, rel), webp.quality, webp.stats))
+        : await readFile(join(setDir, rel));
+      const ext = reencode ? 'webp' : rel.slice(rel.lastIndexOf('.') + 1).toLowerCase();
       const uri = `data:${MIME[ext] ?? 'application/octet-stream'};base64,${bytes.toString('base64')}`;
       dataUris.set(rel, uri);
       return uri;

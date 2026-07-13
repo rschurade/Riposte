@@ -45,4 +45,17 @@ export interface ExportSettings {
   preloadAssets: boolean;
   /** Last used output directory (absolute; machine-local convenience). */
   outputDir?: string;
+  /**
+   * 'webp': re-encode PNG assets to WebP at export time (typically 3–10×
+   * smaller; CasparCG's CEF decodes WebP natively). Scene JSONs never
+   * change — only the exported copies and their rewritten references.
+   * Default 'png' (copy untouched).
+   */
+  imageFormat?: 'png' | 'webp';
+  /**
+   * Lossy WebP quality 1–100 (default 92). The exporter also tries lossless
+   * per image and ships whichever is smaller, so flat-color frames stay
+   * bit-perfect. 'lossless' forces bit-perfect everywhere.
+   */
+  webpQuality?: number | 'lossless';
 }

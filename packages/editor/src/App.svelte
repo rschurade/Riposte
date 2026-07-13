@@ -3,6 +3,7 @@
   import Stage from './lib/Stage.svelte';
   import Timeline from './lib/Timeline.svelte';
   import Inspector from './lib/Inspector.svelte';
+  import SetOptions from './lib/SetOptions.svelte';
   import { ed } from './lib/state.svelte.ts';
 
   $effect(() => {
@@ -158,6 +159,7 @@
     onpointerdown={(e) => splitDown(e, 'timeline')} onpointermove={splitMove} onpointerup={splitUp}></div>
   <Timeline />
 </div>
+<SetOptions />
 
 <style>
   :global(body) {

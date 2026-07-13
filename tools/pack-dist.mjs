@@ -35,6 +35,11 @@ await mkdir(join(out, 'runtime'), { recursive: true });
 await mkdir(join(out, 'projects'), { recursive: true });
 
 await cp(join(repo, 'packages/server/dist/server.js'), join(out, 'server.js'));
+// WebP encoder wasm — the exporter looks for it next to server.js when packaged
+await cp(
+  join(repo, 'node_modules/@jsquash/webp/codec/enc/webp_enc_simd.wasm'),
+  join(out, 'webp_enc_simd.wasm'),
+);
 await cp(join(repo, 'packages/server/public'), join(out, 'public'), { recursive: true });
 await cp(join(repo, 'packages/editor/dist'), join(out, 'editor'), { recursive: true });
 await cp(join(repo, 'packages/runtime/dist/riposte.js'), join(out, 'runtime/riposte.js'));
