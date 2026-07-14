@@ -173,6 +173,54 @@ async function main() {
   $('btnReset').addEventListener('click', () => void load(byValue(select.value)));
   $('btnSendForm').addEventListener('click', sendForm);
   $('btnSendRaw').addEventListener('click', () => rt && rt.update($('rawData').value));
+
+  // Remote control (MCP bench_* tools → POST /api/bench → SSE): everything the
+  // page's own controls can do, driven from outside. The data form mirrors
+  // received updates so the human sees what the AI filled in.
+  const es = new EventSource('/api/events');
+  es.addEventListener('bench', (msg) => {
+    const ev = JSON.parse(msg.data);
+    switch (ev.action) {
+      case 'open': {
+        const target = options.find(
+          (o) => (!ev.set || o.set === ev.set) && (!ev.scene || o.scene === ev.scene),
+        );
+        if (!target) return;
+        select.value = target.value;
+        void load(target).then(() => {
+          if (ev.frame !== undefined && rt) {
+            rt.composition.pause();
+            rt.composition.goTo(Number(ev.frame));
+            const comp = document.querySelector('.riposte-comp');
+            if (comp) comp.style.visibility = 'visible';
+          }
+        });
+        break;
+      }
+      case 'update': {
+        if (!rt || ev.data === undefined) return;
+        rt.update(ev.data);
+        if (ev.data && typeof ev.data === 'object') {
+          for (const input of $('dataForm').querySelectorAll('input')) {
+            if (ev.data[input.dataset.key] !== undefined) input.value = ev.data[input.dataset.key];
+          }
+        }
+        break;
+      }
+      case 'play': rt && rt.play(); break;
+      case 'next': rt && rt.next(); break;
+      case 'stop': rt && rt.stop(); break;
+      case 'reset': void load(byValue(select.value)); break;
+      case 'seek': {
+        if (!rt || ev.frame === undefined) return;
+        rt.composition.pause();
+        rt.composition.goTo(Number(ev.frame));
+        const comp = document.querySelector('.riposte-comp');
+        if (comp) comp.style.visibility = 'visible';
+        break;
+      }
+    }
+  });
   const slider = $('frameSlider');
   slider.addEventListener('pointerdown', () => (sliderHeld = true));
   slider.addEventListener('pointerup', () => (sliderHeld = false));

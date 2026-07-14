@@ -55,7 +55,7 @@ CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html
 
 ## MCP Server
 
-Registered via `.mcp.json` (here relative, in TV-Grafik absolute+gitignored). Requires the HTTP server on :5720 (`RIPOSTE_URL` overrides; `RIPOSTE_BROWSER` sets the headless browser for renders). 11 tools: `list_sets`, `list_scenes`, `get_scene`, `open_scene` (navigates the user's live editor via SSE), `set_element`, `add_layer`, `import_assets`, `render_scene`, `render_filmstrip`, `export_set`, `deploy_set`.
+Registered via `.mcp.json` (here relative, in TV-Grafik absolute+gitignored). Requires the HTTP server on :5720 (`RIPOSTE_URL` overrides; `RIPOSTE_BROWSER` sets the headless browser for renders). 14 tools: `list_sets`, `list_scenes` (reports the update() input surface: content keys + visibility switches), `get_scene`, `open_scene` (navigates the user's live editor via SSE), `set_element`, `add_layer`, `import_assets`, `render_scene`, `render_filmstrip`, `export_set`, `deploy_set`, and live-bench control `bench_open` / `bench_update` / `bench_transport` (drive the bench tab the user is watching — fill variables, play/next/stop/seek — via POST /api/bench → SSE).
 
 **When the server is up, prefer these tools** over hand-editing scene JSON or `bench-shot.ps1`: `set_element` saves + live-syncs the editor; `render_scene` returns a PNG (default frame = the hold/pause frame) — that is the visual feedback loop.
 

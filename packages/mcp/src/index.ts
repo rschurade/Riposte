@@ -192,16 +192,67 @@ server.tool('list_sets', 'List all Riposte graphics sets (projects) with their s
 
 server.tool(
   'list_scenes',
-  'List the scenes of a set with their data keys (the update() variables each template accepts).',
+  'List the scenes of a set with their data keys — the real update() input surface: ' +
+    'content keys of texts/image loaders plus visibility switch keys (values "0"/"1").',
   { set: z.string().describe('Set name, e.g. "FIE_2026"') },
   async ({ set }) => {
     const { scenes } = await loadBundle(set);
-    const out = Object.entries(scenes).map(([file, doc]) => ({
-      scene: file.replace(/^scenes\//, '').replace(/\.json$/, ''),
-      keys: doc ? [...new Set(doc.composition.layers.map((l) => l.element.key).filter(Boolean))] : [],
-    }));
+    const out = Object.entries(scenes).map(([file, doc]) => {
+      const content = new Set<string>();
+      const switches = new Set<string>();
+      for (const l of doc?.composition.layers ?? []) {
+        const el = l.element;
+        if (el.key && (el.type === 'text' || el.type === 'imageLoader')) content.add(el.key);
+        if (el.visibility?.bindKey) switches.add(el.visibility.bindKey);
+      }
+      return {
+        scene: file.replace(/^scenes\//, '').replace(/\.json$/, ''),
+        keys: [...content],
+        switches: [...switches],
+      };
+    });
     return text(out);
   },
+);
+
+// ---- live bench control ------------------------------------------------------
+// The bench (http://localhost:5720/) is the manual template test page. These
+// tools drive the tab the USER is watching — the shared feedback loop. For
+// headless self-verification use render_scene instead.
+
+async function benchPost(body: Record<string, unknown>): Promise<string> {
+  const r = await api<{ listeners: number }>('/api/bench', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return r.listeners > 0 ? 'ok' : 'sent, but no bench tab is connected — open http://localhost:5720';
+}
+
+server.tool(
+  'bench_open',
+  'Load a scene into the live bench tab (and optionally seek a frame). The user watches this page.',
+  { set: z.string(), scene: z.string(), frame: z.number().optional() },
+  async ({ set, scene, frame }) => text(await benchPost({ action: 'open', set, scene, frame })),
+);
+
+server.tool(
+  'bench_update',
+  'Fill template variables in the live bench tab, like a ControlCenter update. ' +
+    'Keys come from list_scenes; switch keys take "1"/"0". The bench form mirrors what you send.',
+  { data: z.record(z.string()).describe('e.g. {"_name1": "SMITH, John", "_timeSwitch": "1"}') },
+  async ({ data }) => text(await benchPost({ action: 'update', data })),
+);
+
+server.tool(
+  'bench_transport',
+  'Drive the live bench tab like CasparCG would: play (intro to first pause), next (resume past pause / outro), ' +
+    'stop (outro), reset (reload the scene), or seek to a frame.',
+  {
+    action: z.enum(['play', 'next', 'stop', 'reset', 'seek']),
+    frame: z.number().optional().describe('Required for seek'),
+  },
+  async ({ action, frame }) => text(await benchPost({ action, frame })),
 );
 
 server.tool(

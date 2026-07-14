@@ -114,6 +114,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/contract-config' && req.method === 'POST') return apiContractConfig(req, res);
   if (path === '/api/contract') return apiContract(url, res);
   if (path === '/api/set/settings' && req.method === 'POST') return apiSetSettings(req, res);
+  if (path === '/api/bench' && req.method === 'POST') return apiBench(req, res);
   if (path === '/api/open' && req.method === 'POST') return apiOpen(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
@@ -318,6 +319,20 @@ async function apiDeploy(req: IncomingMessage, res: ServerResponse): Promise<voi
   const exported = await exportSet(setDir, exportDir, body.mode ? { mode: body.mode } : {});
   const synced = await syncDir(exportDir, targetDir);
   return json(res, { exported, synced, targetDir, contract: await runContractChecks(setDir) });
+}
+
+/**
+ * Remote-control the live bench tab (MCP bench_* tools): broadcast the command
+ * over SSE; the bench page applies it (open scene / fill variables / transport).
+ */
+async function apiBench(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { action?: string };
+  const actions = ['open', 'update', 'play', 'next', 'stop', 'reset', 'seek'];
+  if (!actions.includes(body.action ?? '')) {
+    throw Object.assign(new Error(`action must be one of ${actions.join('/')}`), { status: 400 });
+  }
+  broadcast('bench', body);
+  return json(res, { ok: true, listeners: sseClients.size });
 }
 
 /** Merge validated export settings into a set's set.json. */
