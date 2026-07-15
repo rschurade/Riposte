@@ -120,6 +120,35 @@
     else if (ev.key === 'Escape') renaming = null;
   }
 
+  // ---- per-scene visibility filter --------------------------------------------
+  // View-only: hides a scene from this list (per set, remembered); export/deploy
+  // are unaffected. The header eye flips between "only visible" and "show all".
+  let showHidden = $state(localStorage.getItem('riposte.showHiddenScenes') === '1');
+  let hiddenScenes = $state<Record<string, boolean>>({});
+  const hiddenKey = $derived(ed.setRef ? `riposte.hiddenScenes.${ed.setRef.root}/${ed.setRef.name}` : '');
+
+  $effect(() => {
+    hiddenScenes = hiddenKey
+      ? (JSON.parse(localStorage.getItem(hiddenKey) ?? '{}') as Record<string, boolean>)
+      : {};
+  });
+
+  const hiddenCount = $derived(ed.setRef ? ed.setRef.scenes.filter((f) => hiddenScenes[f]).length : 0);
+  const visibleScenes = $derived(
+    ed.setRef ? ed.setRef.scenes.filter((f) => showHidden || !hiddenScenes[f]) : [],
+  );
+
+  function toggleShowHidden(): void {
+    showHidden = !showHidden;
+    localStorage.setItem('riposte.showHiddenScenes', showHidden ? '1' : '0');
+  }
+
+  function toggleSceneHidden(file: string): void {
+    if (hiddenScenes[file]) delete hiddenScenes[file];
+    else hiddenScenes[file] = true;
+    if (hiddenKey) localStorage.setItem(hiddenKey, JSON.stringify(hiddenScenes));
+  }
+
   const DRAGGABLE_RE = /\.(png|jpe?g|webp|svg|gif)$/i;
 
   function dragStart(ev: DragEvent, file: string): void {
@@ -234,14 +263,23 @@
   {#if ed.setRef}
     <h2 class="hrow">
       <button class="linkish" onclick={() => toggle('scenes')}>
-        {collapsed.scenes ? '▸' : '▾'} Scenes <span class="dim">({ed.setRef.scenes.length})</span>
+        {collapsed.scenes ? '▸' : '▾'} Scenes
+        <span class="dim">({hiddenCount ? `${ed.setRef.scenes.length - hiddenCount}/` : ''}{ed.setRef.scenes.length})</span>
       </button>
+      {#if hiddenCount > 0 || showHidden}
+        <button
+          class="hbtn"
+          class:on={showHidden}
+          title={showHidden ? 'Showing all scenes — click to filter out the hidden ones' : `Show ${hiddenCount} hidden scene${hiddenCount === 1 ? '' : 's'}`}
+          onclick={toggleShowHidden}
+        >👁</button>
+      {/if}
       <button class="hbtn" title="New scene" onclick={() => ed.newScene()}>+</button>
     </h2>
     {#if !collapsed.scenes}
       <ul class="scenes">
-        {#each ed.setRef.scenes as file (file)}
-          <li class="scene-row">
+        {#each visibleScenes as file (file)}
+          <li class="scene-row" class:ghosted={hiddenScenes[file]}>
             {#if renaming?.kind === 'scene' && renaming.file === file}
               {@render renameInput()}
             {:else}
@@ -253,11 +291,20 @@
               >
                 {sceneName(file)}{#if ed.dirtyFiles[file]}<span class="unsaved" title="unsaved changes"> ●</span>{/if}
               </button>
+              <button
+                class="rowbtn eye"
+                class:off={hiddenScenes[file]}
+                title={hiddenScenes[file] ? 'Hidden — click to show in the list again' : 'Hide from this list (view only — export/deploy unaffected)'}
+                onclick={() => toggleSceneHidden(file)}
+              >👁</button>
               <button class="rowbtn" title="Duplicate scene" onclick={() => ed.duplicateScene(file)}>⧉</button>
               <button class="rowbtn remove" title="Delete scene (file included)" onclick={() => ed.removeScene(file)}>✕</button>
             {/if}
           </li>
         {/each}
+        {#if visibleScenes.length === 0}
+          <li class="dim allhidden">all {ed.setRef.scenes.length} scenes hidden — 👁 in the header shows them</li>
+        {/if}
       </ul>
     {/if}
 
@@ -325,7 +372,13 @@
               {#if renaming?.kind === 'seq' && renaming.file === row.id}
                 {@render renameInput()}
               {:else}
-                <span class="name" role="button" tabindex="-1" ondblclick={() => startRenameSeq(row)}>▶ {row.label} ({row.files.length})</span>
+                <span
+                  class="name"
+                  role="button"
+                  tabindex="-1"
+                  onclick={() => (openSeqs[row.id] = !openSeqs[row.id])}
+                  ondblclick={() => startRenameSeq(row)}
+                >{row.label} ({row.files.length})</span>
                 <span class="dim">{seqUsed.length || '—'}</span>
               {/if}
             </li>
@@ -446,6 +499,11 @@
   .scene-row .rowbtn:hover { color: #cfd3da; background: #23262e; }
   .scene-row .remove { color: #a55; }
   .scene-row .remove:hover { color: #e07777; background: #2a2020; }
+  /* Hidden scenes (visible while "show all" is on): ghosted, eye always shown. */
+  .scene-row.ghosted > button:first-of-type { color: #676c76; }
+  .scene-row .eye.off { display: block; opacity: 0.5; }
+  .scene-row .eye.off:hover { opacity: 1; }
+  .allhidden { padding: 4px 8px; font-size: 12px; white-space: normal; }
   .unsaved { color: #d9a441; }
   .hrow { display: flex; align-items: center; }
   .hrow .linkish { flex: 1; }
@@ -513,6 +571,9 @@
   .assets li.seq { color: #9fb8d8; }
   .assets li.seq.unused { color: #e0a34e; }
   .assets li.seq .fold {
+    /* generic `li button` sets width:100% — as a flex item that eats half the row */
+    flex: none;
+    width: auto;
     background: none;
     border: none;
     color: inherit;
@@ -520,6 +581,7 @@
     cursor: pointer;
     font-size: 10px;
   }
+  .assets li.seq .name { flex: 1; }
   .assets li.frame { padding-left: 26px; color: #7d828c; }
   .dim { color: #676c76; font-size: 11px; }
   .danger {

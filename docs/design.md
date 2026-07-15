@@ -41,7 +41,13 @@ faster than Loopic's baked ones). Shipped beyond the original plan:
 Planned but NOT built yet: near-duplicate asset report (pixel-level);
 a real Windows installer (Inno Setup wrapping the portable dist + a bundled
 node.exe — build when there's an actual non-developer user); loops inside
-nested compositions; on-demand sub-animation "play bindings". Still
+nested compositions; on-demand sub-animation "play bindings";
+**archived scenes** (parked 2026-07-15): an `archived` list in `set.json`
+folding retired scenes into a collapsed "Archived (n)" sidebar section —
+travels with the set and tells a downloader what's canon. Distinct from the
+per-scene eye filter (shipped same day), which is deliberately local
+(localStorage) because "hide everything but today's 5 scenes" is personal
+workspace state that must never dirty the set. Still
 outstanding: full on-air soak of the migrated set (Tableau, Schedule, whites,
 Team-v2 plates).
 
