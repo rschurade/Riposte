@@ -553,6 +553,14 @@
       <p class="asset">{el.asset}</p>
     {/if}
 
+    {#if el.type === 'imageSequence'}
+      <h3>Image sequence <span class="dim">{el.frames.length} frames</span></h3>
+      <p class="asset">
+        {el.frames[0]}
+        <br />… {el.frames[el.frames.length - 1]?.split('/').pop()}
+      </p>
+    {/if}
+
     {#if el.type === 'rectangle'}
       <h3>Size binding <span class="dim">bar follows a text layer</span></h3>
       <div class="grid">

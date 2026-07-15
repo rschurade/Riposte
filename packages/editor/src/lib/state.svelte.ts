@@ -1272,6 +1272,16 @@ export function sequenceFrameFiles(assets: AssetInfo[]): Set<string> {
   return frames;
 }
 
+/** Sequence name: `assets/foo/bar_00001.png` → `foo/bar`; digits-only filenames fall back to the folder. */
+export function sequencePattern(frames: string[]): string {
+  const first = frames[0];
+  if (!first) return 'sequence';
+  const parts = first.replace(/^assets\//, '').split('/');
+  const stem = (parts.pop() ?? '').replace(/\d{2,}\.\w+$/, '').replace(/[_\-. ]+$/, '');
+  const folder = parts.join('/');
+  return stem ? (folder ? `${folder}/${stem}` : stem) : folder || 'sequence';
+}
+
 export function layerLabel(layer: Layer): string {
   const el = layer.element;
   if (el.key) return el.key;
@@ -1280,7 +1290,7 @@ export function layerLabel(layer: Layer): string {
     case 'image':
       return 'image ' + el.asset.replace(/^assets\//, '');
     case 'imageSequence':
-      return `sequence (${el.frames.length})`;
+      return `${sequencePattern(el.frames)} (${el.frames.length})`;
     case 'imageLoader':
       return 'image loader';
     case 'text': {
