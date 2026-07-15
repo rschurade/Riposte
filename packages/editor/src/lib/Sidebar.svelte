@@ -127,6 +127,55 @@
     if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'copy';
   }
 
+  // ---- asset preview panel ----------------------------------------------------
+  // Hovering an asset row shows it in a pane pinned under the list; the last
+  // hovered asset stays up (acts like a selection without costing a click).
+  let previewOn = $state(localStorage.getItem('riposte.assetPreview') !== '0');
+  let previewFile = $state<string | null>(null);
+  let previewDim = $state('');
+
+  function togglePreview(): void {
+    previewOn = !previewOn;
+    localStorage.setItem('riposte.assetPreview', previewOn ? '1' : '0');
+  }
+
+  function setPreview(file: string): void {
+    if (previewFile === file) return;
+    previewFile = file;
+    previewDim = '';
+  }
+
+  const previewIsImg = $derived(previewFile !== null && DRAGGABLE_RE.test(previewFile));
+  const previewIsFont = $derived(previewFile !== null && FONT_RE.test(previewFile));
+  const previewSize = $derived.by(() => {
+    const a = ed.assets.find((x) => x.file === previewFile);
+    if (!a) return '';
+    return a.size >= 1024 * 1024 ? `${(a.size / 1024 / 1024).toFixed(1)} MB` : `${(a.size / 1024).toFixed(1)} KB`;
+  });
+
+  // Fonts preview via a live FontFace so the sample renders in the actual font.
+  let previewFontFamily = $state('');
+  let loadedFace: FontFace | null = null;
+  $effect(() => {
+    if (!previewOn || !previewFile || !FONT_RE.test(previewFile)) return;
+    const face = new FontFace('riposte-asset-preview', `url("${ed.assetBase}${previewFile}")`);
+    previewFontFamily = '';
+    void face
+      .load()
+      .then(() => {
+        if (loadedFace) document.fonts.delete(loadedFace);
+        loadedFace = face;
+        document.fonts.add(face);
+        previewFontFamily = 'riposte-asset-preview';
+      })
+      .catch(() => {});
+  });
+
+  function previewImgLoaded(ev: Event): void {
+    const img = ev.currentTarget as HTMLImageElement;
+    if (img.naturalWidth) previewDim = `${img.naturalWidth}×${img.naturalHeight}`;
+  }
+
   // ---- file pickers (new set from .loo, asset upload) ------------------------
   let looInput = $state<HTMLInputElement>();
   let assetInput = $state<HTMLInputElement>();
@@ -245,6 +294,7 @@
         {collapsed.assets ? '▸' : '▾'} Assets
         <span class="dim">({ed.assets.length}{unused.length ? `, ${unused.length} unused` : ''})</span>
       </button>
+      <button class="hbtn" class:on={previewOn} title="Toggle the asset preview pane (hover an asset to preview it)" onclick={togglePreview}>👁</button>
       <button class="hbtn" title="Upload images / fonts into this set" onclick={() => assetInput?.click()}>+</button>
     </h2>
     {#if !collapsed.assets}
@@ -269,6 +319,7 @@
               title={(seqUsed.length ? `used by:\n${seqUsed.join('\n')}` : 'UNUSED') + `\n\n${row.files.length} frames, ${seqMb(row.files)} MB. Double-click to rename the sequence, drag to stage or timeline for an image sequence.`}
               draggable="true"
               ondragstart={(e) => dragStartSeq(e, row.files)}
+              onmouseenter={() => setPreview(row.files[0].file)}
             >
               <button class="fold" onclick={() => (openSeqs[row.id] = !openSeqs[row.id])}>{openSeqs[row.id] ? '▾' : '▸'}</button>
               {#if renaming?.kind === 'seq' && renaming.file === row.id}
@@ -280,7 +331,7 @@
             </li>
             {#if openSeqs[row.id]}
               {#each row.files as a (a.file)}
-                <li class="frame" draggable={true} ondragstart={(e) => dragStart(e, a.file)}>
+                <li class="frame" draggable={true} ondragstart={(e) => dragStart(e, a.file)} onmouseenter={() => setPreview(a.file)}>
                   {#if renaming?.kind === 'asset' && renaming.file === a.file}
                     {@render renameInput()}
                   {:else}
@@ -299,6 +350,7 @@
               title={(used ? `used by:\n${used.join('\n')}` : 'UNUSED') + '\n\ndouble-click to rename, drag to stage or timeline'}
               draggable={DRAGGABLE_RE.test(a.file)}
               ondragstart={(e) => dragStart(e, a.file)}
+              onmouseenter={() => setPreview(a.file)}
             >
               {#if renaming?.kind === 'asset' && renaming.file === a.file}
                 {@render renameInput()}
@@ -318,6 +370,22 @@
           <li class="dim">no match</li>
         {/if}
       </ul>
+
+      {#if previewOn && previewFile && (previewIsImg || previewIsFont)}
+        <div class="preview">
+          <div class="checker">
+            {#if previewIsImg}
+              <img src={ed.assetBase + previewFile} alt={previewFile} onload={previewImgLoaded} />
+            {:else}
+              <span class="fontsample" style:font-family={previewFontFamily || 'inherit'}>AaBb 0123 4:45 HUN</span>
+            {/if}
+          </div>
+          <div class="cap">
+            <span class="capname">{previewFile.replace(/^assets\//, '')}</span>
+            <span class="dim">{previewIsImg && previewDim ? `${previewDim} · ` : ''}{previewSize}</span>
+          </div>
+        </div>
+      {/if}
     {/if}
   {/if}
 </aside>
@@ -395,6 +463,7 @@
   }
   .hbtn:hover { background: #2c4a75; }
   .hbtn.wide { width: auto; padding: 0 6px; font-size: 11px; }
+  .hbtn.on { background: #2c4a75; color: #fff; }
   .ghost { display: none; }
   .kinds { display: flex; gap: 3px; margin: 2px 0; flex: none; }
   .kind {
@@ -463,4 +532,44 @@
     font-size: 12px;
   }
   .danger:hover { background: #703434; }
+  .preview {
+    flex: none;
+    border: 1px solid #2c2f38;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  /* Checkerboard: most broadcast assets are transparent PNGs. */
+  .preview .checker {
+    height: 130px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: repeating-conic-gradient(#33363f 0% 25%, #262a31 0% 50%) 0 0 / 16px 16px;
+  }
+  .preview img {
+    max-width: 100%;
+    max-height: 126px;
+    object-fit: contain;
+  }
+  .preview .fontsample {
+    color: #fff;
+    font-size: 24px;
+    padding: 0 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .preview .cap {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #aab;
+    background: #1b1d23;
+  }
+  .preview .cap .capname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview .cap .dim { flex: none; }
 </style>
