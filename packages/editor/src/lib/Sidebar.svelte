@@ -319,7 +319,7 @@
               title={(seqUsed.length ? `used by:\n${seqUsed.join('\n')}` : 'UNUSED') + `\n\n${row.files.length} frames, ${seqMb(row.files)} MB. Double-click to rename the sequence, drag to stage or timeline for an image sequence.`}
               draggable="true"
               ondragstart={(e) => dragStartSeq(e, row.files)}
-              onmouseenter={() => setPreview(row.files[0].file)}
+              onmouseenter={() => setPreview(row.files[row.files.length - 1]!.file)}
             >
               <button class="fold" onclick={() => (openSeqs[row.id] = !openSeqs[row.id])}>{openSeqs[row.id] ? '▾' : '▸'}</button>
               {#if renaming?.kind === 'seq' && renaming.file === row.id}
