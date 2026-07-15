@@ -4,6 +4,7 @@
   import Timeline from './lib/Timeline.svelte';
   import Inspector from './lib/Inspector.svelte';
   import SetOptions from './lib/SetOptions.svelte';
+  import DeployDialog from './lib/DeployDialog.svelte';
   import { ed } from './lib/state.svelte.ts';
 
   $effect(() => {
@@ -160,6 +161,7 @@
   <Timeline />
 </div>
 <SetOptions />
+<DeployDialog />
 
 <style>
   :global(body) {

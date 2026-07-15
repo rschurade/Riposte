@@ -165,7 +165,9 @@ async function apiOpen(req: IncomingMessage, res: ServerResponse): Promise<void>
   // validates root+name (throws on bad refs)
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   setDirOf(url);
-  broadcast('open', { root: body.root, name: body.name, file: body.file, frame: body.frame });
+  // NOT 'open' — that name collides with EventSource's native connect event
+  // (fires with no data on every reconnect → JSON.parse crash in the client).
+  broadcast('open-scene', { root: body.root, name: body.name, file: body.file, frame: body.frame });
   return json(res, { ok: true, listeners: sseClients.size });
 }
 
@@ -305,7 +307,7 @@ async function apiContractConfig(req: IncomingMessage, res: ServerResponse): Pro
  * the target dir has and the export doesn't.
  */
 async function apiDeploy(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; targetDir: string; mode?: 'external' | 'baked' };
+  const body = (await readBody(req)) as { root: string; name: string; targetDir: string; mode?: 'external' | 'baked'; force?: boolean };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const setDir = setDirOf(url);
   const targetDir = resolve(repoRoot, (body.targetDir ?? '').trim());
@@ -317,7 +319,7 @@ async function apiDeploy(req: IncomingMessage, res: ServerResponse): Promise<voi
   }
   const exportDir = join(setDir, 'export');
   const exported = await exportSet(setDir, exportDir, body.mode ? { mode: body.mode } : {});
-  const synced = await syncDir(exportDir, targetDir);
+  const synced = await syncDir(exportDir, targetDir, body.force === true);
   return json(res, { exported, synced, targetDir, contract: await runContractChecks(setDir) });
 }
 

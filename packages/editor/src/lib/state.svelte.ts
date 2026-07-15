@@ -40,6 +40,18 @@ class EditorState {
   scene = $state<SceneDoc | null>(null);
   version = $state(0);
   dirty = $state(false);
+  /**
+   * Files whose in-memory doc differs from disk. Scene switches PARK unsaved
+   * edits in the bundle (allScenes) — without this map they looked saved (the
+   * single `dirty` flag was reset), never hit disk, and export/deploy shipped
+   * the stale file. Saves clear the entry; export/deploy save these first.
+   */
+  dirtyFiles = $state<Record<string, boolean>>({});
+
+  private markDirty(): void {
+    this.dirty = true;
+    if (this.sceneFile) this.dirtyFiles[this.sceneFile] = true;
+  }
 
   frame = $state(0);
   playing = $state(false);
@@ -148,6 +160,8 @@ class EditorState {
     const q = `root=${encodeURIComponent(ref.root)}&name=${encodeURIComponent(ref.name)}`;
     const bundle = await (await fetch(`/api/set?${q}`)).json();
     this.allScenes = bundle.scenes;
+    this.dirtyFiles = {}; // discard was confirmed above
+    this.dirty = false;
     this.assets = await (await fetch(`/api/assets?${q}`)).json();
     if (opts.showOptions) {
       this.setOptionsOpen = true;
@@ -181,7 +195,8 @@ class EditorState {
     this.cg = { ...this.cg, active: false, held: false };
     this.selectedLayerId = null;
     this.selectedKf = null;
-    this.dirty = false;
+    // switching back to a scene with parked edits keeps it saveable
+    this.dirty = !!this.dirtyFiles[file];
     this.undoStack = [];
     this.undoIndex = 0;
     this.version++;
@@ -202,7 +217,7 @@ class EditorState {
     this.undoStack.length = this.undoIndex;
     this.undoStack.push({ label, before, after });
     this.undoIndex++;
-    this.dirty = true;
+    this.markDirty();
     this.version++;
   }
 
@@ -210,7 +225,7 @@ class EditorState {
     if (this.undoIndex === 0 || !this.scene) return;
     this.undoIndex--;
     this.scene = JSON.parse(this.undoStack[this.undoIndex]!.before) as SceneDoc;
-    this.dirty = true;
+    this.markDirty();
     this.version++;
   }
 
@@ -218,7 +233,7 @@ class EditorState {
     if (this.undoIndex >= this.undoStack.length || !this.scene) return;
     this.scene = JSON.parse(this.undoStack[this.undoIndex]!.after) as SceneDoc;
     this.undoIndex++;
-    this.dirty = true;
+    this.markDirty();
     this.version++;
   }
 
@@ -237,6 +252,7 @@ class EditorState {
     });
     this.allScenes[this.sceneFile] = JSON.parse(JSON.stringify(this.scene)) as SceneDoc;
     this.dirty = false;
+    this.dirtyFiles[this.sceneFile] = false;
     this.flash(`saved ${this.sceneFile}`);
   }
 
@@ -249,11 +265,17 @@ class EditorState {
     if (this.es) return; // once — survives HMR re-mounts
     const es = new EventSource('/api/events');
     this.es = es;
-    es.addEventListener('open', (e) => {
-      void this.onRemoteOpen(JSON.parse((e as MessageEvent).data));
+    // custom event is 'open-scene', NOT 'open' — the native EventSource
+    // connect event is also named 'open' and carries no data.
+    es.addEventListener('open-scene', (e) => {
+      const data = (e as MessageEvent).data;
+      if (typeof data !== 'string') return;
+      void this.onRemoteOpen(JSON.parse(data));
     });
     es.addEventListener('scene-saved', (e) => {
-      void this.onRemoteSaved(JSON.parse((e as MessageEvent).data));
+      const data = (e as MessageEvent).data;
+      if (typeof data !== 'string') return;
+      void this.onRemoteSaved(JSON.parse(data));
     });
   }
 
@@ -283,13 +305,22 @@ class EditorState {
     if (this.setRef?.root !== p.root || this.setRef?.name !== p.name) return;
     const q = `root=${encodeURIComponent(p.root)}&name=${encodeURIComponent(p.name)}`;
     const bundle = (await (await fetch(`/api/set?${q}`)).json()) as { scenes: Record<string, SceneDoc | null> };
+
+    // Docs with unsaved edits (parked by scene switches) must survive the
+    // bundle refresh — the disk copies in the bundle are older than them.
+    const parked: Record<string, SceneDoc | null> = {};
+    if (this.dirty && this.sceneFile) this.allScenes[this.sceneFile] = this.scene;
+    for (const [f, d] of Object.entries(this.dirtyFiles)) {
+      if (d && f !== p.file && this.allScenes[f]) parked[f] = this.allScenes[f];
+    }
+
     if (p.file === this.sceneFile) {
       if (this.dirty) {
         // don't clobber in-flight edits; the bundle copy is refreshed on next open
         this.flash(`${sceneNameOf(p.file)} was changed externally — you have unsaved edits`);
         return;
       }
-      this.allScenes = bundle.scenes;
+      this.allScenes = { ...bundle.scenes, ...parked };
       const doc = bundle.scenes[p.file];
       this.scene = doc ? (JSON.parse(JSON.stringify(doc)) as SceneDoc) : null;
       if (this.selectedLayerId && !this.scene?.composition.layers.some((l) => l.id === this.selectedLayerId)) {
@@ -301,11 +332,9 @@ class EditorState {
       this.version++;
       this.flash(`remote: ${sceneNameOf(p.file)} updated`);
     } else {
-      // another scene (possibly a component rendered in this one) changed
-      if (this.dirty && this.sceneFile) this.allScenes[this.sceneFile] = this.scene;
-      const keep = this.dirty && this.sceneFile ? this.allScenes[this.sceneFile] : null;
-      this.allScenes = bundle.scenes;
-      if (keep && this.sceneFile) this.allScenes[this.sceneFile] = keep;
+      // another scene (possibly a component rendered in this one) changed —
+      // take the fresh bundle but keep every doc that has unsaved edits
+      this.allScenes = { ...bundle.scenes, ...parked };
       this.version++;
     }
   }
@@ -323,6 +352,7 @@ class EditorState {
     this.setRef.scenes = this.setRef.scenes.filter((s) => s !== file);
     delete this.allScenes[file];
     this.allScenes = { ...this.allScenes };
+    this.dirtyFiles[file] = false;
     if (this.sceneFile === file) {
       this.scene = null;
       this.sceneFile = null;
@@ -1040,6 +1070,8 @@ class EditorState {
   /** Build CasparCG templates into the set's own export/ folder (incremental). */
   async exportSet(): Promise<void> {
     if (!this.setRef) return;
+    const saved = await this.saveAll();
+    if (saved) this.flash(`saved ${saved} scene(s) with unsaved edits`);
     this.flash('exporting…');
     try {
       const res = await fetch('/api/export', {
@@ -1081,22 +1113,25 @@ class EditorState {
     if (dead > 0) this.flash(`⚠ contract: ${dead} dead mapping(s) across ${reports.length} config(s) — details in devtools console`);
   }
 
-  /** Export, then incrementally sync the export into the CasparCG template dir. */
-  async deploySet(): Promise<void> {
+  /** The Deploy button opens the dialog (target dir + force option). */
+  deployDialogOpen = $state(false);
+
+  deploySet(): void {
     if (!this.setRef) return;
-    const remembered = localStorage.getItem('riposte.deployDir') ?? localStorage.getItem('riposte.exportDir') ?? '';
-    const targetDir = prompt(
-      'Deploy target — paste the full path of your CasparCG template directory\n' +
-        '(the last used path is remembered; only changed files are copied, nothing is deleted):',
-      remembered,
-    );
-    if (targetDir === null || !targetDir.trim()) return;
-    this.flash('deploying…');
+    this.deployDialogOpen = true;
+  }
+
+  /** Export, then incrementally sync the export into the CasparCG template dir. */
+  async deployTo(targetDir: string, force: boolean): Promise<void> {
+    if (!this.setRef || !targetDir.trim()) return;
+    const saved = await this.saveAll();
+    if (saved) this.flash(`saved ${saved} scene(s) with unsaved edits`);
+    this.flash(force ? 'deploying (full redeploy)…' : 'deploying…');
     try {
       const res = await fetch('/api/deploy', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, targetDir }),
+        body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, targetDir, force }),
       });
       const r = await res.json();
       if (!res.ok) throw new Error(r.error ?? `server responded ${res.status}`);
@@ -1114,8 +1149,40 @@ class EditorState {
   }
 
   private async confirmDiscard(): Promise<boolean> {
-    if (!this.dirty) return true;
-    return confirm('Unsaved changes in the current scene — discard them?');
+    const parked = Object.entries(this.dirtyFiles)
+      .filter(([, d]) => d)
+      .map(([f]) => sceneNameOf(f));
+    if (!this.dirty && parked.length === 0) return true;
+    const what = parked.length ? parked.join(', ') : 'the current scene';
+    return confirm(`Unsaved changes in ${what} — discard them?`);
+  }
+
+  /**
+   * Save every scene with unsaved edits — including edits parked in the
+   * bundle by earlier scene switches. Export/deploy run this first so what
+   * you see in the editor is what ships.
+   */
+  async saveAll(): Promise<number> {
+    if (!this.setRef) return 0;
+    if (this.dirty && this.sceneFile && this.scene) {
+      this.allScenes[this.sceneFile] = JSON.parse(JSON.stringify(this.scene)) as SceneDoc;
+    }
+    // Snapshot up front: an SSE bundle refresh mid-loop must not swap docs.
+    const toSave = Object.entries(this.dirtyFiles)
+      .filter(([, d]) => d)
+      .map(([file]) => ({ file, doc: this.allScenes[file] }))
+      .filter((x): x is { file: string; doc: SceneDoc } => !!x.doc);
+    for (const { file, doc } of toSave) {
+      this.ownSave = { file, at: Date.now() };
+      await fetch('/api/scene', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, file, doc }),
+      });
+      this.dirtyFiles[file] = false;
+    }
+    if (this.sceneFile && !this.dirtyFiles[this.sceneFile]) this.dirty = false;
+    return toSave.length;
   }
 
   flash(msg: string): void {

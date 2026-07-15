@@ -251,7 +251,7 @@
                 onclick={() => ed.openScene(file)}
                 ondblclick={() => startRename('scene', file)}
               >
-                {sceneName(file)}
+                {sceneName(file)}{#if ed.dirtyFiles[file]}<span class="unsaved" title="unsaved changes"> ●</span>{/if}
               </button>
               <button class="rowbtn" title="Duplicate scene" onclick={() => ed.duplicateScene(file)}>⧉</button>
               <button class="rowbtn remove" title="Delete scene (file included)" onclick={() => ed.removeScene(file)}>✕</button>
@@ -280,7 +280,7 @@
                   onclick={() => ed.openScene(file)}
                   ondblclick={() => startRename('scene', file)}
                 >
-                  ▣ {sceneName(file)}
+                  ▣ {sceneName(file)}{#if ed.dirtyFiles[file]}<span class="unsaved" title="unsaved changes"> ●</span>{/if}
                 </button>
               {/if}
             </li>
@@ -446,6 +446,7 @@
   .scene-row .rowbtn:hover { color: #cfd3da; background: #23262e; }
   .scene-row .remove { color: #a55; }
   .scene-row .remove:hover { color: #e07777; background: #2a2020; }
+  .unsaved { color: #d9a441; }
   .hrow { display: flex; align-items: center; }
   .hrow .linkish { flex: 1; }
   .hbtn {

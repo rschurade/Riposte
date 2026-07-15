@@ -66,21 +66,26 @@ export interface SyncResult {
  * Incrementally mirror a directory tree into another (deploy an export to the
  * CasparCG template dir). Additive only — files that exist solely in the
  * destination are left alone, since the target dir usually holds other
- * template families too.
+ * template families too. With `force`, every file is copied regardless of the
+ * change check (full redeploy — e.g. after hand-editing the target dir).
  */
-export async function syncDir(srcDir: string, dstDir: string): Promise<SyncResult> {
+export async function syncDir(srcDir: string, dstDir: string, force = false): Promise<SyncResult> {
   const r: SyncResult = { copied: 0, upToDate: 0, copiedBytes: 0 };
   await mkdir(dstDir, { recursive: true });
   for (const entry of await readdir(srcDir, { withFileTypes: true })) {
     const src = join(srcDir, entry.name);
     const dst = join(dstDir, entry.name);
     if (entry.isDirectory()) {
-      const sub = await syncDir(src, dst);
+      const sub = await syncDir(src, dst, force);
       r.copied += sub.copied;
       r.upToDate += sub.upToDate;
       r.copiedBytes += sub.copiedBytes;
     } else if (entry.isFile()) {
-      if (await copyIfChanged(src, dst)) {
+      if (force) {
+        await copyFile(src, dst);
+        r.copied++;
+        r.copiedBytes += (await stat(dst)).size;
+      } else if (await copyIfChanged(src, dst)) {
         r.copied++;
         r.copiedBytes += (await stat(dst)).size;
       } else {
