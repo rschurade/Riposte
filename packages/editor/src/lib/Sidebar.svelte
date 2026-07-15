@@ -14,6 +14,8 @@
   const FONT_RE = /\.(ttf|otf|woff2?)$/i;
   type AssetKind = 'images' | 'fonts' | 'all';
   let assetKind = $state<AssetKind>((localStorage.getItem('riposte.assetKind') as AssetKind) ?? 'images');
+  /** 'frames' floats sequences to the top, sorted by frame count — for duplicate hunting. */
+  let assetSort = $state<'name' | 'frames'>('name');
 
   function setKind(k: AssetKind): void {
     assetKind = k;
@@ -66,7 +68,13 @@
       if (q && !a.file.toLowerCase().includes(q)) continue;
       rows.push({ kind: 'file', a });
     }
-    rows.sort((x, y) => (x.kind === 'seq' ? x.label : x.a.file).localeCompare(y.kind === 'seq' ? y.label : y.a.file));
+    if (assetSort === 'frames') {
+      const count = (r: AssetRow) => (r.kind === 'seq' ? r.files.length : Infinity);
+      rows.sort((x, y) => count(x) - count(y)
+        || (x.kind === 'seq' ? x.label : x.a.file).localeCompare(y.kind === 'seq' ? y.label : y.a.file));
+    } else {
+      rows.sort((x, y) => (x.kind === 'seq' ? x.label : x.a.file).localeCompare(y.kind === 'seq' ? y.label : y.a.file));
+    }
     return rows;
   });
 
@@ -354,6 +362,13 @@
         {#each ['images', 'fonts', 'all'] as k (k)}
           <button class="kind" class:on={assetKind === k} onclick={() => setKind(k as AssetKind)}>{k}</button>
         {/each}
+        <span class="gap"></span>
+        <button
+          class="kind"
+          class:on={assetSort === 'frames'}
+          title="Sort sequences to the top by frame count (spot near-duplicates)"
+          onclick={() => (assetSort = assetSort === 'name' ? 'frames' : 'name')}
+        >#⇅</button>
       </div>
       <input class="filter" type="search" placeholder="filter assets…" bind:value={assetFilter} />
       <ul class="assets">
@@ -525,6 +540,7 @@
   .hbtn.on { background: #2c4a75; color: #fff; }
   .ghost { display: none; }
   .kinds { display: flex; gap: 3px; margin: 2px 0; flex: none; }
+  .kinds .gap { flex: 1; }
   .kind {
     background: #23262e;
     border: 1px solid #383c46;
