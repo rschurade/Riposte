@@ -3,8 +3,11 @@
 A local, standalone studio for designing and exporting CasparCG HTML graphic
 templates. *Riposte* — the counter-attack that follows a parry.
 
-Riposte replaces a cloud editor whose exports bake every asset into one 8–23 MB
-base64-encoded HTML file. Its core ideas:
+Riposte is a browser-based motion-graphics editor plus a rendering engine,
+running entirely on your machine: a local Node server, an editor UI, and a
+small runtime that plays the graphics on air. Scenes are plain JSON, assets
+are plain files, and everything lives in a git-friendly project folder — no
+cloud, no accounts. Its core ideas:
 
 - **The runtime is the product.** A small zero-dependency engine renders a
   `scene.json` via DOM+CSS and implements the CasparCG template contract
@@ -15,6 +18,64 @@ base64-encoded HTML file. Its core ideas:
   Assets are plain files, content-hash deduplicated; projects are diffable JSON.
 - **Exports stay small.** Template shells reference the shared assets folder
   (with an optional baked single-file fallback for compatibility).
+
+## Features
+
+### Editor
+- Stage with direct manipulation: drag, snap-to-grid, ruler guides
+  (lockable, layers snap to them), layer locking, zoom/pan.
+- Timeline: per-layer spans, keyframes with bezier easing, markers —
+  pause, outro (`stop()` plays from there), loop, and frame actions (JS).
+- Inspector for every element type: text (incl. tabular numerals / digit
+  boxing for jitter-free clocks), image, image sequence, image loader
+  (runtime-fed image with design-time placeholder), rectangle/ellipse
+  (with dynamic size binding — a bar that follows a text layer's measured
+  width), nested composition.
+- Components: reusable nested compositions — edit once, every scene that
+  embeds one follows; drag a component from the sidebar onto the stage to
+  embed it.
+- Masks per layer, animatable x/y/w/h, per-corner radius.
+- Data bindings: `update()` payload keys map to elements (`_name`
+  convention, dot paths into nested components), visibility bindings with
+  initial state, per-scene preview data for design-time.
+- Asset management: drag-and-drop import, image sequences auto-grouped
+  (rename, drag to stage as one), hover preview pane (images, sequences,
+  live font samples), usage tracking with one-click delete-unused,
+  per-scene visibility filter for the scene list.
+- Undo/redo, per-file dirty tracking (unsaved scenes marked everywhere,
+  auto-saved before export/deploy), deep links
+  (`?set=…&scene=…&frame=…&layer=…`), resizable persisted panels.
+
+### Export & deploy
+- Incremental export: tiny per-scene HTML shells + one shared `assets/`
+  folder and runtime; only changed files are written.
+- Optional PNG→WebP re-encoding on export (cached, lossy/lossless race
+  per image; the set on disk stays PNG) — real-world set: 213 MB → 27 MB.
+- One-click deploy into a CasparCG template directory — additive and
+  incremental, with an optional force-full-redeploy.
+- Mapping-contract check on export/deploy: warns about template keys no
+  controller mapping fills and mappings pointing at removed keys.
+- Baked single-file export as a compatibility fallback (all assets inlined).
+
+### Rehearsal without a broadcast rig
+- **Virtual CasparCG**: the server speaks AMCP on its own ports, so the
+  real production controller connects to Riposte as if it were a Caspar
+  server; a playout page renders what would be on air (main + preview
+  feeds). Doubles as a wire-tap to inspect exactly what a graphic receives.
+- **Bench**: load any exported scene, inject `update()` data, step the
+  lifecycle (`add/play/next/stop`), `?debug=<key>` logs element geometry
+  per update.
+
+### Automation
+- **MCP server**: sets/scenes listing with content keys, scene CRUD,
+  element edits, layer add, asset import, headless scene/filmstrip
+  rendering, export/deploy, and live bench control — an AI assistant can
+  inspect, edit, fill, and verify graphics end-to-end.
+- Importer for Loopic `.loo` projects (scenes, assets, scripts).
+
+### Distribution
+- `npm run dist` builds a portable zip: bundled server, built editor,
+  start scripts — recipients need only a Node.js LTS install.
 
 ## Repository layout
 
