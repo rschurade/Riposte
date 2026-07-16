@@ -44,6 +44,10 @@ npm run dist      # portable distribution: dist/riposte/ + dist/riposte-<version
 
 ### Distribution (portable zip)
 
+**Cutting a release:** bump `version` in the root `package.json`, add the
+version's section to `CHANGELOG.md` (user-facing Added/Fixed, not commit
+subjects; the zip ships it), then `npm run dist`.
+
 `npm run dist` packs a folder that runs anywhere with only a Node.js LTS install: the esbuild-bundled `server.js` (no native TS → no Node-24 requirement, no npm install), the built editor, runtime, bench/playout, the demo set, an empty `projects/`, and `start.cmd`/`start.sh` (run `node server.js --open`). **Packaged layout is auto-detected** (a `public/` dir next to `server.js`): the editor is then served at `/` and the bench moves to `/bench`; in the dev repo, `/` stays the bench (bench-shot.ps1 and A/B tooling depend on that) and the editor stays on vite. `RIPOSTE_PROJECTS_DIR` / `RIPOSTE_EXAMPLES_DIR` override the set roots in both modes. Recipients share sets by copying folders into `projects/`.
 
 CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html <set-dir> <export.html>`, `riposte-migrate <set-dir>`, `riposte-export <set-dir> [outDir] [--baked]`, `riposte-mcp`.
