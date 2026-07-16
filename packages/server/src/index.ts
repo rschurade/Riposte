@@ -192,7 +192,21 @@ async function apiSetBundle(url: URL, res: ServerResponse): Promise<void> {
       scenes[file] = null;
     }
   }
-  return json(res, { set, scenes });
+  // Outro presets (outros/*.json) — name (filename sans .json) → preset doc.
+  const outros: Record<string, unknown> = {};
+  try {
+    for (const entry of await readdir(join(dir, 'outros'), { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      try {
+        outros[entry.name.slice(0, -5)] = JSON.parse(await readFile(join(dir, 'outros', entry.name), 'utf8'));
+      } catch {
+        /* unreadable preset — skip */
+      }
+    }
+  } catch {
+    /* no outros folder */
+  }
+  return json(res, { set, scenes, outros });
 }
 
 async function apiAssets(url: URL, res: ServerResponse): Promise<void> {

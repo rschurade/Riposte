@@ -66,7 +66,20 @@
     { prop: 'y', label: 'Y', fallback: 0 },
     { prop: 'width', label: 'W', fallback: 0 },
     { prop: 'height', label: 'H', fallback: 0 },
+    { prop: 'rotation', label: 'Rot', fallback: 0 },
   ];
+
+  /** Invert = the element shows OUTSIDE the mask (the mask cuts a hole). */
+  function setMaskInverted(mi: number, on: boolean): void {
+    if (!layer) return;
+    const id = layer.id;
+    ed.mutate('set mask invert', (scene) => {
+      const m = scene.composition.layers.find((x) => x.id === id)?.masks?.[mi];
+      if (!m) return;
+      if (on) m.inverted = true;
+      else delete m.inverted;
+    });
+  }
 
   /** Current color-style value ('' when unset). */
   function colorAt(prop: string): string {
@@ -379,13 +392,20 @@
           {/each}
         </div>
         <div class="grid">
-          <label for="mask{mi}-radius" title="Corner radius in px — one value for all corners, or four (TL TR BR BL), e.g. '40 0 0 0' to round only the top-left">Radius</label>
+          <label for="mask{mi}-radius" title="Corner radius in px — one value for all corners, or four (TL TR BR BL), e.g. '40 0 0 0' to round only the top-left. Not combinable with rotation/invert.">Radius</label>
           <input
             id="mask{mi}-radius"
             type="text"
             placeholder="e.g. 40  or  40 0 0 0"
             value={mask.style['borderRadius']?.value ?? ''}
             onchange={(e) => setMaskRadius(mi, (e.currentTarget as HTMLInputElement).value)}
+          />
+          <label for="mask{mi}-invert" title="The element shows OUTSIDE the mask — the mask cuts a hole (e.g. a growing diamond outro with rotation 45)">Invert</label>
+          <input
+            id="mask{mi}-invert"
+            type="checkbox"
+            checked={mask.inverted === true}
+            onchange={(e) => setMaskInverted(mi, (e.currentTarget as HTMLInputElement).checked)}
           />
         </div>
       {/if}
@@ -727,6 +747,26 @@
       <button class="minor" onclick={() => ed.addMarker('outro')}>+ outro @{ed.frame}</button>
       <button class="minor" onclick={() => ed.addMarker('action')}>+ action @{ed.frame}</button>
     </div>
+
+    <h3>Outro effect</h3>
+    <div class="grid">
+      <label for="scene-outro" title="Scene-level outro: stop() runs this preset on the whole scene (every layer at once) INSTEAD of the marker outro. Presets are outros/*.json files in the set.">Preset</label>
+      <select
+        id="scene-outro"
+        value={ed.scene.outro ?? ''}
+        onchange={(e) => ed.setSceneOutro((e.currentTarget as HTMLSelectElement).value)}
+      >
+        <option value="">(none — marker outro)</option>
+        {#each Object.keys(ed.outros).sort() as name (name)}
+          <option value={name}>{name}{ed.outros[name] ? ` (${ed.outros[name].duration}f)` : ''}</option>
+        {/each}
+      </select>
+    </div>
+    {#if ed.scene.outro && !ed.outros[ed.scene.outro]}
+      <p class="hint">⚠ preset "{ed.scene.outro}" has no outros/{ed.scene.outro}.json in this set — stop() falls back to the marker outro.</p>
+    {:else if Object.keys(ed.outros).length === 0}
+      <p class="hint">No presets in this set yet — add JSON files under outros/ (fade, wipes, the diamond…).</p>
+    {/if}
 
     <h3>Composition action <span class="dim">runs once at load</span></h3>
     <textarea class="code" rows="14" spellcheck="false" value={comp.action ?? ''}

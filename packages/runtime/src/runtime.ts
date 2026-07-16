@@ -4,10 +4,11 @@
  * imported templates ports with minimal edits.
  */
 
-import type { SceneDoc, VisibilityBinding } from '@riposte/shared';
+import type { OutroPreset, SceneDoc, VisibilityBinding } from '@riposte/shared';
 import { buildScene, type BuildOptions, type BuiltScene, type BoundVisibility, type ElementHandle, type LayerHandle } from './dom.ts';
 import { parseUpdateData } from './data.ts';
 import { Player } from './player.ts';
+import { clearOutroEffect, runOutroEffect } from './outro.ts';
 
 /** Evaluate a visibility binding against an update() value. */
 export function evaluateVisibility(binding: VisibilityBinding, value: string | undefined): boolean {
@@ -16,7 +17,10 @@ export function evaluateVisibility(binding: VisibilityBinding, value: string | u
   return !(binding.hideWhen ?? ['0']).includes(value);
 }
 
-export interface RuntimeOptions extends BuildOptions {}
+export interface RuntimeOptions extends BuildOptions {
+  /** Scene-level outro effect — stop() runs it instead of the marker outro. */
+  outro?: OutroPreset;
+}
 
 type Next = () => void;
 export type PlayMiddleware = (next: Next) => void;
@@ -210,6 +214,20 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
   }
 
   const outroMarker = comp.markers.find((m) => m.type === 'outro');
+  let cancelOutroFx: (() => void) | null = null;
+
+  /** Run the scene-level outro preset on the content root, then hide. */
+  const startOutroFx = (preset: OutroPreset): void => {
+    if (cancelOutroFx) return; // already exiting
+    console.info(`riposte: outro preset "${preset.name}" (${preset.duration}f)`);
+    cancelOutroFx = runOutroEffect(built.contentEl, comp, preset, () => {
+      cancelOutroFx = null;
+      player.pause();
+      stopHoldClock();
+      built.hide();
+      clearOutroEffect(built.contentEl);
+    });
+  };
 
   const runtime: Runtime = {
     update(data) {
@@ -234,6 +252,9 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
         playMws,
         () => {
           // fresh cycle: loop layers restart their entrance
+          cancelOutroFx?.();
+          cancelOutroFx = null;
+          clearOutroEffect(built.contentEl);
           stopHoldClock();
           built.timeState.hold = 0;
           built.timeState.exiting = false;
@@ -248,7 +269,11 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
       chain(
         stopMws,
         () => {
-          if (outroMarker) {
+          if (opts.outro) {
+            // scene-level effect on the root: the playhead stays where it is
+            // (loops keep cycling underneath) while the effect wipes it out
+            startOutroFx(opts.outro);
+          } else if (outroMarker) {
             latchExit(outroMarker.frame);
             player.goToAndPlay(outroMarker.frame);
           } else {
@@ -267,6 +292,12 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
         () => {
           // resuming off the LAST pause plays the outro — exit the loops with it
           if (!player.playing && lastPauseFrame >= 0 && player.activeFrame >= lastPauseFrame) {
+            // ControlCenter's lifecycle drives the outro via NEXT, not STOP —
+            // a scene-level preset replaces the marker outro here as well
+            if (opts.outro) {
+              startOutroFx(opts.outro);
+              return;
+            }
             latchExit(player.activeFrame);
           }
           player.resume();
@@ -301,6 +332,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     flags,
     findElementByKey: (key) => built.byKey.get(key),
     destroy() {
+      cancelOutroFx?.();
       stopHoldClock();
       player.destroy();
       built.destroy();

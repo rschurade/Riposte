@@ -58,7 +58,13 @@ async function load(opt) {
   for (const f of opt.components || []) {
     try { components[f] = await (await fetch(base + f)).json(); } catch { /* missing component */ }
   }
-  rt = riposte.createRuntime(scene, $('stage'), { assetBase: base, components });
+  // scene-level outro preset: resolve the referenced outros/<name>.json
+  let outro = null;
+  if (scene.outro) {
+    try { outro = await (await fetch(`${base}outros/${scene.outro}.json`)).json(); }
+    catch { console.warn(`outro preset "${scene.outro}" not found`); }
+  }
+  rt = riposte.createRuntime(scene, $('stage'), { assetBase: base, components, outro: outro || undefined });
   window.rt = rt; // debugging convenience
 
   const comp = scene.composition;

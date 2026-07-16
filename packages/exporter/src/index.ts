@@ -14,7 +14,7 @@
 import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
+import type { OutroPreset, SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
 
 export { checkContract, collectSceneKeys, type ContractReport, type ContractSceneReport } from './contract.ts';
 import { webpAvailable, webpCached, type WebpStats } from './webp.ts';
@@ -176,6 +176,21 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     if (doc) components[file] = doc;
   }
 
+  /** Outro presets referenced by scenes — inlined into the shells. */
+  const outroCache = new Map<string, OutroPreset | null>();
+  const readOutro = async (name: string): Promise<OutroPreset | null> => {
+    const cached = outroCache.get(name);
+    if (cached !== undefined) return cached;
+    let preset: OutroPreset | null = null;
+    try {
+      preset = JSON.parse(await readFile(join(setDir, 'outros', `${name}.json`), 'utf8')) as OutroPreset;
+    } catch {
+      warnings.push(`outro preset "${name}" not found (outros/${name}.json) — scene falls back to its marker outro`);
+    }
+    outroCache.set(name, preset);
+    return preset;
+  };
+
   await mkdir(outDir, { recursive: true });
   const scenes: string[] = [];
   const scenesUpdated: string[] = [];
@@ -196,6 +211,8 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     for (const f of set.fonts ?? []) assets.add(f.file);
     for (const a of assets) allAssets.add(a);
 
+    const outro = doc.outro ? await readOutro(doc.outro) : null;
+
     // external: refs rewritten to the re-encoded names; baked: original refs
     // (assets become data URIs — only the bytes and mime change).
     const html =
@@ -206,8 +223,9 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
             webpOn ? Object.fromEntries(Object.entries(sceneComponents).map(([k, v]) => [k, rewriteRefs(v)])) : sceneComponents,
             set,
             preloadAssets ? [...assets].map(renameRef) : [],
+            outro,
           )
-        : await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null);
+        : await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null, outro);
 
     if (await writeIfChanged(join(outDir, `${name}.html`), html)) scenesUpdated.push(name);
     scenes.push(name);
@@ -302,24 +320,38 @@ ${bootScript}
 `;
 }
 
-function bootScript(scene: SceneDoc, components: Record<string, SceneDoc>, fonts: { family: string; url: string }[], preload: string[]): string {
+function bootScript(
+  scene: SceneDoc,
+  components: Record<string, SceneDoc>,
+  fonts: { family: string; url: string }[],
+  preload: string[],
+  outro: OutroPreset | null,
+): string {
   return (
     `riposte.boot(${inlineJson(scene)}, {\n` +
     `  components: ${inlineJson(components)},\n` +
     `  fonts: ${inlineJson(fonts)},\n` +
     `  preload: ${inlineJson(preload)},\n` +
+    (outro ? `  outro: ${inlineJson(outro)},\n` : '') +
     `});`
   );
 }
 
-function externalShell(name: string, scene: SceneDoc, components: Record<string, SceneDoc>, set: SetDoc, preload: string[]): string {
+function externalShell(
+  name: string,
+  scene: SceneDoc,
+  components: Record<string, SceneDoc>,
+  set: SetDoc,
+  preload: string[],
+  outro: OutroPreset | null,
+): string {
   const fonts = (set.fonts ?? []).map((f) => ({ family: f.family, url: f.file }));
   return shellHtml(
     name,
     scene.composition.width,
     scene.composition.height,
     '<script src="assets/riposte.js"></script>',
-    bootScript(scene, components, fonts, preload),
+    bootScript(scene, components, fonts, preload, outro),
   );
 }
 
@@ -332,6 +364,7 @@ async function bakedShell(
   runtimeJs: string,
   warnings: string[],
   webp: { quality: number | 'lossless'; stats: WebpStats } | null = null,
+  outro: OutroPreset | null = null,
 ): Promise<string> {
   const dataUris = new Map<string, string>();
   const toDataUri = async (rel: string): Promise<string> => {
@@ -378,6 +411,6 @@ async function bakedShell(
     scene.composition.width,
     scene.composition.height,
     `<script>${runtimeJs}</script>`,
-    bootScript(bakedScene, bakedComponents, fonts, []),
+    bootScript(bakedScene, bakedComponents, fonts, [], outro),
   );
 }

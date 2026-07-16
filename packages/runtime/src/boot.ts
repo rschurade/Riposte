@@ -9,6 +9,7 @@
 
 import type { SceneDoc } from '@riposte/shared';
 import { createRuntime, type Runtime, type RuntimeOptions } from './runtime.ts';
+import { RUNTIME_VERSION } from './version.ts';
 
 export interface BootOptions extends RuntimeOptions {
   /** Preload these asset URLs before declaring ready (kills first-play flash). */
@@ -18,11 +19,14 @@ export interface BootOptions extends RuntimeOptions {
 }
 
 export function boot(scene: SceneDoc, opts: BootOptions = {}): Promise<Runtime> {
+  // one line per template load — pins the building Riposte version in error reports
+  console.info(`riposte runtime ${RUNTIME_VERSION} — ${scene.name}`);
   let runtime: Runtime | null = null;
   const queue: Array<(rt: Runtime) => void> = [];
   const call = (fn: (rt: Runtime) => void) => (runtime ? fn(runtime) : queue.push(fn));
 
   const w = window as unknown as Record<string, unknown>;
+  w['__riposteVersion'] = RUNTIME_VERSION;
   w['update'] = (d: string) => call((rt) => rt.update(d));
   w['play'] = () => call((rt) => rt.play());
   w['stop'] = () => call((rt) => rt.stop());

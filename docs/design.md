@@ -42,6 +42,11 @@ Planned but NOT built yet: near-duplicate asset report (pixel-level);
 a real Windows installer (Inno Setup wrapping the portable dist + a bundled
 node.exe — build when there's an actual non-developer user); loops inside
 nested compositions; on-demand sub-animation "play bindings";
+**path element + path masks** (parked 2026-07-16): pen tool — click for
+corner points, click-drag for bezier handles; rendered as inline SVG, as a
+mask via CSS `clip-path: path(…)`. Loopic had this (its PATH type imports
+as a warned placeholder today; our sets never used it). Build against the
+first real design that needs a non-rectangular shape or mask wipe;
 **archived scenes** (parked 2026-07-15): an `archived` list in `set.json`
 folding retired scenes into a collapsed "Archived (n)" sidebar section —
 travels with the set and tells a downloader what's canon. Distinct from the

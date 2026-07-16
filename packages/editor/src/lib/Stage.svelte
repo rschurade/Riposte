@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { buildScene, type BuiltScene } from '@riposte/runtime';
+  import { applyOutroFrame, buildScene, clearOutroEffect, type BuiltScene } from '@riposte/runtime';
   import type { Layer } from '@riposte/shared';
   import { ed, propNumber, shiftProperty } from './state.svelte.ts';
 
@@ -80,10 +80,19 @@
   let cgPos = 0;
   let cgRunning = false;
   let cgHandledReq = 0;
+  let cgFx = -1; // scene-outro effect frame; -1 = not running
 
   $effect(() => {
     const { active, req, reqType } = ed.cg;
+    if (!active && built) {
+      // leaving CG mode mid-effect: undo whatever the outro preset did
+      clearOutroEffect(built.contentEl);
+      built.show();
+      cgFx = -1;
+    }
     if (!active || !comp || !built) return;
+    // scene-level outro preset (resolved) — STOP runs it instead of the marker jump
+    const preset = ed.scene?.outro ? ed.outros[ed.scene.outro] : undefined;
     const ts = built.timeState;
     const pauses = comp.markers.filter((m) => m.type === 'pause').map((m) => m.frame).sort((a, b) => a - b);
     const lastPause = pauses.length > 0 ? pauses[pauses.length - 1]! : -1;
@@ -96,21 +105,37 @@
         ts.hold = 0;
         ts.exiting = false;
         cgRunning = true;
+        cgFx = -1;
+        clearOutroEffect(built.contentEl);
+        built.show();
       } else if (reqType === 'next' && !cgRunning) {
-        if (!ts.exiting && lastPause >= 0 && Math.floor(cgPos) >= lastPause) {
-          ts.exiting = true;
-          ts.exitFrom = Math.floor(cgPos);
+        if (preset && lastPause >= 0 && Math.floor(cgPos) >= lastPause) {
+          // off the last pause NEXT drives the outro (ControlCenter lifecycle)
+          if (cgFx < 0) cgFx = 0;
+          ed.flash(`CG next → outro preset "${ed.scene?.outro}"`);
+        } else {
+          if (!ts.exiting && lastPause >= 0 && Math.floor(cgPos) >= lastPause) {
+            ts.exiting = true;
+            ts.exitFrom = Math.floor(cgPos);
+          }
+          cgPos = Math.floor(cgPos) + 0.001;
+          cgRunning = true;
         }
-        cgPos = Math.floor(cgPos) + 0.001;
-        cgRunning = true;
       } else if (reqType === 'stop') {
-        const from = outro ? outro.frame : Math.floor(cgPos);
-        if (!ts.exiting) {
-          ts.exiting = true;
-          ts.exitFrom = from;
+        if (preset) {
+          // effect wipes the root while the playhead stays put (loops keep cycling)
+          if (cgFx < 0) cgFx = 0;
+          cgRunning = false;
+          ed.flash(`CG stop → outro preset "${ed.scene?.outro}"`);
+        } else {
+          const from = outro ? outro.frame : Math.floor(cgPos);
+          if (!ts.exiting) {
+            ts.exiting = true;
+            ts.exitFrom = from;
+          }
+          cgPos = from + 0.001;
+          cgRunning = true;
         }
-        cgPos = from + 0.001;
-        cgRunning = true;
       }
       ed.cg.held = !cgRunning;
     }
@@ -145,6 +170,16 @@
         if (cur) {
           cur.hold += dt * comp.fps;
           built!.setFrame(Math.floor(cgPos));
+        }
+      }
+      // scene-outro effect: wipe the root on its own clock, then hide
+      if (cgFx >= 0 && preset && built) {
+        cgFx += dt * comp.fps;
+        const f = Math.min(cgFx, preset.duration);
+        applyOutroFrame(built.contentEl, comp, preset, f);
+        if (f >= preset.duration) {
+          cgFx = -1;
+          built.hide();
         }
       }
       raf = requestAnimationFrame(tick);

@@ -1,0 +1,10 @@
+{
+  "name": "fade",
+  "duration": 12,
+  "style": {
+    "opacity": { "value": 1, "keyframes": [
+      { "frame": 0, "value": 1 },
+      { "frame": 12, "value": 0 }
+    ] }
+  }
+}

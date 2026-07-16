@@ -6,7 +6,7 @@
  * construction). `version` bumps trigger a Stage rebuild.
  */
 
-import { trimToContent, type BezierEasing, type ElementStyle, type Layer, type SceneDoc, type StyleProperty } from '@riposte/shared';
+import { trimToContent, type BezierEasing, type ElementStyle, type Layer, type OutroPreset, type SceneDoc, type StyleProperty } from '@riposte/shared';
 
 export interface SetRef {
   root: string;
@@ -35,6 +35,8 @@ class EditorState {
   /** All scene docs of the open set, by file — drives the usage scan. */
   allScenes = $state<Record<string, SceneDoc | null>>({});
   assets = $state<AssetInfo[]>([]);
+  /** Outro presets of the open set (outros/*.json), name → preset. */
+  outros = $state<Record<string, OutroPreset>>({});
 
   sceneFile = $state<string | null>(null);
   scene = $state<SceneDoc | null>(null);
@@ -151,7 +153,7 @@ class EditorState {
   /** Set-options dialog (sidebar set click opens it instead of a scene). */
   setOptionsOpen = $state(false);
 
-  async openSet(ref: SetRef, opts: { showOptions?: boolean } = {}): Promise<void> {
+  async openSet(ref: SetRef, opts: { showOptions?: boolean; openFirst?: boolean } = {}): Promise<void> {
     if (!(await this.confirmDiscard())) return;
     this.setRef = ref;
     this.scene = null;
@@ -160,6 +162,7 @@ class EditorState {
     const q = `root=${encodeURIComponent(ref.root)}&name=${encodeURIComponent(ref.name)}`;
     const bundle = await (await fetch(`/api/set?${q}`)).json();
     this.allScenes = bundle.scenes;
+    this.outros = bundle.outros ?? {};
     this.dirtyFiles = {}; // discard was confirmed above
     this.dirty = false;
     this.assets = await (await fetch(`/api/assets?${q}`)).json();
@@ -167,6 +170,7 @@ class EditorState {
       this.setOptionsOpen = true;
       return; // the user picks a scene from the list when they're done here
     }
+    if (opts.openFirst === false) return; // sidebar click: select only
     const first = ref.scenes[0];
     if (first) this.openScene(first);
   }
@@ -304,7 +308,11 @@ class EditorState {
     if (this.ownSave && this.ownSave.file === p.file && Date.now() - this.ownSave.at < 2000) return;
     if (this.setRef?.root !== p.root || this.setRef?.name !== p.name) return;
     const q = `root=${encodeURIComponent(p.root)}&name=${encodeURIComponent(p.name)}`;
-    const bundle = (await (await fetch(`/api/set?${q}`)).json()) as { scenes: Record<string, SceneDoc | null> };
+    const bundle = (await (await fetch(`/api/set?${q}`)).json()) as {
+      scenes: Record<string, SceneDoc | null>;
+      outros?: Record<string, OutroPreset>;
+    };
+    this.outros = bundle.outros ?? {};
 
     // Docs with unsaved edits (parked by scene switches) must survive the
     // bundle refresh — the disk copies in the bundle are older than them.
@@ -1085,6 +1093,15 @@ class EditorState {
       if (type === 'action') markers.push({ frame, type, source: '' });
       else if (!markers.some((m) => m.frame === frame && m.type === type)) markers.push({ frame, type });
       markers.sort((a, b) => a.frame - b.frame);
+    });
+  }
+
+  /** Scene-level outro preset ('' clears). stop() runs it instead of the marker outro. */
+  setSceneOutro(name: string): void {
+    if (!this.scene) return;
+    this.mutate('set scene outro', (scene) => {
+      if (name) scene.outro = name;
+      else delete scene.outro;
     });
   }
 

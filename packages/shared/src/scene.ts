@@ -19,7 +19,38 @@ export interface SceneDoc {
   previewData?: Record<string, string>;
   /** Design-time ruler guides (editor only; renderers and exports ignore them). */
   guides?: { v: number[]; h: number[]; locked?: boolean };
+  /**
+   * Outro preset name (a file in the set's `outros/` folder, without .json).
+   * When set, `stop()` runs the preset on the scene root — affecting every
+   * layer at once — INSTEAD of the marker-based outro.
+   */
+  outro?: string;
   composition: Composition;
+}
+
+/**
+ * A reusable scene-level outro effect, stored as `outros/<name>.json` in a
+ * set. On stop() the runtime animates the SCENE ROOT with these keyframed
+ * properties over `duration` frames (frame 0 = the stop moment), then hides
+ * the scene. Data, not code — adding an effect means adding a JSON file.
+ */
+export interface OutroPreset {
+  name: string;
+  /** Effect length in frames (at the scene's fps). */
+  duration: number;
+  /**
+   * Keyframed root properties: `opacity`, `scaleX`, `scaleY`, `rotation`,
+   * `x`, `y` (translation offsets in px). Scale/rotate pivot on the
+   * composition center.
+   */
+  style?: Record<string, StyleProperty>;
+  /**
+   * Rect mask on the scene root: `width`/`height` (+ optional `x`/`y`,
+   * defaulting to the composition center, and `rotation` in degrees).
+   * `inverted` cuts a hole instead — e.g. the growing-diamond wipe. Mask
+   * geometry may extend far beyond the composition bounds.
+   */
+  mask?: { inverted?: boolean; style: Record<string, StyleProperty> };
 }
 
 export interface Composition {
@@ -108,6 +139,12 @@ export interface BaseElement {
    * element still fades in/out with its opacity gradient.
    */
   visibility?: VisibilityBinding;
+  /**
+   * Masks only: invert the shape — the layer is visible OUTSIDE it (the mask
+   * cuts a hole). Combined with style.rotation this gives e.g. a growing
+   * diamond outro. Ignored on regular elements.
+   */
+  inverted?: boolean;
   style: ElementStyle;
 }
 

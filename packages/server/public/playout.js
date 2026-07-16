@@ -29,6 +29,19 @@ function fit() {
   stage.style.top = (innerHeight - H * scale) / 2 + 'px';
 }
 addEventListener('resize', fit);
+
+// A hidden/background tab gets NO animation frames — graphics freeze mid-air
+// (state still completes via wall-clock guards, but nothing renders). Make
+// that visible in the log and title so it isn't mistaken for a graphics bug.
+addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    document.title = '⏸ HIDDEN — Riposte Playout';
+    logLine('tab hidden — animations frozen until the tab is visible again (keep playout in its own window)', 'err');
+  } else {
+    document.title = 'Riposte Playout';
+    logLine('tab visible again', 'conn');
+  }
+});
 fit();
 
 // ---- console ----------------------------------------------------------------
@@ -103,9 +116,17 @@ async function addLayer(ev) {
     for (const f of ev.ref.components || []) {
       try { components[f] = await (await fetch(base + f)).json(); } catch { /* missing */ }
     }
+    // scene-level outro preset: resolve the referenced outros/<name>.json
+    let outro = null;
+    if (scene.outro) {
+      try {
+        outro = await (await fetch(`${base}outros/${scene.outro}.json`)).json();
+        logLine(`${ev.template}: outro preset "${scene.outro}" armed`);
+      } catch { logLine(`outro preset "${scene.outro}" not found`, 'err'); }
+    }
     // a newer ADD/REMOVE for this key may have won while we fetched
     if (layers.get(key) !== entry) { el.remove(); return; }
-    entry.rt = riposte.createRuntime(scene, el, { assetBase: base, components });
+    entry.rt = riposte.createRuntime(scene, el, { assetBase: base, components, outro: outro || undefined });
     if (ev.data) entry.rt.update(ev.data);
     if (ev.playOnLoad) entry.rt.play();
   } catch (err) {

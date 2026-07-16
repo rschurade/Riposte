@@ -102,6 +102,13 @@ export interface LayerHandle {
 
 export interface BuiltScene {
   readonly rootEl: HTMLElement;
+  /**
+   * Everything except design-time guide layers — the target for scene-level
+   * outro effects, so editor guides survive the wipe. Guides render directly
+   * on rootEl in their natural paint position (backdrop guides below this
+   * element, overlay guides above); in exports the two are equivalent.
+   */
+  readonly contentEl: HTMLElement;
   readonly byKey: Map<string, ElementHandle>;
   /** Every element (keyed or not) by element id — editor hit-testing/drag. */
   readonly byId: Map<string, ElementHandle>;
@@ -205,6 +212,12 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
   });
   root.appendChild(rootEl);
 
+  // Appended lazily at the FIRST content layer, so backdrop guides (photo
+  // references before any content) stay below it and overlay guides (grids
+  // after the content) land above it — guide paint order is preserved.
+  const contentEl = document.createElement('div');
+  Object.assign(contentEl.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%' });
+
   const byKey = new Map<string, ElementHandle>();
   const byId = new Map<string, ElementHandle>();
   const layers: LayerHandle[] = [];
@@ -215,9 +228,11 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
 
   for (const layer of comp.layers) {
     if (layer.isGuide && !opts.showGuides) continue;
-    const node = buildLayer(layer, comp, rootEl, assetBase, byKey, byId, dynamics, boundVisibility, timeState, opts, registry);
+    if (!layer.isGuide && !contentEl.parentNode) rootEl.appendChild(contentEl);
+    const node = buildLayer(layer, comp, layer.isGuide ? rootEl : contentEl, assetBase, byKey, byId, dynamics, boundVisibility, timeState, opts, registry);
     layers.push({ doc: layer, node });
   }
+  if (!contentEl.parentNode) rootEl.appendChild(contentEl); // guide-only scene
 
   // Dynamic size binding: rectangle follows its source text's measured
   // content (body-probe measurement — composition-space px, immune to the
@@ -263,6 +278,7 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
   let visible = false;
   return {
     rootEl,
+    contentEl,
     byKey,
     byId,
     layers,
@@ -395,6 +411,27 @@ function buildMask(mask: SceneElement, parent: HTMLElement, dynamics: DynamicBin
   }
 
   const s = mask.style;
+
+  // Rotated and/or inverted rect masks need a real shape, not an
+  // overflow:hidden box: clip-path with an SVG path. Corner radius is not
+  // supported here.
+  if (mask.inverted || s.rotation) {
+    Object.assign(wrap.style, { width: '100%', height: '100%' });
+    const applyShape = (frame: number) => {
+      wrap.style.clipPath = rectMaskPath(
+        numberAtFrame(s.x, frame, 0),
+        numberAtFrame(s.y, frame, 0),
+        numberAtFrame(s.width, frame, 0),
+        numberAtFrame(s.height, frame, 0),
+        numberAtFrame(s.rotation, frame, 0),
+        mask.inverted === true,
+      );
+    };
+    if (hasAnimatedGeometry(s)) dynamics.push({ apply: applyShape });
+    else applyShape(0);
+    return inner; // wrap is not translated — inner needs no counter-offset
+  }
+
   const apply = (frame: number) => {
     const w = numberAtFrame(s.width, frame, 0);
     const h = numberAtFrame(s.height, frame, 0);
@@ -418,6 +455,24 @@ function buildMask(mask: SceneElement, parent: HTMLElement, dynamics: DynamicBin
   if (hasAnimatedGeometry(s)) dynamics.push({ apply });
   else apply(0);
   return inner;
+}
+
+/**
+ * clip-path for a center-anchored rect, optionally rotated (degrees) and
+ * inverted. Inversion = a huge clockwise outer ring plus the rect as an
+ * opposite-winding inner ring — the nonzero fill rule cuts a hole. Shared by
+ * layer masks and scene-level outro effects.
+ */
+export function rectMaskPath(cx: number, cy: number, w: number, h: number, deg: number, inverted: boolean): string {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const corners: [number, number][] = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]];
+  const pts = corners.map(([px, py]) => `${(cx + px * cos - py * sin).toFixed(2)} ${(cy + px * sin + py * cos).toFixed(2)}`);
+  const d = inverted
+    ? `M -100000 -100000 L 100000 -100000 L 100000 100000 L -100000 100000 Z M ${pts[0]} L ${pts[3]} L ${pts[2]} L ${pts[1]} Z`
+    : `M ${pts[0]} L ${pts[1]} L ${pts[2]} L ${pts[3]} Z`;
+  return `path('${d}')`;
 }
 
 /** "40" → "40px", "40 0 0 0" → "40px 0px 0px 0px"; anything with units passes through. */
