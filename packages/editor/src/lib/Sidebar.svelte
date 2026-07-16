@@ -325,13 +325,20 @@
       {#if !collapsed.components}
         <ul class="scenes">
           {#each ed.setRef.components as file (file)}
-            <li class="scene-row">
+            <li
+              class="scene-row"
+              draggable="true"
+              ondragstart={(e) => {
+                e.dataTransfer?.setData('text/riposte-component', file);
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+              }}
+            >
               {#if renaming?.kind === 'scene' && renaming.file === file}
                 {@render renameInput()}
               {:else}
                 <button
                   class:active={ed.sceneFile === file}
-                  title="double-click to rename"
+                  title="click to edit, double-click to rename, drag to the stage to embed it in the open scene"
                   onclick={() => ed.openScene(file)}
                   ondblclick={() => startRename('scene', file)}
                 >

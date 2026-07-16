@@ -533,6 +533,43 @@ class EditorState {
     img.src = this.assetBase + files[0];
   }
 
+  /** Embed a component (nested composition) dropped from the sidebar. */
+  addComponentLayer(file: string, at?: { x: number; y: number }): void {
+    const scene = this.scene;
+    if (!scene) return;
+    if (this.sceneFile === file) {
+      this.flash('cannot embed a component into itself');
+      return;
+    }
+    const child = this.allScenes[file]?.composition;
+    if (!child) {
+      this.flash(`component ${file} is not loaded`);
+      return;
+    }
+    const comp = scene.composition;
+    const id = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    this.mutate('add component', (s) => {
+      s.composition.layers.push({
+        id,
+        startFrame: 0,
+        duration: s.composition.duration,
+        element: {
+          id: `${id}-el`,
+          type: 'composition',
+          compositionId: file,
+          style: {
+            x: { value: Math.round(at?.x ?? comp.width / 2) },
+            y: { value: Math.round(at?.y ?? comp.height / 2) },
+            width: { value: child.width },
+            height: { value: child.height },
+          },
+        },
+      });
+    });
+    this.selectLayer(id);
+    this.flash(`embedded ${sceneNameOf(file)}`);
+  }
+
   /** Create a fresh element layer (toolbar "+ text" etc.) — topmost, full span. */
   addElementLayer(type: 'text' | 'rectangle' | 'ellipse' | 'imageLoader'): void {
     const comp = this.scene?.composition;

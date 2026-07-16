@@ -322,7 +322,7 @@
   // ---- asset drop → new layer at the drop position ---------------------------
   function onDragOver(ev: DragEvent): void {
     const types = ev.dataTransfer?.types ?? [];
-    if (types.includes('text/riposte-asset') || types.includes('text/riposte-sequence')) {
+    if (types.includes('text/riposte-asset') || types.includes('text/riposte-sequence') || types.includes('text/riposte-component')) {
       ev.preventDefault();
       ev.dataTransfer!.dropEffect = 'copy';
     }
@@ -344,6 +344,12 @@
     if (seq) {
       ev.preventDefault();
       ed.addSequenceLayer(JSON.parse(seq) as string[], at);
+      return;
+    }
+    const component = ev.dataTransfer?.getData('text/riposte-component');
+    if (component) {
+      ev.preventDefault();
+      ed.addComponentLayer(component, at);
       return;
     }
     const file = ev.dataTransfer?.getData('text/riposte-asset');
