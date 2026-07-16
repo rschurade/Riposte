@@ -257,8 +257,9 @@
         <li>
           <button
             class:active={ed.setRef?.root === s.root && ed.setRef?.name === s.name}
-            title="Opens the set and its options — pick a scene from the list below"
-            onclick={() => ed.openSet(s, { showOptions: true })}
+            title="Click to open the set (pick a scene below) — double-click for set options"
+            onclick={() => { if (ed.setRef !== s) void ed.openSet(s, { openFirst: false }); }}
+            ondblclick={() => { if (ed.setRef === s) ed.setOptionsOpen = true; }}
           >
             {s.name}
             <span class="dim">{s.root === 'examples' ? 'demo' : ''}</span>
