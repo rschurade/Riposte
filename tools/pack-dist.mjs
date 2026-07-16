@@ -47,6 +47,7 @@ await cp(join(repo, 'examples/demo'), join(out, 'examples/demo'), {
   recursive: true,
   filter: (src) => !/[\\/]export([\\/]|$)/.test(src),
 });
+await cp(join(repo, 'CHANGELOG.md'), join(out, 'CHANGELOG.md'));
 
 await writeFile(
   join(out, 'projects', 'README.txt'),
