@@ -1,10 +1,13 @@
 {
   "formatVersion": 1,
   "name": "demo",
-  "scenes": ["scenes/Schedule.json", "scenes/BoundBar.json"],
+  "scenes": [
+    "scenes/Schedule.json"
+  ],
   "export": {
     "mode": "external",
-    "preloadAssets": true
+    "preloadAssets": true,
+    "imageFormat": "png",
+    "webpQuality": 92
   }
 }
-
