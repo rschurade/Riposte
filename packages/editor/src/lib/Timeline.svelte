@@ -11,17 +11,30 @@
   } from './state.svelte.ts';
 
   let rowsEl: HTMLDivElement | undefined = $state();
+  let scrollEl: HTMLDivElement | undefined = $state();
   let trackWidth = $state(600);
+  /**
+   * Left inset of every track, baked into each marker's `left` (a CSS
+   * padding/border inset can't work: overflow clipping would still cut the
+   * frame-0 diamond in half). fx() is the shared frame→px mapping.
+   */
+  const TRACK_PAD = 10;
+  const fx = (frame: number) => TRACK_PAD + frame * pxPerFrame;
 
   const comp = $derived(ed.scene?.composition ?? null);
   const pxPerFrame = $derived(comp ? Math.max(1.5, trackWidth / comp.duration) : 2);
 
   $effect(() => {
-    if (!rowsEl) return;
+    // Measure the SCROLL container (its clientWidth excludes the vertical
+    // scrollbar), minus the label column, minus a right margin — otherwise a
+    // keyframe on the last frame renders under the scrollbar/window border,
+    // invisible and ungrabbable.
+    const el = scrollEl ?? rowsEl;
+    if (!el) return;
     const ro = new ResizeObserver(() => {
-      trackWidth = (rowsEl?.clientWidth ?? 620) - 280; // minus label column
+      trackWidth = el.clientWidth - 280 - 24 - TRACK_PAD;
     });
-    ro.observe(rowsEl);
+    ro.observe(el);
     return () => ro.disconnect();
   });
 
@@ -166,7 +179,7 @@
     const track = (ev.currentTarget as HTMLElement).closest('.track');
     if (!track) return;
     const r = track.getBoundingClientRect();
-    const f = Math.round((ev.clientX - r.left) / pxPerFrame);
+    const f = Math.round((ev.clientX - r.left - TRACK_PAD) / pxPerFrame);
     dragKf.current = Math.min(Math.max(f, 0), comp.duration - 1);
   }
 
@@ -275,7 +288,7 @@
     if (!comp) return;
     const target = ev.currentTarget as HTMLElement;
     const r = target.getBoundingClientRect();
-    const f = Math.round((ev.clientX - r.left) / pxPerFrame);
+    const f = Math.round((ev.clientX - r.left - TRACK_PAD) / pxPerFrame);
     ed.frame = Math.min(Math.max(f, 0), comp.duration - 1);
     ed.playing = false;
     ed.cgOff();
@@ -368,19 +381,19 @@
           onpointerup={() => (scrubbing = false)}
         >
           {#each ticks as t (t)}
-            <span class="tick" style="left:{t * pxPerFrame}px">{t}</span>
+            <span class="tick" style="left:{fx(t)}px">{t}</span>
           {/each}
           {#each comp.markers as m, i (i)}
             <span
               class="marker {m.type}"
-              style="left:{m.frame * pxPerFrame}px"
+              style="left:{fx(m.frame)}px"
               title="{m.type}@{m.frame}"
             ></span>
           {/each}
-          <span class="playhead" style="left:{ed.frame * pxPerFrame}px"></span>
+          <span class="playhead" style="left:{fx(ed.frame)}px"></span>
         </div>
       </div>
-      <div class="scroll" role="list" ondragover={onDragOver} ondrop={onDrop}>
+      <div class="scroll" role="list" bind:this={scrollEl} ondragover={onDragOver} ondrop={onDrop}>
         {#each displayLayers as layer (layer.id)}
           {@const kfFrames = allKfFrames(layer)}
           {@const span = barSpan(layer)}
@@ -479,7 +492,7 @@
               <div
                 class="bar"
                 class:dragging={dragBar?.id === layer.id}
-                style="left:{span.start * pxPerFrame}px;width:{span.dur * pxPerFrame}px"
+                style="left:{fx(span.start)}px;width:{span.dur * pxPerFrame}px"
                 title="{span.start} – {span.start + span.dur} (drag to move, edges to trim)"
                 onpointerdown={(ev) => barDown(ev, layer, 'move')}
                 onpointermove={barMove}
@@ -496,9 +509,9 @@
                 <div class="handle r" onpointerdown={(ev) => barDown(ev, layer, 'right')} onpointermove={barMove} onpointerup={barUp}></div>
               </div>
               {#each kfFrames as f (f)}
-                <span class="kfmark" style="left:{f * pxPerFrame}px"></span>
+                <span class="kfmark" style="left:{fx(f)}px"></span>
               {/each}
-              <span class="playhead faint" style="left:{ed.frame * pxPerFrame}px"></span>
+              <span class="playhead faint" style="left:{fx(ed.frame)}px"></span>
             </div>
           </div>
           {#if expandedLayers[layer.id]}
@@ -543,12 +556,12 @@
                         <span
                           class="kf"
                           class:selkf={isSelectedKf(row, f)}
-                          style="left:{kfDisplayFrame(row, f) * pxPerFrame}px"
+                          style="left:{fx(kfDisplayFrame(row, f))}px"
                           title="{row.label} @{kfDisplayFrame(row, f)}"
                           onpointerdown={(ev) => kfDown(ev, row, f, layer.id)}
                         ></span>
                       {/each}
-                      <span class="playhead faint" style="left:{ed.frame * pxPerFrame}px"></span>
+                      <span class="playhead faint" style="left:{fx(ed.frame)}px"></span>
                     </div>
                   </div>
                 {/each}
@@ -616,6 +629,10 @@
   .row.head { height: 26px; border-bottom: 1px solid #23262e; }
   .row.selected { background: #222d40; }
   .label {
+    /* border-box: the indented variants (.group pad 18, .prop pad 30) must
+       NOT widen the column — every row's track has to start at the same x,
+       or property keyframes render offset against the ruler and the bar */
+    box-sizing: border-box;
     width: 280px;
     flex: none;
     display: flex;

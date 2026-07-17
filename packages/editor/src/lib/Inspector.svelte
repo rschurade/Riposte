@@ -664,8 +664,9 @@
       <h3>Keyframe · {sel.prop} @{sel.frame}</h3>
       {#if kf}
         <div class="grid">
-          <label for="kf-frame">Frame</label>
+          <label for="kf-frame" title="Absolute scene frame. One past the end (= duration) is valid: with a loop region ending there, the value at the wrap instant — make it equal to the frame-0 keyframe for a seamless cycle.">Frame</label>
           <input id="kf-frame" type="number" value={sel.frame}
+            title="Typing past the last playable frame is allowed (loop wrap target)"
             onchange={(e) => ed.setKeyframeNumber('frame', Number((e.currentTarget as HTMLInputElement).value))} />
           <label for="kf-value">Value</label>
           <input id="kf-value" type="number" step="any" value={typeof kf.value === 'number' ? kf.value : 0}
