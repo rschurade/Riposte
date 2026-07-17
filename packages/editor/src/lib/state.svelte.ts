@@ -268,6 +268,12 @@ class EditorState {
   private ownSave: { file: string; at: number } | null = null;
   private es: EventSource | null = null;
 
+  /** Close the SSE stream — REQUIRED on HMR dispose, see bottom of file. */
+  disconnectEvents(): void {
+    this.es?.close();
+    this.es = null;
+  }
+
   connectEvents(): void {
     if (this.es) return; // once — survives HMR re-mounts
     const es = new EventSource('/api/events');
@@ -1262,6 +1268,14 @@ class EditorState {
 }
 
 export const ed = new EditorState();
+
+// Every HMR of this module creates a FRESH `ed` whose effect opens a new
+// EventSource; without closing the outgoing instance's stream, each hot edit
+// leaks one live connection until Chrome's 6-per-origin pool is exhausted and
+// the editor freezes (empty assets, spinner never stops).
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => ed.disconnectEvents());
+}
 
 // ---- animatable property catalog (Inspector + Timeline share this) ----------
 
