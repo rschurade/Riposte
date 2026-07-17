@@ -186,7 +186,11 @@ async function main() {
   // Remote control (MCP bench_* tools → POST /api/bench → SSE): everything the
   // page's own controls can do, driven from outside. The data form mirrors
   // received updates so the human sees what the AI filled in.
-  const es = new EventSource('/api/events');
+  // Headless renders (?frame= / ?play=) must NOT open this: the forever-pending
+  // SSE request stalls --virtual-time-budget, so the screenshot never happens.
+  const headless = params.has('frame') || params.has('play');
+  const es = headless ? null : new EventSource('/api/events');
+  if (es)
   es.addEventListener('bench', (msg) => {
     const ev = JSON.parse(msg.data);
     switch (ev.action) {

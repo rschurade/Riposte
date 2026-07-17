@@ -115,23 +115,49 @@ function findBrowser(): string {
   throw new Error('no Edge/Chrome found — set RIPOSTE_BROWSER to a Chromium binary');
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Best-effort: kill a headless browser that outlived the render deadline
+// (matched by the unique screenshot path in its command line).
+async function killStrayRenderer(out: string): Promise<void> {
+  if (process.platform !== 'win32') return;
+  await new Promise<void>((resolve) => {
+    const p = spawn('powershell', [
+      '-NoProfile',
+      '-Command',
+      `Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match [regex]::Escape('${out}') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
+    ], { stdio: 'ignore' });
+    p.on('error', () => resolve());
+    p.on('exit', () => resolve());
+  });
+}
+
 async function renderPng(url: string): Promise<Buffer> {
   const browser = findBrowser();
   const dir = await mkdtemp(join(tmpdir(), 'riposte-mcp-'));
   const out = join(dir, 'shot.png');
   try {
-    await new Promise<void>((resolve, reject) => {
-      const p = spawn(browser, [
-        '--headless',
-        '--disable-gpu',
-        '--window-size=1920,1080',
-        '--virtual-time-budget=8000',
-        `--screenshot=${out}`,
-        url,
-      ]);
-      p.on('error', reject);
-      p.on('exit', () => resolve());
-    });
+    const p = spawn(browser, [
+      '--headless',
+      '--disable-gpu',
+      '--window-size=1920,1080',
+      '--virtual-time-budget=8000',
+      `--screenshot=${out}`,
+      url,
+    ], { stdio: 'ignore' });
+    p.on('error', () => {});
+    // Edge relaunches itself through a compat layer: the process we spawned
+    // exits within ~50ms while the real browser renders detached. Waiting on
+    // its exit is meaningless — poll for the screenshot file instead.
+    const deadline = Date.now() + 30_000;
+    while (!existsSync(out)) {
+      if (Date.now() > deadline) {
+        await killStrayRenderer(out);
+        throw new Error('render timed out after 30s — no screenshot written. Is the riposte server up, and does the scene load in the bench?');
+      }
+      await sleep(250);
+    }
+    await sleep(200); // let the browser finish closing the file
     return await readFile(out);
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});

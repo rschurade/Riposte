@@ -18,7 +18,17 @@ $url = "http://localhost:5720/?set=$([uri]::EscapeDataString($Set))&scene=$([uri
 if ($Data) { $url += "&data=$([uri]::EscapeDataString($Data))" }
 if ($Play) { $url += '&play=1' }
 
+Remove-Item $Out -ErrorAction SilentlyContinue
+
 # virtual-time budget must outlast the bench's asset preload (see caspar-studio notes)
 & $edge --headless --disable-gpu --window-size=1920,1080 --virtual-time-budget=8000 --screenshot="$Out" $url 2>$null | Out-Null
-if (-not (Test-Path $Out)) { throw "screenshot not written: $Out" }
+
+# Edge relaunches itself through a compat layer: the process we invoked exits in
+# ~50ms while the real browser renders detached — poll for the file, don't trust exit.
+$deadline = (Get-Date).AddSeconds(30)
+while (-not (Test-Path $Out)) {
+    if ((Get-Date) -gt $deadline) { throw "screenshot not written after 30s: $Out" }
+    Start-Sleep -Milliseconds 250
+}
+Start-Sleep -Milliseconds 200
 (Get-Item $Out).FullName

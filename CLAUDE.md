@@ -70,7 +70,7 @@ Registered via `.mcp.json` (here relative, in TV-Grafik absolute+gitignored). Re
 - **Render/ship**: `render_scene`, `render_filmstrip`, `export_set`, `deploy_set`.
 - **Live UI**: `open_scene` (navigates the user's editor), `bench_open` / `bench_update` / `bench_transport` (drive the bench tab the user is watching via POST /api/bench → SSE).
 
-Deliberately NOT exposed: guides/eye-filter (personal workspace state), undo (session concept), AMCP port and contract-dir setting (read-only status instead). Known env issue: headless Edge/Chrome screenshots produce no file on this box — `render_scene`/`render_filmstrip` fail until that's solved; verify via get_scene + the user's editor/bench instead.
+Deliberately NOT exposed: guides/eye-filter (personal workspace state), undo (session concept), AMCP port and contract-dir setting (read-only status instead).
 
 **When the server is up, prefer these tools** over hand-editing scene JSON or `bench-shot.ps1`: `set_element` saves + live-syncs the editor; `render_scene` returns a PNG (default frame = the hold/pause frame) — that is the visual feedback loop.
 
@@ -109,7 +109,7 @@ Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `upd
 ## Verification
 
 - Unit tests: `npm test` (runtime interpolation/player/visibility/loop, importer convert/migrate). Player tests use a stubbed rAF clock — headless virtual time can't drive animations.
-- Visual: `render_scene`/`render_filmstrip` MCP tools, or `tools/bench-shot.ps1` against the bench. Headless screenshots need `--virtual-time-budget=6000+` or you get a blank PNG; frames past the outro marker are legitimately blank — shoot at the pause frame. Nested comps render blank under headless *play* mode in both runtimes (Edge quirk) — verify those at a seeked frame or visually.
+- Visual: `render_scene`/`render_filmstrip` MCP tools, or `tools/bench-shot.ps1` against the bench. Headless screenshots need `--virtual-time-budget=6000+` or you get a blank PNG; frames past the outro marker are legitimately blank — shoot at the pause frame. Nested comps render blank under headless *play* mode in both runtimes (Edge quirk) — verify those at a seeked frame or visually. Two headless gotchas are already handled — don't reintroduce them: (1) the bench skips its `/api/events` EventSource in `?frame=`/`?play=` mode, because a pending SSE request stalls `--virtual-time-budget` forever (browser never screenshots, never exits); (2) Edge relaunches itself through a compat layer, so the process you spawn exits in ~50ms while the real browser renders detached — poll for the output file (renderPng / bench-shot.ps1 do), never trust process exit.
 - **The bench is not the ADD→PLAY lifecycle.** The bench seeks to a visible frame before deferred callbacks (rAF/fonts.ready) run; on air, build-time code executes at frame 0 where layers with `startFrame > 0` are `display:none` and everything measures 0 wide (this silently disabled the tabularNums digit boxing once — measure on `document.body`, never inside the element). To debug the real lifecycle, use the playout page with `?debug=<key>` — it logs the element's measured geometry per update into the backtick console.
 - A/B vs Loopic: `tools/ab-diff.ps1` + `projects/_ab/` harnesses; serve both pages in fixed 1920×1080 iframes (Loopic's fitToWindow otherwise rescales and ruins diffs).
 
