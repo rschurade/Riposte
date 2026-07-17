@@ -28,6 +28,49 @@
   /** Display top-first, like a layer panel (scene array is bottom-first). */
   const displayLayers = $derived(comp ? [...comp.layers].slice().reverse() : []);
 
+  // ---- row reordering (drag the ⋮⋮ grip; Ctrl+↑/↓ nudges the selection) ------
+  let rowDrag = $state<string | null>(null);
+  let rowDragOver = $state<{ id: string; above: boolean } | null>(null);
+
+  function rowDragStart(ev: DragEvent, layer: Layer): void {
+    ev.dataTransfer?.setData('text/riposte-layer', layer.id);
+    if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+    rowDrag = layer.id;
+  }
+
+  function rowDragOverRow(ev: DragEvent, layer: Layer): void {
+    if (!rowDrag || rowDrag === layer.id) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    rowDragOver = { id: layer.id, above: ev.clientY < r.top + r.height / 2 };
+  }
+
+  function rowDropOnRow(ev: DragEvent, layer: Layer): void {
+    if (!rowDrag) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const dragged = rowDrag;
+    const over = rowDragOver;
+    rowDrag = null;
+    rowDragOver = null;
+    if (!over || !comp || dragged === layer.id) return;
+    const ls = comp.layers;
+    const fi = ls.findIndex((l) => l.id === dragged);
+    const ti = ls.findIndex((l) => l.id === layer.id);
+    if (fi < 0 || ti < 0) return;
+    // display "above the target" = AFTER it in the bottom-first array
+    let to = over.above ? ti + 1 : ti;
+    if (fi < to) to -= 1; // splice-out compensation
+    ed.reorderLayer(dragged, to);
+  }
+
+  function rowDragEnd(): void {
+    rowDrag = null;
+    rowDragOver = null;
+  }
+
 
   interface PropRow {
     targetKey: string;
@@ -282,6 +325,34 @@
       <button title="Add ellipse" onclick={() => ed.addElementLayer('ellipse')}>● ellipse</button>
       <button title="Add image loader (dynamic image via update)" onclick={() => ed.addElementLayer('imageLoader')}>▣ loader</button>
       <span class="dim">— drag an asset here for a static image</span>
+      {#if ed.selectionIds.length > 0}
+        <span class="dim">| {ed.selectionIds.length} selected (Ctrl+click adds):</span>
+        <button
+          title="Create a component from the selected layer(s) — they are replaced by ONE embedded instance (same canvas, nothing moves)"
+          onclick={() => ed.extractSelection('component')}
+        >▣ → component</button>
+        <button
+          title="Copy the selected layer(s) into a new scene — the originals stay where they are"
+          onclick={() => ed.extractSelection('scene')}
+        >⧉ → scene</button>
+        {#if (ed.setRef?.components.length ?? 0) > 0}
+          <select
+            class="addto"
+            title="Move the selected layer(s) into an existing component — appended on top of its layers, removed from this scene"
+            onchange={(e) => {
+              const t = e.currentTarget as HTMLSelectElement;
+              const f = t.value;
+              t.value = '';
+              if (f) void ed.moveSelectionToComponent(f);
+            }}
+          >
+            <option value="">→ into component…</option>
+            {#each ed.setRef?.components ?? [] as f (f)}
+              <option value={f} disabled={f === ed.sceneFile}>{f.replace(/^scenes\//, '').replace(/\.json$/, '')}</option>
+            {/each}
+          </select>
+        {/if}
+      {/if}
     </div>
     <div class="rows" bind:this={rowsEl}>
       <div class="row head">
@@ -315,13 +386,27 @@
           {@const span = barSpan(layer)}
           <div
             class="row"
-            class:selected={ed.selectedLayerId === layer.id}
-            onpointerdown={() => ed.selectLayer(layer.id)}
+            class:selected={ed.selectionIds.includes(layer.id)}
+            class:dropabove={rowDragOver?.id === layer.id && rowDragOver.above}
+            class:dropbelow={rowDragOver?.id === layer.id && !rowDragOver.above}
+            onpointerdown={(e) => ed.selectLayer(layer.id, { toggle: e.ctrlKey || e.metaKey })}
+            ondragover={(e) => rowDragOverRow(e, layer)}
+            ondrop={(e) => rowDropOnRow(e, layer)}
             {@attach (node) => {
               if (ed.selectedLayerId === layer.id) node.scrollIntoView({ block: 'center' });
             }}
           >
             <div class="label" class:dim={layer.hidden || layer.isGuide}>
+              <span
+                class="grip"
+                role="button"
+                tabindex="-1"
+                draggable="true"
+                title="Drag to reorder layers — or Ctrl+↑/↓ on the selection"
+                ondragstart={(e) => rowDragStart(e, layer)}
+                ondragend={rowDragEnd}
+                onpointerdown={(e) => e.stopPropagation()}
+              >⋮⋮</span>
               <button
                 class="chev"
                 title="Show properties"
@@ -502,6 +587,27 @@
     cursor: pointer;
   }
   .frame { font: 12px Consolas, monospace; color: #d9a441; min-width: 80px; }
+  .grip {
+    cursor: grab;
+    color: #676c76;
+    padding: 0 3px;
+    font-size: 10px;
+    letter-spacing: -1px;
+    user-select: none;
+  }
+  .grip:hover { color: #d9a441; }
+  .row.dropabove { box-shadow: inset 0 2px 0 #d9a441; }
+  .row.dropbelow { box-shadow: inset 0 -2px 0 #d9a441; }
+  .addto {
+    background: #23262e;
+    border: 1px solid #383c46;
+    color: #e6e6e6;
+    border-radius: 4px;
+    font-size: 11px;
+    padding: 2px 4px;
+    max-width: 160px;
+    cursor: pointer;
+  }
   .spacer { flex: 1; }
   .dim { color: #676c76; font-size: 11px; }
   .rows { flex: 1; display: flex; flex-direction: column; min-height: 0; }

@@ -1,0 +1,355 @@
+{
+  "formatVersion": 1,
+  "name": "3Bars",
+  "composition": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "duration": 150,
+    "markers": [],
+    "layers": [
+      {
+        "id": "l-bar1",
+        "name": "bar 1",
+        "startFrame": 0,
+        "duration": 150,
+        "masks": [
+          {
+            "id": "bar1-mask",
+            "type": "rectangle",
+            "style": {
+              "x": {
+                "value": 960,
+                "keyframes": [
+                  {
+                    "frame": 15,
+                    "value": 550,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 35,
+                    "value": 960
+                  }
+                ]
+              },
+              "y": {
+                "value": 420
+              },
+              "width": {
+                "value": 820,
+                "keyframes": [
+                  {
+                    "frame": 15,
+                    "value": 0,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 35,
+                    "value": 820
+                  }
+                ]
+              },
+              "height": {
+                "value": 74
+              }
+            }
+          }
+        ],
+        "element": {
+          "id": "bar1",
+          "type": "image",
+          "asset": "assets/bar.svg",
+          "style": {
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 420
+            },
+            "width": {
+              "value": 820
+            },
+            "height": {
+              "value": 70
+            },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 122,
+                  "value": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-bar2",
+        "name": "bar 2",
+        "startFrame": 0,
+        "duration": 150,
+        "masks": [
+          {
+            "id": "bar2-mask",
+            "type": "rectangle",
+            "style": {
+              "x": {
+                "value": 960,
+                "keyframes": [
+                  {
+                    "frame": 21,
+                    "value": 550,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 41,
+                    "value": 960
+                  }
+                ]
+              },
+              "y": {
+                "value": 505
+              },
+              "width": {
+                "value": 820,
+                "keyframes": [
+                  {
+                    "frame": 21,
+                    "value": 0,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 41,
+                    "value": 820
+                  }
+                ]
+              },
+              "height": {
+                "value": 74
+              }
+            }
+          }
+        ],
+        "element": {
+          "id": "bar2",
+          "type": "image",
+          "asset": "assets/bar.svg",
+          "style": {
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 505
+            },
+            "width": {
+              "value": 820
+            },
+            "height": {
+              "value": 70
+            },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 122,
+                  "value": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "l-bar3",
+        "name": "bar 3",
+        "startFrame": 0,
+        "duration": 150,
+        "masks": [
+          {
+            "id": "bar3-mask",
+            "type": "rectangle",
+            "style": {
+              "x": {
+                "value": 960,
+                "keyframes": [
+                  {
+                    "frame": 27,
+                    "value": 550,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 47,
+                    "value": 960
+                  }
+                ]
+              },
+              "y": {
+                "value": 590
+              },
+              "width": {
+                "value": 820,
+                "keyframes": [
+                  {
+                    "frame": 27,
+                    "value": 0,
+                    "easing": {
+                      "p1x": 0.25,
+                      "p1y": 0.1,
+                      "p2x": 0.25,
+                      "p2y": 1
+                    }
+                  },
+                  {
+                    "frame": 47,
+                    "value": 820
+                  }
+                ]
+              },
+              "height": {
+                "value": 74
+              }
+            }
+          }
+        ],
+        "element": {
+          "id": "bar3",
+          "type": "image",
+          "asset": "assets/bar.svg",
+          "style": {
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 590
+            },
+            "width": {
+              "value": 820
+            },
+            "height": {
+              "value": 70
+            },
+            "opacity": {
+              "value": 1,
+              "keyframes": [
+                {
+                  "frame": 110,
+                  "value": 1
+                },
+                {
+                  "frame": 122,
+                  "value": 0
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": "layer-mrovm09s-1rdv",
+        "name": "shine 1",
+        "startFrame": 35,
+        "duration": 115,
+        "loop": {
+          "start": 10,
+          "end": 60
+        },
+        "masks": [
+          {
+            "id": "layer-mrovm09s-1rdv-mask0",
+            "type": "rectangle",
+            "style": {
+              "x": {
+                "value": 960
+              },
+              "y": {
+                "value": 420
+              },
+              "width": {
+                "value": 820
+              },
+              "height": {
+                "value": 70
+              }
+            }
+          }
+        ],
+        "element": {
+          "id": "layer-mrovm09s-1rdv-el",
+          "type": "image",
+          "asset": "assets/gradient.svg",
+          "style": {
+            "x": {
+              "value": 460,
+              "keyframes": [
+                {
+                  "frame": 45,
+                  "value": 460
+                },
+                {
+                  "frame": 95,
+                  "value": 1470
+                }
+              ]
+            },
+            "y": {
+              "value": 420
+            },
+            "width": {
+              "value": 400
+            },
+            "height": {
+              "value": 74
+            },
+            "opacity": {
+              "value": 0.75,
+              "keyframes": [
+                {
+                  "frame": 35,
+                  "value": 0
+                },
+                {
+                  "frame": 45,
+                  "value": 0.75
+                }
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

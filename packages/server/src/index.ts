@@ -574,7 +574,7 @@ async function apiUploadAsset(url: URL, req: IncomingMessage, res: ServerRespons
 
 /** Create a scene file (new or duplicate) and register it in set.json. */
 async function apiCreateScene(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; file: string; doc: unknown };
+  const body = (await readBody(req)) as { root: string; name: string; file: string; doc: unknown; kind?: string };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const dir = setDirOf(url);
   if (!SCENE_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
@@ -586,8 +586,13 @@ async function apiCreateScene(req: IncomingMessage, res: ServerResponse): Promis
   }
   await writeFile(join(dir, body.file), JSON.stringify(body.doc, null, 2) + '\n', 'utf8');
   const setPath = join(dir, 'set.json');
-  const set = JSON.parse(await readFile(setPath, 'utf8')) as { scenes: string[] };
-  if (!set.scenes.includes(body.file)) set.scenes.push(body.file);
+  const set = JSON.parse(await readFile(setPath, 'utf8')) as { scenes: string[]; components?: string[] };
+  if (body.kind === 'component') {
+    set.components ??= [];
+    if (!set.components.includes(body.file)) set.components.push(body.file);
+  } else if (!set.scenes.includes(body.file)) {
+    set.scenes.push(body.file);
+  }
   await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
   return json(res, { ok: true, file: body.file });
 }

@@ -12,6 +12,7 @@
     "webpQuality": 92
   },
   "components": [
-    "scenes/Component.json"
+    "scenes/Component.json",
+    "scenes/3Bars.json"
   ]
 }

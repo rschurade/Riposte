@@ -95,6 +95,12 @@
       ed.duplicateLayer(ed.selectedLayerId);
       return;
     }
+    if (ev.ctrlKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) {
+      if (isTyping() || ed.selectionIds.length === 0) return;
+      ev.preventDefault();
+      ed.nudgeSelection(ev.key === 'ArrowUp' ? 'up' : 'down');
+      return;
+    }
     if (isTyping() || !ed.scene) return;
     const dur = ed.scene.composition.duration;
     switch (ev.key) {
@@ -105,7 +111,7 @@
           ed.deleteSelectedKeyframe();
         } else if (ed.selectedLayerId) {
           ev.preventDefault();
-          ed.deleteLayer(ed.selectedLayerId);
+          ed.deleteSelectedLayers();
         }
         break;
       case ' ':

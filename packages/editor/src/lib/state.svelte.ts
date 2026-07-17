@@ -206,9 +206,101 @@ class EditorState {
     return this.scene?.composition.layers.find((l) => l.id === this.selectedLayerId) ?? null;
   }
 
-  selectLayer(id: string | null): void {
+  /** Multi-selection pool — raw; consumers read `selectionIds`. */
+  selectedLayerIds = $state<string[]>([]);
+
+  /**
+   * Effective multi-selection: empty whenever there is no primary, and always
+   * contains the primary. Keying off `selectedLayerId` means every existing
+   * "deselect" code path (scene switch, undo pruning, lock) empties the
+   * multi-selection for free — stale pool entries are unreachable.
+   */
+  get selectionIds(): string[] {
+    if (!this.selectedLayerId) return [];
+    return this.selectedLayerIds.includes(this.selectedLayerId) ? this.selectedLayerIds : [this.selectedLayerId];
+  }
+
+  /** Selected layers in paint order. */
+  get selectedLayers(): Layer[] {
+    const ids = this.selectionIds;
+    return this.scene?.composition.layers.filter((l) => ids.includes(l.id)) ?? [];
+  }
+
+  selectLayer(id: string | null, opts: { toggle?: boolean } = {}): void {
+    if (opts.toggle && id && this.selectedLayerId) {
+      const cur = this.selectionIds;
+      if (cur.includes(id)) {
+        const next = cur.filter((x) => x !== id);
+        this.selectedLayerIds = next;
+        if (this.selectedLayerId === id) this.selectedLayerId = next[next.length - 1] ?? null;
+      } else {
+        this.selectedLayerIds = [...cur, id];
+        this.selectedLayerId = id;
+      }
+      this.selectedKf = null;
+      return;
+    }
     if (this.selectedLayerId !== id) this.selectedKf = null;
     this.selectedLayerId = id;
+    this.selectedLayerIds = id ? [id] : [];
+  }
+
+  /** Move a layer to array index `to` (paint order, bottom-first). */
+  reorderLayer(id: string, to: number): void {
+    this.mutate('reorder layer', (s) => {
+      const ls = s.composition.layers;
+      const from = ls.findIndex((l) => l.id === id);
+      if (from < 0) return;
+      const target = Math.max(0, Math.min(ls.length - 1, to));
+      if (target === from) return;
+      const [l] = ls.splice(from, 1);
+      ls.splice(target, 0, l!);
+    });
+  }
+
+  /**
+   * Nudge the whole selection one step in the paint order. 'up' = towards the
+   * viewer (timeline top; array END — the scene array is bottom-first).
+   * Selected layers never leapfrog each other; blocked at the edges.
+   */
+  nudgeSelection(dir: 'up' | 'down'): void {
+    const ids = this.selectionIds;
+    if (ids.length === 0 || !this.scene) return;
+    this.mutate(`nudge selection ${dir}`, (s) => {
+      const ls = s.composition.layers;
+      if (dir === 'up') {
+        for (let i = ls.length - 2; i >= 0; i--) {
+          if (ids.includes(ls[i]!.id) && !ids.includes(ls[i + 1]!.id)) {
+            const t = ls[i + 1]!;
+            ls[i + 1] = ls[i]!;
+            ls[i] = t;
+          }
+        }
+      } else {
+        for (let i = 1; i < ls.length; i++) {
+          if (ids.includes(ls[i]!.id) && !ids.includes(ls[i - 1]!.id)) {
+            const t = ls[i - 1]!;
+            ls[i - 1] = ls[i]!;
+            ls[i] = t;
+          }
+        }
+      }
+    });
+  }
+
+  /** Delete the whole selection in one undo step. */
+  deleteSelectedLayers(): void {
+    const ids = this.selectionIds;
+    if (ids.length === 0) return;
+    if (ids.length === 1) {
+      this.deleteLayer(ids[0]!);
+      return;
+    }
+    this.mutate(`delete ${ids.length} layers`, (s) => {
+      s.composition.layers = s.composition.layers.filter((l) => !ids.includes(l.id));
+    });
+    this.selectLayer(null);
+    this.flash(`deleted ${ids.length} layers (Ctrl+Z restores)`);
   }
 
   get assetBase(): string {
@@ -577,14 +669,134 @@ class EditorState {
   }
 
   /** Register a fresh scene doc on the server and open it. */
-  private async createScene(name: string, doc: SceneDoc): Promise<void> {
-    const file = `scenes/${name}.json`;
-    const r = await this.post('/api/scene/create', { file, doc });
-    if (!r || !this.setRef) return;
-    this.setRef.scenes = [...this.setRef.scenes, file];
+  /**
+   * Move the selected layers into an EXISTING component (the "forgot an
+   * element" case after extraction): appended on top of the component's
+   * layers and removed from this scene. The component file is saved to disk
+   * immediately, so undo restores THIS scene only — the component keeps them.
+   */
+  async moveSelectionToComponent(file: string): Promise<void> {
+    const layers = this.selectedLayers;
+    const target = this.allScenes[file];
+    const src = this.scene;
+    if (layers.length === 0 || !target || !src || !this.setRef) return;
+    if (file === this.sceneFile) {
+      this.flash('that component is the scene you are editing');
+      return;
+    }
+    const ids = layers.map((l) => l.id);
+    // fresh ids on the copies — the same layer could otherwise land twice
+    // (e.g. moved from a scene and from its duplicate)
+    const clones = JSON.parse(JSON.stringify(layers)) as Layer[];
+    for (const c of clones) {
+      const nid = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+      c.id = nid;
+      c.element.id = `${nid}-el`;
+      c.masks?.forEach((m, i) => (m.id = `${nid}-mask${i}`));
+    }
+    const doc = JSON.parse(JSON.stringify(target)) as SceneDoc;
+    doc.composition.layers.push(...clones);
+    this.ownSave = { file, at: Date.now() };
+    const res = await fetch('/api/scene', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name, file, doc }),
+    });
+    if (!res.ok) {
+      this.flash(`FAILED: ${((await res.json()) as { error?: string }).error ?? res.status}`);
+      return;
+    }
     this.allScenes = { ...this.allScenes, [file]: doc };
-    this.openScene(file);
+    this.dirtyFiles[file] = false;
+    this.mutate('move selection to component', (s) => {
+      s.composition.layers = s.composition.layers.filter((l) => !ids.includes(l.id));
+    });
+    this.selectLayer(null);
+    const short = file.replace(/^scenes\//, '').replace(/\.json$/, '');
+    const sizeNote =
+      target.composition.width !== src.composition.width || target.composition.height !== src.composition.height
+        ? ' — CANVAS SIZES DIFFER, check positions'
+        : '';
+    this.flash(`moved ${ids.length} layer${ids.length === 1 ? '' : 's'} into "${short}" (undo restores this scene only)${sizeNote}`);
+  }
+
+  private async createScene(
+    name: string,
+    doc: SceneDoc,
+    opts: { kind?: 'scene' | 'component'; open?: boolean } = {},
+  ): Promise<string | null> {
+    const file = `scenes/${name}.json`;
+    const kind = opts.kind ?? 'scene';
+    const r = await this.post('/api/scene/create', { file, doc, kind });
+    if (!r || !this.setRef) return null;
+    if (kind === 'component') this.setRef.components = [...this.setRef.components, file];
+    else this.setRef.scenes = [...this.setRef.scenes, file];
+    this.allScenes = { ...this.allScenes, [file]: doc };
+    if (opts.open !== false) this.openScene(file);
     this.flash(`created ${name}`);
+    return file;
+  }
+
+  /**
+   * Copy the selected layers into a new scene or component (same canvas size,
+   * so nothing moves). Component extraction REPLACES the selection with one
+   * embedded instance; scene extraction leaves the original scene untouched.
+   */
+  async extractSelection(kind: 'component' | 'scene'): Promise<void> {
+    const comp = this.scene?.composition;
+    const layers = this.selectedLayers;
+    if (!comp || layers.length === 0) return;
+    const name = prompt(`Name for the new ${kind}:`, '')?.trim();
+    if (!name) return;
+    if (!/^[\w .()-]+$/.test(name)) {
+      this.flash('invalid name');
+      return;
+    }
+    const ids = layers.map((l) => l.id);
+    const doc: SceneDoc = {
+      formatVersion: 1,
+      name,
+      composition: {
+        width: comp.width,
+        height: comp.height,
+        fps: comp.fps,
+        duration: comp.duration,
+        markers: [],
+        layers: JSON.parse(JSON.stringify(layers)) as Layer[],
+      },
+    };
+    const file = await this.createScene(name, doc, { kind, open: false });
+    if (!file) return;
+    if (kind === 'scene') {
+      this.flash(`copied ${ids.length} layer${ids.length === 1 ? '' : 's'} into new scene "${name}"`);
+      return;
+    }
+    const nid = `layer-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+    const cw = comp.width;
+    const ch = comp.height;
+    this.mutate('extract component', (s) => {
+      const ls = s.composition.layers;
+      const at = Math.min(...ids.map((id) => ls.findIndex((l) => l.id === id)).filter((i) => i >= 0));
+      s.composition.layers = ls.filter((l) => !ids.includes(l.id));
+      s.composition.layers.splice(at, 0, {
+        id: nid,
+        startFrame: 0,
+        duration: s.composition.duration,
+        element: {
+          id: `${nid}-el`,
+          type: 'composition',
+          compositionId: file,
+          style: { x: { value: cw / 2 }, y: { value: ch / 2 }, width: { value: cw }, height: { value: ch } },
+        },
+      });
+    });
+    this.selectLayer(nid);
+    const keyed = layers.filter((l) => l.element.key).length;
+    this.flash(
+      keyed > 0
+        ? `extracted "${name}" — NOTE: ${keyed} data key${keyed === 1 ? '' : 's'} moved inside; give the instance a key to address them as _instance._key`
+        : `extracted "${name}" — the selection is now one embedded instance`,
+    );
   }
 
   /** New empty scene — canvas size/fps borrowed from the set's other scenes. */

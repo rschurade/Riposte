@@ -306,11 +306,43 @@
     selectionRect = layerRect(layer);
   });
 
+  // Secondary selection outlines (multi-select): every selected layer except
+  // the primary gets a thinner box — measured like the primary.
+  let extraRects = $state<{ x: number; y: number; w: number; h: number }[]>([]);
+  $effect(() => {
+    void ed.version;
+    void ed.frame;
+    void scale;
+    void wrapSize;
+    const ids = ed.selectionIds;
+    if (!comp || ids.length <= 1) {
+      extraRects = [];
+      return;
+    }
+    const stageR = stageEl?.getBoundingClientRect();
+    extraRects = ids
+      .filter((id) => id !== ed.selectedLayerId)
+      .map((id) => {
+        const l = comp.layers.find((x) => x.id === id);
+        if (!l) return null;
+        const handle = built?.byId.get(l.element.id);
+        if (handle && stageR && scale > 0) {
+          const r = handle.node.getBoundingClientRect();
+          if (r.width > 0 || r.height > 0) {
+            return { x: (r.left - stageR.left) / scale, y: (r.top - stageR.top) / scale, w: r.width / scale, h: r.height / scale };
+          }
+        }
+        return layerRect(l);
+      })
+      .filter((r): r is { x: number; y: number; w: number; h: number } => r !== null);
+  });
+
   // ---- resize handles ---------------------------------------------------------
   // Shown for selected elements with real width/height geometry. Compositions
   // size from their doc, paths from their data, auto-sized text from content —
   // none of those are box-resizable.
   const resizeLayer = $derived.by(() => {
+    if (ed.selectionIds.length !== 1) return null; // group resize is not a thing
     const layer = ed.selectedLayer;
     if (!layer || layer.locked) return null;
     const el = layer.element;
@@ -373,26 +405,29 @@
     const p = toComp(ev);
     const dxp = p.x - r.startX;
     const dyp = p.y - r.startY;
-    // the dragged EDGE snaps to the grid (opposite edge stays put); Alt bypasses
+    // the dragged EDGE snaps to the centered grid (opposite edge stays put);
+    // Alt bypasses
     const snap = snapOn && !ev.altKey ? Math.max(2, Number(gridSize) || 50) : 0;
-    const edge = (pos: number) => (snap ? Math.round(pos / snap) * snap : Math.round(pos));
+    const ccx = comp?.width ? comp.width / 2 : 0;
+    const ccy = comp?.height ? comp.height / 2 : 0;
+    const edge = (pos: number, c: number) => (snap ? snapTo(pos, snap, c) : Math.round(pos));
 
     let dw = 0, dh = 0, dcx = 0, dcy = 0;
     if (r.dir.includes('e')) {
-      const w = Math.max(2, edge(r.cx0 + r.w0 / 2 + dxp) - (r.cx0 - r.w0 / 2));
+      const w = Math.max(2, edge(r.cx0 + r.w0 / 2 + dxp, ccx) - (r.cx0 - r.w0 / 2));
       dw = w - r.w0;
       dcx = dw / 2;
     } else if (r.dir.includes('w')) {
-      const w = Math.max(2, r.cx0 + r.w0 / 2 - edge(r.cx0 - r.w0 / 2 + dxp));
+      const w = Math.max(2, r.cx0 + r.w0 / 2 - edge(r.cx0 - r.w0 / 2 + dxp, ccx));
       dw = w - r.w0;
       dcx = -dw / 2;
     }
     if (r.dir.includes('s')) {
-      const h = Math.max(2, edge(r.cy0 + r.h0 / 2 + dyp) - (r.cy0 - r.h0 / 2));
+      const h = Math.max(2, edge(r.cy0 + r.h0 / 2 + dyp, ccy) - (r.cy0 - r.h0 / 2));
       dh = h - r.h0;
       dcy = dh / 2;
     } else if (r.dir.includes('n')) {
-      const h = Math.max(2, r.cy0 + r.h0 / 2 - edge(r.cy0 - r.h0 / 2 + dyp));
+      const h = Math.max(2, r.cy0 + r.h0 / 2 - edge(r.cy0 - r.h0 / 2 + dyp, ccy));
       dh = h - r.h0;
       dcy = -dh / 2;
     }
@@ -450,6 +485,23 @@
     localStorage.setItem('riposte.grid', JSON.stringify({ on: gridOn, size: gridSize, snap: snapOn }));
   });
   const gridStep = $derived(Math.max(2, Number(gridSize) || 50) * scale);
+
+  /**
+   * Snap a composition-space coordinate to the grid. The grid is CENTERED on
+   * the comp — lines at center + n·grid — because element anchors are box
+   * centers: dead center and symmetric ± positions must be reachable by
+   * snapping (on a 0,0-origin grid, 960/540 isn't on a 50px grid at all).
+   */
+  function snapTo(v: number, g: number, center: number): number {
+    return Math.round((v - center) / g) * g + center;
+  }
+
+  /** Pixel offset that puts a grid line exactly through the comp center. */
+  const gridOffset = $derived(
+    comp && gridStep > 0
+      ? { x: ((comp.width / 2) * scale) % gridStep, y: ((comp.height / 2) * scale) % gridStep }
+      : { x: 0, y: 0 },
+  );
 
   // ---- ruler guides (design-time only, stored in the scene doc) ----------------
   const guides = $derived(ed.scene?.guides ?? null);
@@ -510,6 +562,8 @@
   // ---- pointer interaction ---------------------------------------------------
   let drag: {
     id: string;
+    /** Whole selection at drag start — group moves follow the hit layer. */
+    ids: string[];
     startX: number;
     startY: number;
     startElX: number;
@@ -543,8 +597,8 @@
     };
     if (snapOn) {
       const g = Math.max(2, Number(gridSize) || 50);
-      at.x = Math.round(at.x / g) * g;
-      at.y = Math.round(at.y / g) * g;
+      at.x = snapTo(at.x, g, comp.width / 2);
+      at.y = snapTo(at.y, g, comp.height / 2);
     }
     const seq = ev.dataTransfer?.getData('text/riposte-sequence');
     if (seq) {
@@ -575,19 +629,30 @@
     if (!comp) return;
     const p = toComp(ev);
     const hit = hitTest(p.x, p.y);
-    ed.selectLayer(hit?.id ?? null);
-    if (hit) {
-      drag = {
-        id: hit.id,
-        startX: p.x,
-        startY: p.y,
-        startElX: propNumber(hit.element.style.x, ed.frame, 0),
-        startElY: propNumber(hit.element.style.y, ed.frame, 0),
-        axis: null,
-        applied: { dx: 0, dy: 0 },
-      };
-      (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+    if (ev.ctrlKey || ev.metaKey) {
+      // modifier click toggles selection membership — never starts a drag
+      if (hit) ed.selectLayer(hit.id, { toggle: true });
+      return;
     }
+    if (!hit) {
+      ed.selectLayer(null);
+      return;
+    }
+    // clicking inside an existing multi-selection keeps the group (the
+    // primary follows the click); outside it collapses to the hit layer
+    if (ed.selectionIds.includes(hit.id)) ed.selectedLayerId = hit.id;
+    else ed.selectLayer(hit.id);
+    drag = {
+      id: hit.id,
+      ids: [...ed.selectionIds],
+      startX: p.x,
+      startY: p.y,
+      startElX: propNumber(hit.element.style.x, ed.frame, 0),
+      startElY: propNumber(hit.element.style.y, ed.frame, 0),
+      axis: null,
+      applied: { dx: 0, dy: 0 },
+    };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
   }
 
   function onPointerMove(ev: PointerEvent): void {
@@ -607,11 +672,12 @@
     } else {
       drag.axis = null; // releasing Shift unlocks; pressing again re-latches
     }
-    // Snap the element's anchor (x/y = box center) to the grid; Alt bypasses.
+    // Snap the element's anchor (x/y = box center) to the centered grid; Alt bypasses.
     if (snapOn && !ev.altKey) {
       const g = Math.max(2, Number(gridSize) || 50);
-      if (dx !== 0) dx = Math.round((drag.startElX + dx) / g) * g - drag.startElX;
-      if (dy !== 0) dy = Math.round((drag.startElY + dy) / g) * g - drag.startElY;
+      const c = ed.scene.composition;
+      if (dx !== 0) dx = snapTo(drag.startElX + dx, g, c.width / 2) - drag.startElX;
+      if (dy !== 0) dy = snapTo(drag.startElY + dy, g, c.height / 2) - drag.startElY;
     }
     // Guides snap the anchor too (after grid — a guide wins nearby); Alt bypasses.
     if (!ev.altKey && guides) {
@@ -631,28 +697,33 @@
         }
       }
     }
-    // live feedback: nudge the built DOM node directly; doc mutated on drop
-    const handle = built?.byId.get(layer.element.id);
-    if (handle) {
-      handle.node.style.marginLeft = `${dx}px`;
-      handle.node.style.marginTop = `${dy}px`;
+    // live feedback: nudge every selected node directly; doc mutated on drop
+    for (const lid of drag.ids) {
+      const l = ed.scene.composition.layers.find((x) => x.id === lid);
+      const handle = l ? built?.byId.get(l.element.id) : null;
+      if (handle) {
+        handle.node.style.marginLeft = `${dx}px`;
+        handle.node.style.marginTop = `${dy}px`;
+      }
     }
     drag.applied = { dx, dy };
   }
 
   function onPointerUp(): void {
     if (!drag) return;
-    const { id, applied } = drag;
+    const { ids, applied } = drag;
     drag = null;
     if (applied.dx === 0 && applied.dy === 0) return;
-    ed.mutate('move element', (scene) => {
-      const layer = scene.composition.layers.find((l) => l.id === id);
-      if (!layer) return;
-      shiftProperty(layer.element.style.x, applied.dx);
-      shiftProperty(layer.element.style.y, applied.dy);
-      for (const mask of layer.masks ?? []) {
-        shiftProperty(mask.style.x, applied.dx);
-        shiftProperty(mask.style.y, applied.dy);
+    ed.mutate(ids.length > 1 ? `move ${ids.length} elements` : 'move element', (scene) => {
+      for (const id of ids) {
+        const layer = scene.composition.layers.find((l) => l.id === id);
+        if (!layer) continue;
+        shiftProperty(layer.element.style.x, applied.dx);
+        shiftProperty(layer.element.style.y, applied.dy);
+        for (const mask of layer.masks ?? []) {
+          shiftProperty(mask.style.x, applied.dx);
+          shiftProperty(mask.style.y, applied.dy);
+        }
       }
     });
   }
@@ -674,7 +745,7 @@
     >
       <div class="stage" bind:this={stageEl} style="transform:scale({scale});width:{comp.width}px;height:{comp.height}px"></div>
       {#if gridOn && gridStep >= 4}
-        <div class="grid" style="background-size:{gridStep}px {gridStep}px"></div>
+        <div class="grid" style="background-size:{gridStep}px {gridStep}px;background-position:{gridOffset.x}px {gridOffset.y}px"></div>
       {/if}
       {#each guides?.v ?? [] as gx, i (`v${i}`)}
         <div
@@ -718,6 +789,9 @@
           {/each}
         {/if}
       {/if}
+      {#each extraRects as r, i (i)}
+        <div class="selection extra" style="left:{r.x * scale}px;top:{r.y * scale}px;width:{r.w * scale}px;height:{r.h * scale}px"></div>
+      {/each}
     </div>
     <div class="gridbar" onpointerdown={(e) => e.stopPropagation()}>
       <label><input type="checkbox" bind:checked={gridOn} /> grid</label>
@@ -824,6 +898,10 @@
   .selection.ghost {
     border-style: dashed;
     opacity: 0.6;
+  }
+  .selection.extra {
+    border-width: 1px;
+    opacity: 0.75;
   }
   .handle {
     position: absolute;
