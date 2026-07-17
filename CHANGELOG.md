@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.0 — 2026-07-17
+
+### Added
+- Scene-level **outro presets**: named effects (`outros/*.json` per set)
+  applied to the whole scene on STOP — or NEXT off the last pause, matching
+  the controller lifecycle — replacing the marker outro. Rect masks can be
+  rotated and **inverted** (the growing-diamond wipe).
+- Scene-level **intro presets** (`intros/*.json`): played on ADD, from
+  hidden (frame 0) to neutral, over the normal build-up.
+- **Visual preset editor**: ✎/＋ next to the scene's Intro/Outro selects
+  opens a panel with live preview on the stage — scrub or play the effect
+  on the real scene while editing keyframes, easing and the mask.
+- **Stock preset collection** ships with the app: new sets start with it,
+  and Set Options' "+ stock presets" copies missing ones into existing
+  sets (never overwrites).
+- Fill color picker + corner radius for rectangles/ellipses; every color
+  swatch in the inspector now opens a native picker.
+- **Resize handles** on the selected element: edges snap to the grid
+  (Alt bypasses), Shift on a corner keeps the aspect ratio.
+- Sidebar: single click selects a set, double click opens Set Options.
+- The runtime reports its real product version (was hardcoded 0.1.0).
+
+### Fixed
+- Editor could freeze in dev after many hot-reloads (a connection leak
+  exhausted the browser's per-origin pool); proxied API sockets also
+  close properly on upstream errors now.
+- Intro/outro effects run on a wall clock with a completion guard — they
+  finish even when the playout window is hidden or covered (browsers
+  freeze animation frames there); the playout tab warns with "⏸ HIDDEN".
+- Guide layers are excluded from scene-level effects and keep their
+  paint order.
+
 ## 0.4.0 — 2026-07-16
 
 ### Added
