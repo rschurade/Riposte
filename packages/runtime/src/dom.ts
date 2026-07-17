@@ -63,6 +63,52 @@ export interface LoopTimeState {
 }
 
 /**
+ * True when the composition — or any nested component reachable through
+ * `components` — has a loop region. Drives the hold clock: a scene whose
+ * only loops live inside a component still needs the clock running.
+ */
+export function docHasLoops(
+  comp: Composition,
+  components: BuildOptions['components'],
+  depth = 0,
+): boolean {
+  if (depth >= 4) return false; // matches the build nesting guard
+  for (const layer of comp.layers) {
+    if (layer.loop) return true;
+    if (layer.element.type === 'composition') {
+      const doc = components?.[layer.element.compositionId];
+      if (doc && docHasLoops(doc.composition, components, depth + 1)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Forward the parent composition's loop clock into a nested component
+ * (pure — unit tested); returns the child frame to render. The child frame
+ * is clamped to its last frame, so:
+ * - `hold` carries the parked-scene clock PLUS the playhead's overflow past
+ *   the child's end — without the overflow, a loop inside the component
+ *   would freeze as soon as the parent plays past the component's duration.
+ * - `exitFrom` is re-based so the exit fade's progress (parent frame minus
+ *   parent exitFrom) survives the clamping.
+ */
+export function forwardClock(
+  parent: LoopTimeState,
+  child: LoopTimeState,
+  frame: number,
+  startFrame: number,
+  subLast: number,
+): number {
+  const local = frame - startFrame;
+  const clamped = Math.min(Math.max(local, 0), subLast);
+  child.hold = parent.hold + Math.max(0, local - subLast);
+  child.exiting = parent.exiting;
+  child.exitFrom = clamped - (frame - parent.exitFrom);
+  return clamped;
+}
+
+/**
  * Frame warp for a layer with a loop region (pure — unit tested). Entrance
  * plays through once; [start, end) wraps, with `hold` continuing the cycle
  * while the scene playhead is parked. The cycle never stops — the exit is a
@@ -284,7 +330,7 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
     layers,
     boundVisibility,
     timeState,
-    hasLoops: comp.layers.some((l) => l.loop),
+    hasLoops: docHasLoops(comp, opts.components),
     applySizeBinds,
     setFrame(frame) {
       for (const d of dynamics) d.apply(frame);
@@ -352,7 +398,7 @@ function buildLayer(
     parent = buildMask(mask, parent, dynamics);
   }
 
-  const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics, opts, byKey, boundVisibility, registry);
+  const handle = buildElement(layer.element, comp, layer, parent, assetBase, dynamics, opts, byKey, boundVisibility, registry, timeState);
   if (handle) {
     byId.set(layer.element.id, handle);
     if (layer.element.key) byKey.set(layer.element.key, handle);
@@ -500,6 +546,7 @@ function buildElement(
   parentByKey: Map<string, ElementHandle>,
   parentBound: BoundVisibility[],
   registry: BuildRegistry,
+  timeState: LoopTimeState,
 ): ElementHandle | null {
   let node: HTMLElement;
   let contentEl: HTMLElement | null = null;
@@ -676,9 +723,11 @@ function buildElement(
       const subLast = doc.composition.duration - 1;
       const start = layer.startFrame;
       // Child timeline follows the parent playhead (detachPlayhead pending).
+      // forwardClock keeps loop regions INSIDE the component cycling while
+      // the parent plays past it or parks, and re-bases the exit fade.
       dynamics.push({
         apply(frame) {
-          sub.setFrame(Math.min(Math.max(frame - start, 0), subLast));
+          sub.setFrame(forwardClock(timeState, sub.timeState, frame, start, subLast));
         },
       });
       // Loopic data convention: nested keys addressed as "_comp._key"
