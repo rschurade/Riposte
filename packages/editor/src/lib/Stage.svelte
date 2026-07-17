@@ -88,6 +88,7 @@
     if (!active && built) {
       // leaving CG mode mid-effect: undo whatever the intro/outro preset did
       clearOutroEffect(built.contentEl);
+      built.contentEl.style.visibility = '';
       built.show();
       cgFx = -1;
       cgIntroFx = -1;
@@ -110,6 +111,7 @@
         cgRunning = true;
         cgFx = -1;
         clearOutroEffect(built.contentEl);
+        built.contentEl.style.visibility = '';
         if (introPreset) {
           // start at the preset's hidden frame 0, the tick plays it to neutral
           applyOutroFrame(built.contentEl, comp, introPreset, 0);
@@ -194,14 +196,17 @@
           clearOutroEffect(built.contentEl);
         }
       }
-      // scene-outro effect: wipe the root on its own clock, then hide
+      // scene-outro effect: wipe the content on its own clock, then hide it —
+      // ONLY the content: guides are the design reference and must stay on
+      // stage after the simulated scene goes off air (on-air runtime hides the
+      // whole root instead, but it never renders guides).
       if (cgFx >= 0 && preset && built) {
         cgFx += dt * comp.fps;
         const f = Math.min(cgFx, preset.duration);
         applyOutroFrame(built.contentEl, comp, preset, f);
         if (f >= preset.duration) {
           cgFx = -1;
-          built.hide();
+          built.contentEl.style.visibility = 'hidden';
         }
       }
       raf = requestAnimationFrame(tick);
