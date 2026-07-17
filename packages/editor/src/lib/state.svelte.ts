@@ -152,6 +152,28 @@ class EditorState {
     this.flash(`deleted ${folder.slice(0, -1)} "${name}"`);
   }
 
+  /**
+   * Move a doc between the Scenes and Components lists (set.json membership —
+   * the file stays put). The server refuses demoting a still-embedded component.
+   */
+  async convertScene(file: string, to: 'component' | 'scene'): Promise<void> {
+    const r = await this.post('/api/scene/convert', { file, to });
+    if (!r || !this.setRef) return;
+    this.setRef.scenes = r['scenes'] as string[];
+    this.setRef.components = r['components'] as string[];
+    const inList = this.sets.find((s) => s.root === this.setRef!.root && s.name === this.setRef!.name);
+    if (inList) {
+      inList.scenes = this.setRef.scenes;
+      inList.components = this.setRef.components;
+    }
+    const short = file.replace(/^scenes\//, '').replace(/\.json$/, '');
+    this.flash(
+      to === 'component'
+        ? `"${short}" is now a component — drag it from the Components list onto a scene`
+        : `"${short}" is now a scene`,
+    );
+  }
+
   /** Copy the app's stock presets into the set (missing ones only — no overwrites). */
   async addStockPresets(): Promise<void> {
     const r = await this.post('/api/preset/stock', {});

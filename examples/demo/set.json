@@ -10,5 +10,8 @@
     "preloadAssets": true,
     "imageFormat": "png",
     "webpQuality": 92
-  }
+  },
+  "components": [
+    "scenes/Component.json"
+  ]
 }

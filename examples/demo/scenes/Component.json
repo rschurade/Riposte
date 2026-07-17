@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "name": "Component",
+  "composition": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "duration": 100,
+    "markers": [
+      {
+        "frame": 50,
+        "type": "pause"
+      }
+    ],
+    "layers": [
+      {
+        "id": "layer-mrouk79d-di0w",
+        "startFrame": 0,
+        "duration": 100,
+        "element": {
+          "id": "layer-mrouk79d-di0w-el",
+          "type": "ellipse",
+          "fill": "#3a6ea5",
+          "style": {
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 540
+            },
+            "width": {
+              "value": 200,
+              "keyframes": [
+                {
+                  "frame": 25,
+                  "value": 200
+                },
+                {
+                  "frame": 33,
+                  "value": 300
+                },
+                {
+                  "frame": 40,
+                  "value": 200
+                }
+              ]
+            },
+            "height": {
+              "value": 200
+            }
+          }
+        },
+        "loop": {
+          "start": 25,
+          "end": 40
+        }
+      }
+    ]
+  }
+}

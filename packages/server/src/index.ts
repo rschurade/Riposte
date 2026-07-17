@@ -102,6 +102,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/scene/create' && req.method === 'POST') return apiCreateScene(req, res);
   if (path === '/api/scene/remove' && req.method === 'POST') return apiRemoveScene(req, res);
   if (path === '/api/scene/rename' && req.method === 'POST') return apiRenameScene(req, res);
+  if (path === '/api/scene/convert' && req.method === 'POST') return apiConvertScene(req, res);
   if (path === '/api/preset/save' && req.method === 'POST') return apiSavePreset(req, res);
   if (path === '/api/preset/delete' && req.method === 'POST') return apiDeletePreset(req, res);
   if (path === '/api/preset/stock' && req.method === 'POST') return apiStockPresets(req, res);
@@ -646,6 +647,45 @@ function docElements(doc: Record<string, unknown>): Record<string, unknown>[] {
     out.push(...(l.masks ?? []));
   }
   return out;
+}
+
+/**
+ * Move a doc between set.json's scenes and components lists — the file stays
+ * where it is (components live under scenes/ too; membership IS the kind).
+ * Demoting a component that is still embedded somewhere is refused: exports
+ * resolve embeds from set.components only, so it would break those scenes.
+ */
+async function apiConvertScene(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; file: string; to: string };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  if (!DOC_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
+  if (body.to !== 'component' && body.to !== 'scene') throw Object.assign(new Error('bad target kind'), { status: 400 });
+  if (body.to === 'scene') {
+    const embeddedIn: string[] = [];
+    for (const file of await docFilesOf(dir)) {
+      if (file === body.file) continue;
+      let doc: Record<string, unknown>;
+      try {
+        doc = JSON.parse(await readFile(join(dir, file), 'utf8')) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (docElements(doc).some((el) => el['type'] === 'composition' && el['compositionId'] === body.file)) {
+        embeddedIn.push(file);
+      }
+    }
+    if (embeddedIn.length > 0) {
+      throw Object.assign(new Error(`still embedded in ${embeddedIn.join(', ')} — remove those instances first`), { status: 409 });
+    }
+  }
+  const setPath = join(dir, 'set.json');
+  const set = JSON.parse(await readFile(setPath, 'utf8')) as { scenes?: string[]; components?: string[] };
+  set.scenes = (set.scenes ?? []).filter((f) => f !== body.file);
+  set.components = (set.components ?? []).filter((f) => f !== body.file);
+  (body.to === 'component' ? set.components : set.scenes).push(body.file);
+  await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
+  return json(res, { ok: true, scenes: set.scenes, components: set.components });
 }
 
 /**

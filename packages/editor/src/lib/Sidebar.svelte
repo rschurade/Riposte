@@ -306,6 +306,7 @@
                 title={hiddenScenes[file] ? 'Hidden — click to show in the list again' : 'Hide from this list (view only — export/deploy unaffected)'}
                 onclick={() => toggleSceneHidden(file)}
               >👁</button>
+              <button class="rowbtn" title="Make this a component — reusable, embeddable in scenes (moves to the Components list; not exported as its own template)" onclick={() => ed.convertScene(file, 'component')}>▣</button>
               <button class="rowbtn" title="Duplicate scene" onclick={() => ed.duplicateScene(file)}>⧉</button>
               <button class="rowbtn remove" title="Delete scene (file included)" onclick={() => ed.removeScene(file)}>✕</button>
             {/if}
@@ -345,6 +346,7 @@
                 >
                   ▣ {sceneName(file)}{#if ed.dirtyFiles[file]}<span class="unsaved" title="unsaved changes"> ●</span>{/if}
                 </button>
+                <button class="rowbtn" title="Make this a regular scene again (refused while it's still embedded somewhere)" onclick={() => ed.convertScene(file, 'scene')}>⇄</button>
               {/if}
             </li>
           {/each}

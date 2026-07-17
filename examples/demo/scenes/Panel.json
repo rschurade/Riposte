@@ -68,6 +68,30 @@
             }
           }
         }
+      },
+      {
+        "id": "layer-mrouu8js-9044",
+        "startFrame": 0,
+        "duration": 100,
+        "element": {
+          "id": "layer-mrouu8js-9044-el",
+          "type": "composition",
+          "compositionId": "scenes/Component.json",
+          "style": {
+            "x": {
+              "value": 750
+            },
+            "y": {
+              "value": 600
+            },
+            "width": {
+              "value": 1920
+            },
+            "height": {
+              "value": 1080
+            }
+          }
+        }
       }
     ]
   },
