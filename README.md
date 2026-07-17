@@ -22,10 +22,13 @@ cloud, no accounts. Its core ideas:
 ## Features
 
 ### Editor
-- Stage with direct manipulation: drag, snap-to-grid, ruler guides
-  (lockable, layers snap to them), layer locking, zoom/pan.
-- Timeline: per-layer spans, keyframes with bezier easing, markers —
-  pause, outro (`stop()` plays from there), loop, and frame actions (JS).
+- Stage with direct manipulation: drag, multi-select (group move/delete),
+  resize handles, on-stage mask handles, snap-to-grid (center-anchored),
+  ruler guides (lockable, layers snap to them), layer locking, zoom/pan.
+- Timeline: per-layer spans, keyframes with bezier easing, keyframe
+  copy/paste across elements and scenes, layer reordering (drag or
+  Ctrl+arrows), draggable markers with per-marker locks — pause, outro
+  (`stop()` plays from there), loop, and frame actions (JS).
 - Inspector for every element type: text (incl. tabular numerals / digit
   boxing for jitter-free clocks), image, image sequence, image loader
   (runtime-fed image with design-time placeholder), rectangle/ellipse
@@ -33,8 +36,15 @@ cloud, no accounts. Its core ideas:
   width), nested composition.
 - Components: reusable nested compositions — edit once, every scene that
   embeds one follows; drag a component from the sidebar onto the stage to
-  embed it.
-- Masks per layer, animatable x/y/w/h, per-corner radius.
+  embed it. Convert scene ⇄ component, extract a selection into a new
+  component (or move it into an existing one); loop regions inside a
+  nested component keep cycling while the parent scene holds.
+- Scene-level **intro/outro presets**: named, reusable effects (fade,
+  wipes, slides, an inverted-mask diamond…) played on ADD and STOP around
+  the scene's own animation — with a visual preset editor previewing live
+  on the real scene, and a stock collection seeded into new sets.
+- Masks per layer, animatable x/y/w/h, rotation, inverted, per-corner
+  radius.
 - Data bindings: `update()` payload keys map to elements (`_name`
   convention, dot paths into nested components), visibility bindings with
   initial state, per-scene preview data for design-time.
@@ -67,10 +77,12 @@ cloud, no accounts. Its core ideas:
   per update.
 
 ### Automation
-- **MCP server**: sets/scenes listing with content keys, scene CRUD,
-  element edits, layer add, asset import, headless scene/filmstrip
-  rendering, export/deploy, and live bench control — an AI assistant can
-  inspect, edit, fill, and verify graphics end-to-end.
+- **MCP server**: the full authoring surface (~50 tools) — set/scene
+  CRUD and conversion, layers, keyframes, masks, markers, loops,
+  bindings, effect presets, asset management, headless scene/filmstrip
+  rendering, export/deploy, and live bench control. An AI assistant can
+  build a graphic from a blank set to a deployed template, and verify it
+  visually, end-to-end.
 - Importer for Loopic `.loo` projects (scenes, assets, scripts).
 
 ### Distribution
