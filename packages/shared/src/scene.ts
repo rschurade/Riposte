@@ -78,13 +78,18 @@ export interface Composition {
   action?: string;
 }
 
-export type Marker =
-  | { frame: number; type: 'pause' }
+export type Marker = {
+  frame: number;
+  /** Editor only: this marker can't be dragged on the ruler (accident protection). */
+  locked?: boolean;
+} & (
+  | { type: 'pause' }
   /** `stop()` plays from here to the end. At most one per composition. */
-  | { frame: number; type: 'outro' }
-  | { frame: number; type: 'loop'; loopToFrame: number }
+  | { type: 'outro' }
+  | { type: 'loop'; loopToFrame: number }
   /** Frame action: JS source run when the playhead reaches the frame. */
-  | { frame: number; type: 'action'; source: string };
+  | { type: 'action'; source: string }
+);
 
 export interface Layer {
   id: string;

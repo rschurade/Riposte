@@ -772,6 +772,12 @@
         <span class="mtype {m.type}">{m.type}</span>
         <input type="number" value={m.frame}
           onchange={(e) => ed.updateMarker(i, { frame: Number((e.currentTarget as HTMLInputElement).value) })} />
+        <button
+          class="mlockbtn"
+          class:on={m.locked}
+          title={m.locked ? 'Locked — not draggable on the ruler; click to unlock' : 'Unlocked — click to protect from accidental ruler drags'}
+          onclick={() => ed.toggleMarkerLock(i)}
+        >{m.locked ? '🔒' : '🔓'}</button>
         <button class="remove" title="Remove marker" onclick={() => ed.removeMarker(i)}>✕</button>
       </div>
       {#if m.type === 'action'}
@@ -954,6 +960,16 @@
     cursor: pointer;
   }
   .grid.spaced { margin-top: 10px; }
+  .mlockbtn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 2px;
+    width: auto;
+    opacity: 0.35;
+  }
+  .mlockbtn.on { opacity: 1; }
   .padrow { display: flex; gap: 4px; min-width: 0; }
   .padrow input { flex: 1; min-width: 0; width: 100%; }
   .ro { font-size: 12px; color: #aab; }

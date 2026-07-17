@@ -201,6 +201,38 @@
     return !!s && s.targetKey === row.targetKey && s.prop === row.prop && s.frame === frame;
   }
 
+  // ---- marker drag on the ruler ----------------------------------------------
+  let dragMarker: { index: number; frame: number } | null = $state(null);
+
+  function markerDown(ev: PointerEvent, index: number, frame: number): void {
+    if (comp?.markers[index]?.locked) return; // locked: the click falls through to the ruler seek
+    ev.stopPropagation(); // don't seek the playhead
+    dragMarker = { index, frame };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  }
+
+  function markerMove(ev: PointerEvent): void {
+    if (!dragMarker || !comp) return;
+    const track = (ev.currentTarget as HTMLElement).closest('.track');
+    if (!track) return;
+    const r = track.getBoundingClientRect();
+    const f = Math.round((ev.clientX - r.left - TRACK_PAD) / pxPerFrame);
+    dragMarker.frame = Math.min(Math.max(f, 0), comp.duration - 1);
+  }
+
+  function markerUp(): void {
+    if (!dragMarker) return;
+    const { index, frame } = dragMarker;
+    dragMarker = null;
+    if (comp && comp.markers[index] && comp.markers[index].frame !== frame) {
+      ed.updateMarker(index, { frame });
+    }
+  }
+
+  function markerDisplayFrame(index: number, frame: number): number {
+    return dragMarker?.index === index ? dragMarker.frame : frame;
+  }
+
   // ---- layer bar move/trim ----------------------------------------------------
   type BarMode = 'move' | 'left' | 'right';
   let dragBar: {
@@ -386,8 +418,13 @@
           {#each comp.markers as m, i (i)}
             <span
               class="marker {m.type}"
-              style="left:{fx(m.frame)}px"
-              title="{m.type}@{m.frame}"
+              class:dragging={dragMarker?.index === i}
+              class:mlocked={m.locked}
+              style="left:{fx(markerDisplayFrame(i, m.frame))}px"
+              title="{m.type}@{markerDisplayFrame(i, m.frame)}{m.locked ? ' (locked — unlock in the Inspector)' : ' — drag to move'}"
+              onpointerdown={(ev) => markerDown(ev, i, m.frame)}
+              onpointermove={markerMove}
+              onpointerup={markerUp}
             ></span>
           {/each}
           <span class="playhead" style="left:{fx(ed.frame)}px"></span>
@@ -550,6 +587,22 @@
                           ed.toggleKeyframe(row.targetKey, row.prop, row.def.fallback, layer.id);
                         }}
                       >◆</button>
+                      {#if row.frames.length > 0}
+                        <button
+                          class="rowbtn"
+                          title="Copy this property's {row.frames.length} keyframes"
+                          onpointerdown={(e) => e.stopPropagation()}
+                          onclick={() => ed.copyKeyframes(layer.id, row.targetKey, row.prop)}
+                        >⧉</button>
+                      {/if}
+                      {#if ed.kfClipboard}
+                        <button
+                          class="rowbtn"
+                          title="Paste {ed.kfClipboard.keyframes.length} keyframes (copied from {ed.kfClipboard.prop}) onto {row.label} — replaces its current animation"
+                          onpointerdown={(e) => e.stopPropagation()}
+                          onclick={() => ed.pasteKeyframes(layer.id, row.targetKey, row.prop)}
+                        >⤓</button>
+                      {/if}
                     </div>
                     <div class="track" onpointermove={kfMove} onpointerup={kfUp}>
                       {#each row.frames as f (f)}
@@ -794,10 +847,36 @@
     cursor: ew-resize;
   }
   .kf.selkf { background: #fff; outline: 1.5px solid #d9a441; }
-  .marker { position: absolute; top: 0; bottom: 0; width: 2px; }
-  .marker.pause { background: #4ea1e0; }
-  .marker.outro { background: #e05555; }
-  .marker.loop, .marker.action { background: #8a62d0; }
+  /* wider hit area than the visible 2px line (padding + background-clip) */
+  .marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    padding: 0 4px;
+    margin-left: -4px;
+    background-clip: content-box;
+    cursor: ew-resize;
+  }
+  .marker.dragging { opacity: 0.8; }
+  /* locked markers are transparent to the pointer — a pause stacked on the
+     same frame (the Loopic-import pattern) stays grabbable underneath */
+  .marker.mlocked { pointer-events: none; cursor: default; }
+  /*
+   * The RULER playhead renders after the markers and takes pointer events with
+   * the same widened hit area — on a shared frame the current-frame handle
+   * wins, and clicking it (bubbling to the ruler) starts a normal scrub.
+   */
+  .ruler .playhead {
+    pointer-events: auto;
+    padding: 0 4px;
+    margin-left: -4px;
+    background-clip: content-box;
+    cursor: ew-resize;
+  }
+  .marker.pause { background-color: #4ea1e0; }
+  .marker.outro { background-color: #e05555; }
+  .marker.loop, .marker.action { background-color: #8a62d0; }
   .playhead { position: absolute; top: 0; bottom: 0; width: 1.5px; background: #d9a441; pointer-events: none; }
   .playhead.faint { opacity: 0.35; }
 </style>

@@ -6,7 +6,7 @@
  * construction). `version` bumps trigger a Stage rebuild.
  */
 
-import { trimToContent, type BezierEasing, type ElementStyle, type Layer, type OutroPreset, type SceneDoc, type StyleProperty } from '@riposte/shared';
+import { trimToContent, type BezierEasing, type ElementStyle, type Keyframe, type Layer, type OutroPreset, type SceneDoc, type StyleProperty } from '@riposte/shared';
 
 export interface SetRef {
   root: string;
@@ -1355,6 +1355,39 @@ class EditorState {
     }
   }
 
+  /**
+   * Keyframe clipboard — deliberately session-global (not per scene), so an
+   * animation copies across elements AND across scenes. Frames stay absolute.
+   */
+  kfClipboard = $state<{ prop: string; keyframes: Keyframe[] } | null>(null);
+
+  private styleOfTarget(layer: Layer | undefined, targetKey: string): ElementStyle | undefined {
+    if (!layer) return undefined;
+    return targetKey === 'el' ? layer.element.style : layer.masks?.[Number(targetKey.slice(4))]?.style;
+  }
+
+  copyKeyframes(layerId: string, targetKey: string, prop: string): void {
+    const layer = this.scene?.composition.layers.find((l) => l.id === layerId);
+    const kfs = this.styleOfTarget(layer, targetKey)?.[prop]?.keyframes;
+    if (!kfs?.length) return;
+    this.kfClipboard = { prop, keyframes: JSON.parse(JSON.stringify(kfs)) as Keyframe[] };
+    this.flash(`copied ${kfs.length} ${prop} keyframes — paste on any property row (also in other scenes)`);
+  }
+
+  /** Replace the target property's keyframes with the clipboard (frames as-is). */
+  pasteKeyframes(layerId: string, targetKey: string, prop: string): void {
+    const clip = this.kfClipboard;
+    if (!clip) return;
+    this.mutate('paste keyframes', (scene) => {
+      const layer = scene.composition.layers.find((l) => l.id === layerId);
+      const style = this.styleOfTarget(layer, targetKey);
+      if (!style) return;
+      const kfs = JSON.parse(JSON.stringify(clip.keyframes)) as Keyframe[];
+      style[prop] = { ...(style[prop] ?? {}), value: kfs[0]!.value, keyframes: kfs };
+    });
+    this.flash(`pasted ${clip.keyframes.length} keyframes onto ${prop}`);
+  }
+
   deleteSelectedKeyframe(): void {
     const sel = this.selectedKf;
     if (!sel) return;
@@ -1444,6 +1477,15 @@ class EditorState {
     this.mutate('set scene intro', (scene) => {
       if (name) scene.intro = name;
       else delete scene.intro;
+    });
+  }
+
+  toggleMarkerLock(index: number): void {
+    this.mutate('toggle marker lock', (scene) => {
+      const m = scene.composition.markers[index];
+      if (!m) return;
+      if (m.locked) delete m.locked;
+      else m.locked = true;
     });
   }
 

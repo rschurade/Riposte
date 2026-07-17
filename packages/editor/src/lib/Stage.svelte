@@ -476,6 +476,153 @@
     });
   }
 
+  // ---- mask handles -----------------------------------------------------------
+  // Rect masks of the selected element: dashed outline, a center grip to move,
+  // edge/corner handles to resize (mask x/y = CENTER, comp space). Animated or
+  // rotated masks show the outline only — their geometry is keyframe business.
+  interface MaskRect {
+    i: number;
+    cx: number;
+    cy: number;
+    w: number;
+    h: number;
+    rot: number;
+    animated: boolean;
+  }
+
+  const maskRects: MaskRect[] = $derived.by(() => {
+    void ed.version;
+    if (ed.selectionIds.length !== 1) return [];
+    const layer = ed.selectedLayer;
+    if (!layer || layer.locked) return [];
+    const out: MaskRect[] = [];
+    (layer.masks ?? []).forEach((m, i) => {
+      if (m.type === 'path') return;
+      const s = m.style;
+      out.push({
+        i,
+        cx: propNumber(s.x, ed.frame, 0),
+        cy: propNumber(s.y, ed.frame, 0),
+        w: propNumber(s.width, ed.frame, 0),
+        h: propNumber(s.height, ed.frame, 0),
+        rot: propNumber(s.rotation, ed.frame, 0),
+        animated: ['x', 'y', 'width', 'height'].some((p) => (s[p]?.keyframes?.length ?? 0) > 0),
+      });
+    });
+    return out;
+  });
+
+  let maskDrag: {
+    index: number;
+    mode: 'move' | string; // 'move' or a handle dir
+    startX: number;
+    startY: number;
+    cx0: number;
+    cy0: number;
+    w0: number;
+    h0: number;
+    dcx: number;
+    dcy: number;
+    dw: number;
+    dh: number;
+  } | null = $state(null);
+
+  function maskDisplay(mr: MaskRect): { x: number; y: number; w: number; h: number } {
+    const md = maskDrag?.index === mr.i ? maskDrag : null;
+    const w = mr.w + (md?.dw ?? 0);
+    const h = mr.h + (md?.dh ?? 0);
+    const cx = mr.cx + (md?.dcx ?? 0);
+    const cy = mr.cy + (md?.dcy ?? 0);
+    return { x: cx - w / 2, y: cy - h / 2, w, h };
+  }
+
+  function maskStart(ev: PointerEvent, mr: MaskRect, mode: string): void {
+    ev.stopPropagation();
+    const p = toComp(ev);
+    maskDrag = {
+      index: mr.i,
+      mode,
+      startX: p.x,
+      startY: p.y,
+      cx0: mr.cx,
+      cy0: mr.cy,
+      w0: mr.w,
+      h0: mr.h,
+      dcx: 0,
+      dcy: 0,
+      dw: 0,
+      dh: 0,
+    };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  }
+
+  function maskMove(ev: PointerEvent): void {
+    if (!maskDrag || !comp) return;
+    const md = maskDrag;
+    const p = toComp(ev);
+    const dxp = p.x - md.startX;
+    const dyp = p.y - md.startY;
+    const g = snapOn && !ev.altKey ? Math.max(2, Number(gridSize) || 50) : 0;
+    if (md.mode === 'move') {
+      let nx = md.cx0 + dxp;
+      let ny = md.cy0 + dyp;
+      if (g) {
+        nx = snapTo(nx, g, comp.width / 2);
+        ny = snapTo(ny, g, comp.height / 2);
+      }
+      md.dcx = Math.round(nx) - md.cx0;
+      md.dcy = Math.round(ny) - md.cy0;
+      return;
+    }
+    const edge = (pos: number, c: number) => (g ? snapTo(pos, g, c) : Math.round(pos));
+    let dw = 0, dh = 0, dcx = 0, dcy = 0;
+    if (md.mode.includes('e')) {
+      const w = Math.max(2, edge(md.cx0 + md.w0 / 2 + dxp, comp.width / 2) - (md.cx0 - md.w0 / 2));
+      dw = w - md.w0;
+      dcx = dw / 2;
+    } else if (md.mode.includes('w')) {
+      const w = Math.max(2, md.cx0 + md.w0 / 2 - edge(md.cx0 - md.w0 / 2 + dxp, comp.width / 2));
+      dw = w - md.w0;
+      dcx = -dw / 2;
+    }
+    if (md.mode.includes('s')) {
+      const h = Math.max(2, edge(md.cy0 + md.h0 / 2 + dyp, comp.height / 2) - (md.cy0 - md.h0 / 2));
+      dh = h - md.h0;
+      dcy = dh / 2;
+    } else if (md.mode.includes('n')) {
+      const h = Math.max(2, md.cy0 + md.h0 / 2 - edge(md.cy0 - md.h0 / 2 + dyp, comp.height / 2));
+      dh = h - md.h0;
+      dcy = -dh / 2;
+    }
+    md.dw = dw;
+    md.dh = dh;
+    md.dcx = dcx;
+    md.dcy = dcy;
+  }
+
+  function maskEnd(): void {
+    if (!maskDrag) return;
+    const md = maskDrag;
+    maskDrag = null;
+    if (!md.dcx && !md.dcy && !md.dw && !md.dh) return;
+    const layer = ed.selectedLayer;
+    if (!layer) return;
+    const id = layer.id;
+    ed.mutate(md.mode === 'move' ? 'move mask' : 'resize mask', (scene) => {
+      const m = scene.composition.layers.find((l) => l.id === id)?.masks?.[md.index];
+      if (!m) return;
+      const set = (prop: string, v: number) => {
+        m.style[prop] = { ...(m.style[prop] ?? {}), value: v };
+      };
+      set('x', md.cx0 + md.dcx);
+      set('y', md.cy0 + md.dcy);
+      if (md.dw || md.dh) {
+        set('width', md.w0 + md.dw);
+        set('height', md.h0 + md.dh);
+      }
+    });
+  }
+
   // ---- grid / snap ------------------------------------------------------------
   const gridStored = JSON.parse(localStorage.getItem('riposte.grid') ?? '{}');
   let gridOn = $state(gridStored.on ?? true);
@@ -792,6 +939,34 @@
       {#each extraRects as r, i (i)}
         <div class="selection extra" style="left:{r.x * scale}px;top:{r.y * scale}px;width:{r.w * scale}px;height:{r.h * scale}px"></div>
       {/each}
+      {#each maskRects as mr (mr.i)}
+        {@const d = maskDisplay(mr)}
+        <div
+          class="maskoutline"
+          class:faded={mr.animated}
+          style="left:{d.x * scale}px;top:{d.y * scale}px;width:{d.w * scale}px;height:{d.h * scale}px;{mr.rot ? `transform:rotate(${mr.rot}deg);` : ''}"
+          title={mr.animated ? 'mask (animated — edit its keyframes in the timeline)' : 'mask'}
+        ></div>
+        {#if !mr.animated && !mr.rot}
+          <div
+            class="maskgrip"
+            style="left:{(d.x + d.w / 2) * scale}px;top:{(d.y + d.h / 2) * scale}px"
+            title="Drag to move the mask"
+            onpointerdown={(e) => maskStart(e, mr, 'move')}
+            onpointermove={maskMove}
+            onpointerup={maskEnd}
+          ></div>
+          {#each HANDLES as hnd (hnd.dir)}
+            <div
+              class="handle mask"
+              style="left:{(d.x + hnd.u * d.w) * scale}px;top:{(d.y + hnd.v * d.h) * scale}px;cursor:{HANDLE_CURSOR[hnd.dir]}"
+              onpointerdown={(e) => maskStart(e, mr, hnd.dir)}
+              onpointermove={maskMove}
+              onpointerup={maskEnd}
+            ></div>
+          {/each}
+        {/if}
+      {/each}
     </div>
     <div class="gridbar" onpointerdown={(e) => e.stopPropagation()}>
       <label><input type="checkbox" bind:checked={gridOn} /> grid</label>
@@ -914,5 +1089,27 @@
     border-radius: 2px;
   }
   .handle:hover { background: #f0be5c; }
+  .maskoutline {
+    position: absolute;
+    z-index: 5;
+    border: 1.5px dashed #35b6e8;
+    transform-origin: center;
+    pointer-events: none;
+  }
+  .maskoutline.faded { opacity: 0.5; }
+  .maskgrip {
+    position: absolute;
+    z-index: 6;
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    background: #35b6e8;
+    border: 1px solid rgba(0, 0, 0, 0.6);
+    transform: rotate(45deg);
+    cursor: move;
+  }
+  .maskgrip:hover { background: #7cd2f5; }
+  .handle.mask { background: #35b6e8; }
+  .handle.mask:hover { background: #7cd2f5; }
   .empty { color: #676c76; text-align: center; margin-top: 30vh; }
 </style>
