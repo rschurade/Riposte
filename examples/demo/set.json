@@ -2,7 +2,8 @@
   "formatVersion": 1,
   "name": "demo",
   "scenes": [
-    "scenes/Schedule.json"
+    "scenes/Schedule.json",
+    "scenes/Panel.json"
   ],
   "export": {
     "mode": "external",

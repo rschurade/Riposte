@@ -87,6 +87,20 @@
     return p && typeof p.value === 'string' ? p.value : '';
   }
 
+  /** Any CSS color → #rrggbb for the native picker (alpha/invalid → best effort). */
+  let colorCtx: CanvasRenderingContext2D | null = null;
+  function toHexColor(css: string): string {
+    if (/^#[0-9a-f]{6}$/i.test(css)) return css;
+    colorCtx ??= document.createElement('canvas').getContext('2d');
+    if (!colorCtx || !css) return '#ffffff';
+    colorCtx.fillStyle = '#ffffff';
+    colorCtx.fillStyle = css; // invalid values leave the previous fillStyle
+    const v = colorCtx.fillStyle;
+    if (/^#[0-9a-f]{6}$/i.test(v)) return v;
+    const m = v.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    return m ? `#${m.slice(1, 4).map((n) => Number(n).toString(16).padStart(2, '0')).join('')}` : '#ffffff';
+  }
+
   /** Set/clear a color style property (any CSS color string; empty clears). */
   function setStyleColor(prop: string, raw: string): void {
     if (!layer) return;
@@ -288,6 +302,28 @@
           : `Add ${np.label} keyframe @${ed.frame}`}
         onclick={() => ed.toggleKeyframe('el', np.prop, np.fallback)}
       >◆</button>
+    {/snippet}
+
+    {#snippet colorRow(id: string, label: string, value: string, placeholder: string, set: (v: string) => void)}
+      <label for={id}>{label}</label>
+      <span class="colorrow">
+        <span class="swatch" title="Pick a color">
+          <span class="swatchfill" style="background-color:{value || 'transparent'}"></span>
+          <input
+            class="pick"
+            type="color"
+            value={toHexColor(value)}
+            onchange={(e) => set((e.currentTarget as HTMLInputElement).value)}
+          />
+        </span>
+        <input
+          id={id}
+          type="text"
+          {placeholder}
+          {value}
+          onchange={(e) => set((e.currentTarget as HTMLInputElement).value)}
+        />
+      </span>
     {/snippet}
 
     <h3>Transform</h3>
@@ -493,28 +529,8 @@
           <option value="lowercase">lowercase</option>
           <option value="capitalize">Capitalize</option>
         </select>
-        <label for="in-color">Color</label>
-        <span class="colorrow">
-          <span class="swatch"><span class="swatchfill" style="background-color:{colorAt('color') || '#fff'}"></span></span>
-          <input
-            id="in-color"
-            type="text"
-            placeholder="e.g. #ffffff / hsl(…)"
-            value={colorAt('color')}
-            onchange={(e) => setStyleColor('color', (e.currentTarget as HTMLInputElement).value)}
-          />
-        </span>
-        <label for="in-bg">Background</label>
-        <span class="colorrow">
-          <span class="swatch"><span class="swatchfill" style="background-color:{colorAt('backgroundColor') || 'transparent'}"></span></span>
-          <input
-            id="in-bg"
-            type="text"
-            placeholder="(none)"
-            value={colorAt('backgroundColor')}
-            onchange={(e) => setStyleColor('backgroundColor', (e.currentTarget as HTMLInputElement).value)}
-          />
-        </span>
+        {@render colorRow('in-color', 'Color', colorAt('color'), 'e.g. #ffffff / hsl(…)', (v) => setStyleColor('color', v))}
+        {@render colorRow('in-bg', 'Background', colorAt('backgroundColor'), '(none)', (v) => setStyleColor('backgroundColor', v))}
       </div>
       <div class="grid three spaced">
         {#each TEXT_STYLE_PROPS as np (np.prop)}
@@ -579,6 +595,27 @@
         {el.frames[0]}
         <br />… {el.frames[el.frames.length - 1]?.split('/').pop()}
       </p>
+    {/if}
+
+    {#if el.type === 'rectangle' || el.type === 'ellipse'}
+      <h3>Fill</h3>
+      <div class="grid">
+        {@render colorRow('in-fill', 'Fill', el.fill ?? '', '(transparent)', (v) => setElementField('fill', v.trim() || undefined))}
+        {#if el.type === 'rectangle'}
+          <label for="in-radius">Radius</label>
+          <input
+            id="in-radius"
+            type="number"
+            min="0"
+            step="1"
+            value={typeof el.borderRadius?.value === 'number' ? el.borderRadius.value : 0}
+            onchange={(e) => {
+              const v = Number((e.currentTarget as HTMLInputElement).value);
+              setElementField('borderRadius', Number.isFinite(v) && v > 0 ? { value: v } : undefined);
+            }}
+          />
+        {/if}
+      </div>
     {/if}
 
     {#if el.type === 'rectangle'}
@@ -748,9 +785,20 @@
       <button class="minor" onclick={() => ed.addMarker('action')}>+ action @{ed.frame}</button>
     </div>
 
-    <h3>Outro effect</h3>
+    <h3>Intro / outro effects</h3>
     <div class="grid">
-      <label for="scene-outro" title="Scene-level outro: stop() runs this preset on the whole scene (every layer at once) INSTEAD of the marker outro. Presets are outros/*.json files in the set.">Preset</label>
+      <label for="scene-intro" title="Scene-level intro: play() runs this preset on the whole scene over the normal build-up, from hidden (frame 0) to neutral. Presets are intros/*.json files in the set.">Intro</label>
+      <select
+        id="scene-intro"
+        value={ed.scene.intro ?? ''}
+        onchange={(e) => ed.setSceneIntro((e.currentTarget as HTMLSelectElement).value)}
+      >
+        <option value="">(none)</option>
+        {#each Object.keys(ed.intros).sort() as name (name)}
+          <option value={name}>{name}{ed.intros[name] ? ` (${ed.intros[name].duration}f)` : ''}</option>
+        {/each}
+      </select>
+      <label for="scene-outro" title="Scene-level outro: stop() — or NEXT off the last pause — runs this preset on the whole scene (every layer at once) INSTEAD of the marker outro. Presets are outros/*.json files in the set.">Outro</label>
       <select
         id="scene-outro"
         value={ed.scene.outro ?? ''}
@@ -762,10 +810,10 @@
         {/each}
       </select>
     </div>
-    {#if ed.scene.outro && !ed.outros[ed.scene.outro]}
-      <p class="hint">⚠ preset "{ed.scene.outro}" has no outros/{ed.scene.outro}.json in this set — stop() falls back to the marker outro.</p>
-    {:else if Object.keys(ed.outros).length === 0}
-      <p class="hint">No presets in this set yet — add JSON files under outros/ (fade, wipes, the diamond…).</p>
+    {#if (ed.scene.outro && !ed.outros[ed.scene.outro]) || (ed.scene.intro && !ed.intros[ed.scene.intro])}
+      <p class="hint">⚠ referenced preset missing from this set's intros/ or outros/ folder — that slot falls back to default behavior.</p>
+    {:else if Object.keys(ed.outros).length === 0 && Object.keys(ed.intros).length === 0}
+      <p class="hint">No presets in this set yet — add JSON files under intros/ and outros/ (fade, wipes, the diamond…).</p>
     {/if}
 
     <h3>Composition action <span class="dim">runs once at load</span></h3>
@@ -859,12 +907,25 @@
   .colorrow { display: flex; gap: 5px; align-items: center; min-width: 0; }
   .colorrow input { flex: 1; min-width: 0; }
   .swatch {
+    position: relative;
     width: 16px; height: 16px; flex: none; border-radius: 3px; overflow: hidden;
     border: 1px solid #444a55;
     background-image: repeating-conic-gradient(#3a3f4a 0% 25%, #2a2e38 0% 50%);
     background-size: 8px 8px;
+    cursor: pointer;
   }
   .swatchfill { display: block; width: 100%; height: 100%; }
+  /* invisible native color input stretched over the swatch — click to pick */
+  .pick {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    padding: 0;
+    border: 0;
+    cursor: pointer;
+  }
   .grid.spaced { margin-top: 10px; }
   .padrow { display: flex; gap: 4px; min-width: 0; }
   .padrow input { flex: 1; min-width: 0; width: 100%; }

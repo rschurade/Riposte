@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "name": "Panel",
+  "composition": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "duration": 100,
+    "markers": [
+      {
+        "frame": 50,
+        "type": "pause"
+      }
+    ],
+    "layers": [
+      {
+        "id": "layer-mroniey6-5ajh",
+        "startFrame": 0,
+        "duration": 100,
+        "element": {
+          "id": "layer-mroniey6-5ajh-el",
+          "type": "rectangle",
+          "fill": "#bf3184",
+          "style": {
+            "x": {
+              "value": 900
+            },
+            "y": {
+              "value": 925
+            },
+            "width": {
+              "value": 900
+            },
+            "height": {
+              "value": 150
+            }
+          }
+        }
+      }
+    ]
+  },
+  "outro": "wipe-right",
+  "intro": "wipe-in-left"
+}

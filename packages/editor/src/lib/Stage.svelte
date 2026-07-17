@@ -81,18 +81,21 @@
   let cgRunning = false;
   let cgHandledReq = 0;
   let cgFx = -1; // scene-outro effect frame; -1 = not running
+  let cgIntroFx = -1; // scene-intro effect elapsed frames (plays the preset reversed)
 
   $effect(() => {
     const { active, req, reqType } = ed.cg;
     if (!active && built) {
-      // leaving CG mode mid-effect: undo whatever the outro preset did
+      // leaving CG mode mid-effect: undo whatever the intro/outro preset did
       clearOutroEffect(built.contentEl);
       built.show();
       cgFx = -1;
+      cgIntroFx = -1;
     }
     if (!active || !comp || !built) return;
-    // scene-level outro preset (resolved) — STOP runs it instead of the marker jump
+    // scene-level presets (resolved) — PLAY runs the intro, STOP/NEXT the outro
     const preset = ed.scene?.outro ? ed.outros[ed.scene.outro] : undefined;
+    const introPreset = ed.scene?.intro ? ed.intros[ed.scene.intro] : undefined;
     const ts = built.timeState;
     const pauses = comp.markers.filter((m) => m.type === 'pause').map((m) => m.frame).sort((a, b) => a - b);
     const lastPause = pauses.length > 0 ? pauses[pauses.length - 1]! : -1;
@@ -107,11 +110,19 @@
         cgRunning = true;
         cgFx = -1;
         clearOutroEffect(built.contentEl);
+        if (introPreset) {
+          // start at the preset's hidden frame 0, the tick plays it to neutral
+          applyOutroFrame(built.contentEl, comp, introPreset, 0);
+          cgIntroFx = 0;
+        } else {
+          cgIntroFx = -1;
+        }
         built.show();
       } else if (reqType === 'next' && !cgRunning) {
         if (preset && lastPause >= 0 && Math.floor(cgPos) >= lastPause) {
           // off the last pause NEXT drives the outro (ControlCenter lifecycle)
           if (cgFx < 0) cgFx = 0;
+          cgIntroFx = -1;
           ed.flash(`CG next → outro preset "${ed.scene?.outro}"`);
         } else {
           if (!ts.exiting && lastPause >= 0 && Math.floor(cgPos) >= lastPause) {
@@ -125,6 +136,7 @@
         if (preset) {
           // effect wipes the root while the playhead stays put (loops keep cycling)
           if (cgFx < 0) cgFx = 0;
+          cgIntroFx = -1; // stop mid-intro: the outro takes over
           cgRunning = false;
           ed.flash(`CG stop → outro preset "${ed.scene?.outro}"`);
         } else {
@@ -170,6 +182,16 @@
         if (cur) {
           cur.hold += dt * comp.fps;
           built!.setFrame(Math.floor(cgPos));
+        }
+      }
+      // scene-intro effect: the preset plays forward, hidden → neutral
+      if (cgIntroFx >= 0 && introPreset && built) {
+        cgIntroFx += dt * comp.fps;
+        const f = Math.min(introPreset.duration, cgIntroFx);
+        applyOutroFrame(built.contentEl, comp, introPreset, f);
+        if (f >= introPreset.duration) {
+          cgIntroFx = -1;
+          clearOutroEffect(built.contentEl);
         }
       }
       // scene-outro effect: wipe the root on its own clock, then hide
@@ -269,6 +291,141 @@
     }
     selectionRect = layerRect(layer);
   });
+
+  // ---- resize handles ---------------------------------------------------------
+  // Shown for selected elements with real width/height geometry. Compositions
+  // size from their doc, paths from their data, auto-sized text from content —
+  // none of those are box-resizable.
+  const resizeLayer = $derived.by(() => {
+    const layer = ed.selectedLayer;
+    if (!layer || layer.locked) return null;
+    const el = layer.element;
+    if (el.type === 'composition' || el.type === 'path') return null;
+    if (el.type === 'text' && el.autoSize) return null;
+    if (!el.style.width || !el.style.height) return null;
+    return layer;
+  });
+
+  const HANDLES: { dir: string; u: number; v: number }[] = [
+    { dir: 'nw', u: 0, v: 0 },
+    { dir: 'n', u: 0.5, v: 0 },
+    { dir: 'ne', u: 1, v: 0 },
+    { dir: 'e', u: 1, v: 0.5 },
+    { dir: 'se', u: 1, v: 1 },
+    { dir: 's', u: 0.5, v: 1 },
+    { dir: 'sw', u: 0, v: 1 },
+    { dir: 'w', u: 0, v: 0.5 },
+  ];
+  const HANDLE_CURSOR: Record<string, string> = {
+    nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
+    n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+  };
+
+  let resize: {
+    id: string;
+    dir: string;
+    startX: number;
+    startY: number;
+    w0: number;
+    h0: number;
+    cx0: number;
+    cy0: number;
+    applied: { dw: number; dh: number; dcx: number; dcy: number };
+  } | null = null;
+
+  function resizeStart(ev: PointerEvent, dir: string): void {
+    const layer = resizeLayer;
+    if (!layer) return;
+    ev.stopPropagation();
+    const p = toComp(ev);
+    const s = layer.element.style;
+    resize = {
+      id: layer.id,
+      dir,
+      startX: p.x,
+      startY: p.y,
+      w0: propNumber(s.width, ed.frame, 100),
+      h0: propNumber(s.height, ed.frame, 40),
+      cx0: propNumber(s.x, ed.frame, 0),
+      cy0: propNumber(s.y, ed.frame, 0),
+      applied: { dw: 0, dh: 0, dcx: 0, dcy: 0 },
+    };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  }
+
+  function resizeMove(ev: PointerEvent): void {
+    if (!resize) return;
+    const r = resize;
+    const p = toComp(ev);
+    const dxp = p.x - r.startX;
+    const dyp = p.y - r.startY;
+    // the dragged EDGE snaps to the grid (opposite edge stays put); Alt bypasses
+    const snap = snapOn && !ev.altKey ? Math.max(2, Number(gridSize) || 50) : 0;
+    const edge = (pos: number) => (snap ? Math.round(pos / snap) * snap : Math.round(pos));
+
+    let dw = 0, dh = 0, dcx = 0, dcy = 0;
+    if (r.dir.includes('e')) {
+      const w = Math.max(2, edge(r.cx0 + r.w0 / 2 + dxp) - (r.cx0 - r.w0 / 2));
+      dw = w - r.w0;
+      dcx = dw / 2;
+    } else if (r.dir.includes('w')) {
+      const w = Math.max(2, r.cx0 + r.w0 / 2 - edge(r.cx0 - r.w0 / 2 + dxp));
+      dw = w - r.w0;
+      dcx = -dw / 2;
+    }
+    if (r.dir.includes('s')) {
+      const h = Math.max(2, edge(r.cy0 + r.h0 / 2 + dyp) - (r.cy0 - r.h0 / 2));
+      dh = h - r.h0;
+      dcy = dh / 2;
+    } else if (r.dir.includes('n')) {
+      const h = Math.max(2, r.cy0 + r.h0 / 2 - edge(r.cy0 - r.h0 / 2 + dyp));
+      dh = h - r.h0;
+      dcy = -dh / 2;
+    }
+    // Shift on a corner keeps the aspect ratio (the dominant axis wins)
+    if (ev.shiftKey && r.dir.length === 2 && r.w0 > 0 && r.h0 > 0) {
+      const kx = (r.w0 + dw) / r.w0;
+      const ky = (r.h0 + dh) / r.h0;
+      const k = Math.abs(kx - 1) >= Math.abs(ky - 1) ? kx : ky;
+      dw = Math.max(2, Math.round(r.w0 * k)) - r.w0;
+      dh = Math.max(2, Math.round(r.h0 * k)) - r.h0;
+      dcx = (r.dir.includes('e') ? 1 : -1) * (dw / 2);
+      dcy = (r.dir.includes('s') ? 1 : -1) * (dh / 2);
+    }
+    r.applied = { dw, dh, dcx, dcy };
+    // live feedback: size the built node directly (margins shift the center,
+    // same trick as move-drag); the doc is mutated once on release
+    const layer = ed.scene?.composition.layers.find((l) => l.id === r.id);
+    const handle = layer ? built?.byId.get(layer.element.id) : null;
+    if (handle) {
+      handle.node.style.width = `${r.w0 + dw}px`;
+      handle.node.style.height = `${r.h0 + dh}px`;
+      handle.node.style.marginLeft = `${dcx}px`;
+      handle.node.style.marginTop = `${dcy}px`;
+    }
+    selectionRect = {
+      x: r.cx0 + dcx - (r.w0 + dw) / 2,
+      y: r.cy0 + dcy - (r.h0 + dh) / 2,
+      w: r.w0 + dw,
+      h: r.h0 + dh,
+    };
+  }
+
+  function resizeEnd(): void {
+    if (!resize) return;
+    const { id, applied } = resize;
+    resize = null;
+    if (applied.dw === 0 && applied.dh === 0) return;
+    ed.mutate('resize element', (scene) => {
+      const layer = scene.composition.layers.find((l) => l.id === id);
+      if (!layer) return;
+      const s = layer.element.style;
+      if (s.width) shiftProperty(s.width, applied.dw);
+      if (s.height) shiftProperty(s.height, applied.dh);
+      shiftProperty(s.x, applied.dcx);
+      shiftProperty(s.y, applied.dcy);
+    });
+  }
 
   // ---- grid / snap ------------------------------------------------------------
   const gridStored = JSON.parse(localStorage.getItem('riposte.grid') ?? '{}');
@@ -535,6 +692,17 @@
           class:ghost={selectionGhost}
           style="left:{selectionRect.x * scale}px;top:{selectionRect.y * scale}px;width:{selectionRect.w * scale}px;height:{selectionRect.h * scale}px"
         ></div>
+        {#if resizeLayer && !selectionGhost}
+          {#each HANDLES as h (h.dir)}
+            <div
+              class="handle"
+              style="left:{(selectionRect.x + h.u * selectionRect.w) * scale}px;top:{(selectionRect.y + h.v * selectionRect.h) * scale}px;cursor:{HANDLE_CURSOR[h.dir]}"
+              onpointerdown={(e) => resizeStart(e, h.dir)}
+              onpointermove={resizeMove}
+              onpointerup={resizeEnd}
+            ></div>
+          {/each}
+        {/if}
       {/if}
     </div>
     <div class="gridbar" onpointerdown={(e) => e.stopPropagation()}>
@@ -643,5 +811,16 @@
     border-style: dashed;
     opacity: 0.6;
   }
+  .handle {
+    position: absolute;
+    z-index: 6;
+    width: 9px;
+    height: 9px;
+    margin: -5px 0 0 -5px;
+    background: #d9a441;
+    border: 1px solid rgba(0, 0, 0, 0.6);
+    border-radius: 2px;
+  }
+  .handle:hover { background: #f0be5c; }
   .empty { color: #676c76; text-align: center; margin-top: 30vh; }
 </style>

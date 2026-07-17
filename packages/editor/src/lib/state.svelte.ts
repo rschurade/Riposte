@@ -37,6 +37,8 @@ class EditorState {
   assets = $state<AssetInfo[]>([]);
   /** Outro presets of the open set (outros/*.json), name → preset. */
   outros = $state<Record<string, OutroPreset>>({});
+  /** Intro presets (intros/*.json) — own pool, authored hidden → neutral. */
+  intros = $state<Record<string, OutroPreset>>({});
 
   sceneFile = $state<string | null>(null);
   scene = $state<SceneDoc | null>(null);
@@ -163,6 +165,7 @@ class EditorState {
     const bundle = await (await fetch(`/api/set?${q}`)).json();
     this.allScenes = bundle.scenes;
     this.outros = bundle.outros ?? {};
+    this.intros = bundle.intros ?? {};
     this.dirtyFiles = {}; // discard was confirmed above
     this.dirty = false;
     this.assets = await (await fetch(`/api/assets?${q}`)).json();
@@ -311,8 +314,10 @@ class EditorState {
     const bundle = (await (await fetch(`/api/set?${q}`)).json()) as {
       scenes: Record<string, SceneDoc | null>;
       outros?: Record<string, OutroPreset>;
+      intros?: Record<string, OutroPreset>;
     };
     this.outros = bundle.outros ?? {};
+    this.intros = bundle.intros ?? {};
 
     // Docs with unsaved edits (parked by scene switches) must survive the
     // bundle refresh — the disk copies in the bundle are older than them.
@@ -1102,6 +1107,15 @@ class EditorState {
     this.mutate('set scene outro', (scene) => {
       if (name) scene.outro = name;
       else delete scene.outro;
+    });
+  }
+
+  /** Scene-level intro preset ('' clears) — intros/ pool, played forward on play(). */
+  setSceneIntro(name: string): void {
+    if (!this.scene) return;
+    this.mutate('set scene intro', (scene) => {
+      if (name) scene.intro = name;
+      else delete scene.intro;
     });
   }
 
