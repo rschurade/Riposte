@@ -73,9 +73,9 @@ export function runOutroEffect(node: HTMLElement, comp: Composition, preset: Out
   };
   const tick = (): void => {
     if (done) return;
-    const frame = Math.min(preset.duration, ((performance.now() - startMs) / 1000) * comp.fps);
-    applyOutroFrame(node, comp, preset, frame);
-    if (frame >= preset.duration) finish();
+    const elapsed = ((performance.now() - startMs) / 1000) * comp.fps;
+    applyOutroFrame(node, comp, preset, Math.min(preset.duration, elapsed));
+    if (elapsed >= preset.duration) finish();
     else raf = requestAnimationFrame(tick);
   };
   raf = requestAnimationFrame(tick);

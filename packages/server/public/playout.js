@@ -116,17 +116,20 @@ async function addLayer(ev) {
     for (const f of ev.ref.components || []) {
       try { components[f] = await (await fetch(base + f)).json(); } catch { /* missing */ }
     }
-    // scene-level outro preset: resolve the referenced outros/<name>.json
-    let outro = null;
-    if (scene.outro) {
+    // scene-level intro/outro presets: resolve {intros,outros}/<name>.json
+    const preset = async (folder, name, kind) => {
+      if (!name) return undefined;
       try {
-        outro = await (await fetch(`${base}outros/${scene.outro}.json`)).json();
-        logLine(`${ev.template}: outro preset "${scene.outro}" armed`);
-      } catch { logLine(`outro preset "${scene.outro}" not found`, 'err'); }
-    }
+        const p = await (await fetch(`${base}${folder}/${name}.json`)).json();
+        logLine(`${ev.template}: ${kind} preset "${name}" armed`);
+        return p;
+      } catch { logLine(`${kind} preset "${folder}/${name}" not found`, 'err'); return undefined; }
+    };
+    const outro = await preset('outros', scene.outro, 'outro');
+    const intro = await preset('intros', scene.intro, 'intro');
     // a newer ADD/REMOVE for this key may have won while we fetched
     if (layers.get(key) !== entry) { el.remove(); return; }
-    entry.rt = riposte.createRuntime(scene, el, { assetBase: base, components, outro: outro || undefined });
+    entry.rt = riposte.createRuntime(scene, el, { assetBase: base, components, outro, intro });
     if (ev.data) entry.rt.update(ev.data);
     if (ev.playOnLoad) entry.rt.play();
   } catch (err) {

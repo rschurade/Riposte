@@ -58,13 +58,16 @@ async function load(opt) {
   for (const f of opt.components || []) {
     try { components[f] = await (await fetch(base + f)).json(); } catch { /* missing component */ }
   }
-  // scene-level outro preset: resolve the referenced outros/<name>.json
-  let outro = null;
-  if (scene.outro) {
-    try { outro = await (await fetch(`${base}outros/${scene.outro}.json`)).json(); }
-    catch { console.warn(`outro preset "${scene.outro}" not found`); }
-  }
-  rt = riposte.createRuntime(scene, $('stage'), { assetBase: base, components, outro: outro || undefined });
+  // scene-level intro/outro presets: resolve {intros,outros}/<name>.json
+  const preset = async (folder, name) => {
+    if (!name) return undefined;
+    try { return await (await fetch(`${base}${folder}/${name}.json`)).json(); }
+    catch { console.warn(`preset "${folder}/${name}" not found`); return undefined; }
+  };
+  rt = riposte.createRuntime(scene, $('stage'), {
+    assetBase: base, components,
+    outro: await preset('outros', scene.outro), intro: await preset('intros', scene.intro),
+  });
   window.rt = rt; // debugging convenience
 
   const comp = scene.composition;

@@ -21,10 +21,19 @@ export interface SceneDoc {
   guides?: { v: number[]; h: number[]; locked?: boolean };
   /**
    * Outro preset name (a file in the set's `outros/` folder, without .json).
-   * When set, `stop()` runs the preset on the scene root — affecting every
-   * layer at once — INSTEAD of the marker-based outro.
+   * When set, `stop()` (or `next()` off the last pause — the ControlCenter
+   * lifecycle) runs the preset on the scene root — affecting every layer at
+   * once — INSTEAD of the marker-based outro.
    */
   outro?: string;
+  /**
+   * Intro preset name (a file in the set's `intros/` folder, without .json).
+   * Played FORWARD on `play()` over the scene root while the timeline plays
+   * its normal build-up underneath. Authored from hidden (frame 0) to
+   * neutral (last frame) — reversing an outro's keyframes is a handy way to
+   * write one, but intros are their own definitions with their own names.
+   */
+  intro?: string;
   composition: Composition;
 }
 

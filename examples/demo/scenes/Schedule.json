@@ -970,5 +970,6 @@
       }
     ]
   },
-  "outro": "diamond"
+  "outro": "scale-out",
+  "intro": "scale-in"
 }

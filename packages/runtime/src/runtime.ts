@@ -8,7 +8,7 @@ import type { OutroPreset, SceneDoc, VisibilityBinding } from '@riposte/shared';
 import { buildScene, type BuildOptions, type BuiltScene, type BoundVisibility, type ElementHandle, type LayerHandle } from './dom.ts';
 import { parseUpdateData } from './data.ts';
 import { Player } from './player.ts';
-import { clearOutroEffect, runOutroEffect } from './outro.ts';
+import { applyOutroFrame, clearOutroEffect, runOutroEffect } from './outro.ts';
 
 /** Evaluate a visibility binding against an update() value. */
 export function evaluateVisibility(binding: VisibilityBinding, value: string | undefined): boolean {
@@ -20,6 +20,8 @@ export function evaluateVisibility(binding: VisibilityBinding, value: string | u
 export interface RuntimeOptions extends BuildOptions {
   /** Scene-level outro effect — stop() runs it instead of the marker outro. */
   outro?: OutroPreset;
+  /** Scene-level intro effect — play() runs it in reverse (a reveal). */
+  intro?: OutroPreset;
 }
 
 type Next = () => void;
@@ -215,11 +217,14 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
 
   const outroMarker = comp.markers.find((m) => m.type === 'outro');
   let cancelOutroFx: (() => void) | null = null;
+  let cancelIntroFx: (() => void) | null = null;
 
   /** Run the scene-level outro preset on the content root, then hide. */
   const startOutroFx = (preset: OutroPreset): void => {
     if (cancelOutroFx) return; // already exiting
     console.info(`riposte: outro preset "${preset.name}" (${preset.duration}f)`);
+    cancelIntroFx?.(); // stop mid-intro: the outro takes over from here
+    cancelIntroFx = null;
     cancelOutroFx = runOutroEffect(built.contentEl, comp, preset, () => {
       cancelOutroFx = null;
       player.pause();
@@ -254,10 +259,22 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
           // fresh cycle: loop layers restart their entrance
           cancelOutroFx?.();
           cancelOutroFx = null;
+          cancelIntroFx?.();
+          cancelIntroFx = null;
           clearOutroEffect(built.contentEl);
           stopHoldClock();
           built.timeState.hold = 0;
           built.timeState.exiting = false;
+          if (opts.intro) {
+            // reveal: apply the hidden start state BEFORE showing (no flash),
+            // then play the preset forward to neutral over the build-up
+            console.info(`riposte: intro preset "${opts.intro.name}" (${opts.intro.duration}f)`);
+            applyOutroFrame(built.contentEl, comp, opts.intro, 0);
+            cancelIntroFx = runOutroEffect(built.contentEl, comp, opts.intro, () => {
+              cancelIntroFx = null;
+              clearOutroEffect(built.contentEl);
+            });
+          }
           built.show();
           player.play({ from: 0 });
         },
@@ -333,6 +350,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     findElementByKey: (key) => built.byKey.get(key),
     destroy() {
       cancelOutroFx?.();
+      cancelIntroFx?.();
       stopHoldClock();
       player.destroy();
       built.destroy();

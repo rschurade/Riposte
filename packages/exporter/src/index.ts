@@ -176,18 +176,19 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     if (doc) components[file] = doc;
   }
 
-  /** Outro presets referenced by scenes — inlined into the shells. */
-  const outroCache = new Map<string, OutroPreset | null>();
-  const readOutro = async (name: string): Promise<OutroPreset | null> => {
-    const cached = outroCache.get(name);
+  /** Intro/outro presets referenced by scenes — inlined into the shells. */
+  const presetCache = new Map<string, OutroPreset | null>();
+  const readPreset = async (folder: 'outros' | 'intros', name: string): Promise<OutroPreset | null> => {
+    const key = `${folder}/${name}`;
+    const cached = presetCache.get(key);
     if (cached !== undefined) return cached;
     let preset: OutroPreset | null = null;
     try {
-      preset = JSON.parse(await readFile(join(setDir, 'outros', `${name}.json`), 'utf8')) as OutroPreset;
+      preset = JSON.parse(await readFile(join(setDir, folder, `${name}.json`), 'utf8')) as OutroPreset;
     } catch {
-      warnings.push(`outro preset "${name}" not found (outros/${name}.json) — scene falls back to its marker outro`);
+      warnings.push(`preset "${name}" not found (${folder}/${name}.json) — scene falls back to default behavior`);
     }
-    outroCache.set(name, preset);
+    presetCache.set(key, preset);
     return preset;
   };
 
@@ -211,7 +212,8 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     for (const f of set.fonts ?? []) assets.add(f.file);
     for (const a of assets) allAssets.add(a);
 
-    const outro = doc.outro ? await readOutro(doc.outro) : null;
+    const outro = doc.outro ? await readPreset('outros', doc.outro) : null;
+    const intro = doc.intro ? await readPreset('intros', doc.intro) : null;
 
     // external: refs rewritten to the re-encoded names; baked: original refs
     // (assets become data URIs — only the bytes and mime change).
@@ -224,8 +226,9 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
             set,
             preloadAssets ? [...assets].map(renameRef) : [],
             outro,
+            intro,
           )
-        : await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null, outro);
+        : await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null, outro, intro);
 
     if (await writeIfChanged(join(outDir, `${name}.html`), html)) scenesUpdated.push(name);
     scenes.push(name);
@@ -326,6 +329,7 @@ function bootScript(
   fonts: { family: string; url: string }[],
   preload: string[],
   outro: OutroPreset | null,
+  intro: OutroPreset | null,
 ): string {
   return (
     `riposte.boot(${inlineJson(scene)}, {\n` +
@@ -333,6 +337,7 @@ function bootScript(
     `  fonts: ${inlineJson(fonts)},\n` +
     `  preload: ${inlineJson(preload)},\n` +
     (outro ? `  outro: ${inlineJson(outro)},\n` : '') +
+    (intro ? `  intro: ${inlineJson(intro)},\n` : '') +
     `});`
   );
 }
@@ -344,6 +349,7 @@ function externalShell(
   set: SetDoc,
   preload: string[],
   outro: OutroPreset | null,
+  intro: OutroPreset | null,
 ): string {
   const fonts = (set.fonts ?? []).map((f) => ({ family: f.family, url: f.file }));
   return shellHtml(
@@ -351,7 +357,7 @@ function externalShell(
     scene.composition.width,
     scene.composition.height,
     '<script src="assets/riposte.js"></script>',
-    bootScript(scene, components, fonts, preload, outro),
+    bootScript(scene, components, fonts, preload, outro, intro),
   );
 }
 
@@ -365,6 +371,7 @@ async function bakedShell(
   warnings: string[],
   webp: { quality: number | 'lossless'; stats: WebpStats } | null = null,
   outro: OutroPreset | null = null,
+  intro: OutroPreset | null = null,
 ): Promise<string> {
   const dataUris = new Map<string, string>();
   const toDataUri = async (rel: string): Promise<string> => {
@@ -411,6 +418,6 @@ async function bakedShell(
     scene.composition.width,
     scene.composition.height,
     `<script>${runtimeJs}</script>`,
-    bootScript(bakedScene, bakedComponents, fonts, [], outro),
+    bootScript(bakedScene, bakedComponents, fonts, [], outro, intro),
   );
 }
