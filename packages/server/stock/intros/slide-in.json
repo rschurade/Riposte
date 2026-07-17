@@ -1,0 +1,10 @@
+{
+  "name": "slide-in",
+  "duration": 15,
+  "style": {
+    "y": { "value": 1200, "keyframes": [
+      { "frame": 0, "value": 1200, "easing": { "p1x": 0, "p1y": 0, "p2x": 0.4, "p2y": 1 } },
+      { "frame": 15, "value": 0 }
+    ] }
+  }
+}

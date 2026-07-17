@@ -1,0 +1,18 @@
+{
+  "name": "diamond",
+  "duration": 20,
+  "mask": {
+    "inverted": true,
+    "style": {
+      "rotation": { "value": 45 },
+      "width": { "value": 4000, "keyframes": [
+        { "frame": 0, "value": 4000, "easing": { "p1x": 0, "p1y": 0, "p2x": 0.6, "p2y": 1 } },
+        { "frame": 20, "value": 0 }
+      ] },
+      "height": { "value": 4000, "keyframes": [
+        { "frame": 0, "value": 4000, "easing": { "p1x": 0, "p1y": 0, "p2x": 0.6, "p2y": 1 } },
+        { "frame": 20, "value": 0 }
+      ] }
+    }
+  }
+}

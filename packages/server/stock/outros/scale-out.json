@@ -1,0 +1,18 @@
+{
+  "name": "scale-out",
+  "duration": 15,
+  "style": {
+    "scaleX": { "value": 1, "keyframes": [
+      { "frame": 0, "value": 1, "easing": { "p1x": 0.4, "p1y": 0, "p2x": 1, "p2y": 1 } },
+      { "frame": 15, "value": 0 }
+    ] },
+    "scaleY": { "value": 1, "keyframes": [
+      { "frame": 0, "value": 1, "easing": { "p1x": 0.4, "p1y": 0, "p2x": 1, "p2y": 1 } },
+      { "frame": 15, "value": 0 }
+    ] },
+    "opacity": { "value": 1, "keyframes": [
+      { "frame": 5, "value": 1 },
+      { "frame": 15, "value": 0 }
+    ] }
+  }
+}

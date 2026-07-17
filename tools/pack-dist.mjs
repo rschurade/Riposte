@@ -41,6 +41,8 @@ await cp(
   join(out, 'webp_enc_simd.wasm'),
 );
 await cp(join(repo, 'packages/server/public'), join(out, 'public'), { recursive: true });
+// stock intro/outro presets — seeded into new sets, addable via Set Options
+await cp(join(repo, 'packages/server/stock'), join(out, 'stock'), { recursive: true });
 await cp(join(repo, 'packages/editor/dist'), join(out, 'editor'), { recursive: true });
 await cp(join(repo, 'packages/runtime/dist/riposte.js'), join(out, 'runtime/riposte.js'));
 await cp(join(repo, 'examples/demo'), join(out, 'examples/demo'), {

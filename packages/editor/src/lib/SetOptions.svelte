@@ -76,6 +76,11 @@
       {/if}
 
       <div class="row">
+        <button
+          title="Copy the app's stock intro/outro presets into this set — only missing ones, existing files are never overwritten"
+          onclick={() => ed.addStockPresets()}
+        >+ stock presets</button>
+        <span class="spacer"></span>
         <button class="primary" onclick={save}>Save</button>
         <button onclick={() => (ed.setOptionsOpen = false)}>Close</button>
       </div>
@@ -110,6 +115,7 @@
   select { background: #23262e; color: #e6e6e6; border: 1px solid #383c46; border-radius: 5px; padding: 5px 8px; font-size: 12px; }
   .hint { font-size: 11px; color: #8a8f98; line-height: 1.5; margin: 12px 0 0; }
   .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .spacer { flex: 1; }
   button { background: #23262e; color: #e6e6e6; border: 1px solid #383c46; border-radius: 5px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
   button:hover { border-color: #d9a441; }
   .primary { background: #2c4a75; }

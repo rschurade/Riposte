@@ -1,0 +1,14 @@
+{
+  "name": "wipe-left",
+  "duration": 15,
+  "mask": {
+    "style": {
+      "width": { "value": 4000 },
+      "height": { "value": 3000 },
+      "x": { "value": 960, "keyframes": [
+        { "frame": 0, "value": 960, "easing": { "p1x": 0.4, "p1y": 0, "p2x": 0.9, "p2y": 1 } },
+        { "frame": 15, "value": -3040 }
+      ] }
+    }
+  }
+}
