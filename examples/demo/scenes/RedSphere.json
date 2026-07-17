@@ -1,0 +1,67 @@
+{
+  "formatVersion": 1,
+  "name": "RedSphere",
+  "composition": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "duration": 100,
+    "markers": [],
+    "layers": [
+      {
+        "id": "layer-mroxl1kv-gqnl",
+        "startFrame": 0,
+        "duration": 100,
+        "element": {
+          "id": "layer-mroxl1kv-gqnl-el",
+          "style": {
+            "x": {
+              "value": 420,
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": 420,
+                  "easing": {
+                    "p1x": 0.42,
+                    "p1y": 0,
+                    "p2x": 0.58,
+                    "p2y": 1
+                  }
+                },
+                {
+                  "frame": 50,
+                  "value": 1500,
+                  "easing": {
+                    "p1x": 0.42,
+                    "p1y": 0,
+                    "p2x": 0.58,
+                    "p2y": 1
+                  }
+                },
+                {
+                  "frame": 100,
+                  "value": 420
+                }
+              ]
+            },
+            "y": {
+              "value": 890
+            },
+            "width": {
+              "value": 120
+            },
+            "height": {
+              "value": 120
+            }
+          },
+          "type": "ellipse",
+          "fill": "#d03030"
+        },
+        "loop": {
+          "start": 0,
+          "end": 100
+        }
+      }
+    ]
+  }
+}

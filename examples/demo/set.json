@@ -3,7 +3,8 @@
   "name": "demo",
   "scenes": [
     "scenes/Schedule.json",
-    "scenes/Panel.json"
+    "scenes/Panel.json",
+    "scenes/GreenBar.json"
   ],
   "export": {
     "mode": "external",
@@ -13,6 +14,7 @@
   },
   "components": [
     "scenes/Component.json",
-    "scenes/3Bars.json"
+    "scenes/3Bars.json",
+    "scenes/RedSphere.json"
   ]
 }

@@ -604,8 +604,16 @@ async function apiRemoveScene(req: IncomingMessage, res: ServerResponse): Promis
   const dir = setDirOf(url);
   if (!SCENE_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
   const setPath = join(dir, 'set.json');
-  const set = JSON.parse(await readFile(setPath, 'utf8')) as { scenes: string[] };
+  const set = JSON.parse(await readFile(setPath, 'utf8')) as { scenes: string[]; components?: string[] };
+  // removing a component that is still embedded would silently break scenes
+  if ((set.components ?? []).includes(body.file)) {
+    const embeddedIn = await embedsOf(dir, body.file);
+    if (embeddedIn.length > 0) {
+      throw Object.assign(new Error(`still embedded in ${embeddedIn.join(', ')} — remove those instances first`), { status: 409 });
+    }
+  }
   set.scenes = set.scenes.filter((s) => s !== body.file);
+  if (set.components) set.components = set.components.filter((s) => s !== body.file);
   await writeFile(setPath, JSON.stringify(set, null, 2) + '\n', 'utf8');
   if (body.deleteFile) {
     try {
@@ -643,6 +651,22 @@ async function rewriteDocs(dir: string, rewrite: (doc: Record<string, unknown>) 
   return changed;
 }
 
+/** Scenes/components of the set that embed `file` as a composition element. */
+async function embedsOf(dir: string, file: string): Promise<string[]> {
+  const out: string[] = [];
+  for (const f of await docFilesOf(dir)) {
+    if (f === file) continue;
+    let doc: Record<string, unknown>;
+    try {
+      doc = JSON.parse(await readFile(join(dir, f), 'utf8')) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (docElements(doc).some((el) => el['type'] === 'composition' && el['compositionId'] === file)) out.push(f);
+  }
+  return out;
+}
+
 /** All elements (layer elements + masks) of a scene doc. */
 function docElements(doc: Record<string, unknown>): Record<string, unknown>[] {
   const comp = doc['composition'] as { layers?: { element: Record<string, unknown>; masks?: Record<string, unknown>[] }[] } | undefined;
@@ -667,19 +691,7 @@ async function apiConvertScene(req: IncomingMessage, res: ServerResponse): Promi
   if (!DOC_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
   if (body.to !== 'component' && body.to !== 'scene') throw Object.assign(new Error('bad target kind'), { status: 400 });
   if (body.to === 'scene') {
-    const embeddedIn: string[] = [];
-    for (const file of await docFilesOf(dir)) {
-      if (file === body.file) continue;
-      let doc: Record<string, unknown>;
-      try {
-        doc = JSON.parse(await readFile(join(dir, file), 'utf8')) as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-      if (docElements(doc).some((el) => el['type'] === 'composition' && el['compositionId'] === body.file)) {
-        embeddedIn.push(file);
-      }
-    }
+    const embeddedIn = await embedsOf(dir, body.file);
     if (embeddedIn.length > 0) {
       throw Object.assign(new Error(`still embedded in ${embeddedIn.join(', ')} — remove those instances first`), { status: 409 });
     }

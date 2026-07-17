@@ -1,0 +1,71 @@
+{
+  "formatVersion": 1,
+  "name": "GreenBar",
+  "composition": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 50,
+    "duration": 100,
+    "markers": [
+      {
+        "frame": 50,
+        "type": "pause"
+      }
+    ],
+    "layers": [
+      {
+        "id": "layer-mroxl1kh-ck56",
+        "startFrame": 0,
+        "duration": 100,
+        "element": {
+          "id": "layer-mroxl1kh-ck56-el",
+          "style": {
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 1000
+            },
+            "width": {
+              "value": 1200
+            },
+            "height": {
+              "value": 80
+            }
+          },
+          "type": "rectangle",
+          "fill": "#8fd694",
+          "borderRadius": {
+            "value": 12
+          }
+        }
+      },
+      {
+        "id": "layer-mroxl1m5-6wh2",
+        "startFrame": 0,
+        "duration": 100,
+        "element": {
+          "id": "layer-mroxl1m5-6wh2-el",
+          "type": "composition",
+          "compositionId": "scenes/RedSphere.json",
+          "style": {
+            "x": {
+              "value": 960
+            },
+            "y": {
+              "value": 540
+            },
+            "width": {
+              "value": 1920
+            },
+            "height": {
+              "value": 1080
+            }
+          }
+        }
+      }
+    ]
+  },
+  "intro": "slide-in-left",
+  "outro": "slide-out-right"
+}

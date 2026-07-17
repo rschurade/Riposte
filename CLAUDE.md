@@ -59,7 +59,18 @@ CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html
 
 ## MCP Server
 
-Registered via `.mcp.json` (here relative, in TV-Grafik absolute+gitignored). Requires the HTTP server on :5720 (`RIPOSTE_URL` overrides; `RIPOSTE_BROWSER` sets the headless browser for renders). 14 tools: `list_sets`, `list_scenes` (reports the update() input surface: content keys + visibility switches), `get_scene`, `open_scene` (navigates the user's live editor via SSE), `set_element`, `add_layer`, `import_assets`, `render_scene`, `render_filmstrip`, `export_set`, `deploy_set`, and live-bench control `bench_open` / `bench_update` / `bench_transport` (drive the bench tab the user is watching — fill variables, play/next/stop/seek — via POST /api/bench → SSE).
+Registered via `.mcp.json` (here relative, in TV-Grafik absolute+gitignored). Requires the HTTP server on :5720 (`RIPOSTE_URL` overrides; `RIPOSTE_BROWSER` sets the headless browser for renders). 48 tools — the full authoring surface; a blank-scene-to-finished-graphic build is possible over MCP alone (proven: demo/GreenBar + RedSphere):
+
+- **Inspect**: `list_sets`, `list_scenes` (the update() input surface: content keys + switches), `get_scene`, `list_assets` (sequences collapsed to `###` patterns), `list_presets` (with per-scene usage), `contract_check`, `playout_status` (AMCP ports/connections).
+- **Sets**: `create_set` (stock presets seeded), `import_loo` (local .loo path → existing set), `set_export_settings` (mode/preload/webp).
+- **Scenes/components**: `create_scene` (kind scene|component, donor canvas defaults), `duplicate_scene`, `rename_scene` (rewrites embed refs), `remove_scene` (embed-guarded; `deleteFile` opt-in), `convert_scene` (scene⇄component), `set_composition` (canvas/fps/duration — no rescaling), `set_scene_action`, `set_preview_data`, `extract_to_component` (elements → new component, replaced by an instance), `move_to_component` (→ existing component).
+- **Layers/elements**: `add_layer` (image/text/rectangle/ellipse/component/imageLoader/imageSequence via `###` pattern), `delete_layer`, `duplicate_layer` (key auto-suffixed), `reorder_layer` (front/back/forward/backward or above/below), `set_layer_span`, `set_element` (geometry, text incl. weight/transform/squeeze/tabularNums/autoSize/padding, fill/borderRadius, loader fit/placeholder, image asset swap, data `key`, layer name/hidden/locked/isGuide), `set_keyframes` (absolute frames, easing presets or bezier; `mask` targets a mask), `set_mask` (add/edit/remove, inverted, radius), `set_visibility_binding`, `set_loop`, `set_markers` (full-list replace).
+- **Effect presets**: `save_preset` / `delete_preset` / `add_stock_presets`, `set_scene_effects` (assign intro/outro, validated against the pools).
+- **Assets**: `import_assets` (local folder scan), `delete_assets` (destructive, explicit list), `rename_asset` / `rename_sequence` (rewrite references).
+- **Render/ship**: `render_scene`, `render_filmstrip`, `export_set`, `deploy_set`.
+- **Live UI**: `open_scene` (navigates the user's editor), `bench_open` / `bench_update` / `bench_transport` (drive the bench tab the user is watching via POST /api/bench → SSE).
+
+Deliberately NOT exposed: guides/eye-filter (personal workspace state), undo (session concept), AMCP port and contract-dir setting (read-only status instead). Known env issue: headless Edge/Chrome screenshots produce no file on this box — `render_scene`/`render_filmstrip` fail until that's solved; verify via get_scene + the user's editor/bench instead.
 
 **When the server is up, prefer these tools** over hand-editing scene JSON or `bench-shot.ps1`: `set_element` saves + live-syncs the editor; `render_scene` returns a PNG (default frame = the hold/pause frame) — that is the visual feedback loop.
 
@@ -73,7 +84,7 @@ Types in `packages/shared/src/scene.ts` + `set.ts`. `SceneDoc { formatVersion, n
 
 - `Composition { width, height, fps, duration, markers[], layers[], action? }`. Markers are **first-class**: `pause`, `outro` (≤1), `loop`, `action` — not code snippets.
 - `Layer { id, name?, startFrame, duration, isGuide?, hidden?, loop?, masks?, element }`. Keyframes are stored in absolute scene frames (imported .loo keyframes are LAYER-LOCAL and get offset by `startFrame` at import).
-- `layer.loop = { start, end, exitFade? }` (layer-local): cycles on its own clock while the scene holds at a pause, fades in place over `exitFade` (default 15) in sync with the outro. **Top-level layers only** — loops inside nested compositions don't tick.
+- `layer.loop = { start, end, exitFade? }` (layer-local): cycles on its own clock while the scene holds at a pause, fades in place over `exitFade` (default 15) in sync with the outro. Works at every nesting level — the parent forwards its hold clock into embedded components (`forwardClock` in dom.ts), and `hasLoops` detection is recursive.
 - Elements: `text`, `image`, `imageSequence` (`frames[]`), `imageLoader` (`fit`, `placeholder` — design-time stand-in asset), `rectangle`, `ellipse`, `path`, `composition` (`compositionId` → component file; nested comps render recursively, child playhead = parent − startFrame, clamped). The type set is open.
 - `ElementStyle`: **x/y are the box center** (Loopic convention). `StyleProperty { value, unit?, keyframes[] }` — when keyframes exist the static value is ignored.
 - `element.visibility = { bindKey, showWhen?/hideWhen? (default hideWhen ["0"]), initial? }` — shows/hides from an `update()` value via CSS `visibility`, composing with layer span (display) and opacity fades. This replaced Loopic-era show/hide scripts (`riposte-migrate` converts them). Binding state is a pure function of the last update value.
