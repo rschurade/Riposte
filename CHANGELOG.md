@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.6.0 — 2026-07-17
+
+### Added
+- **Multi-select**: Ctrl+click adds elements to the selection; move or
+  delete the whole group on stage.
+- Extract a selection into a **new component or scene** (the elements are
+  replaced by an instance), or move it **into an existing component** —
+  the "forgot an element" workflow.
+- **Scene ⇄ component conversion** buttons in the sidebar; demoting a
+  component that is still embedded somewhere is refused.
+- **Layer reordering** in the timeline: drag the ⋮⋮ grip, or Ctrl+arrows.
+- **Marker drag** on the ruler, and a per-marker **lock** in the
+  inspector so pause/outro frames can't be nudged accidentally. Locked
+  markers pass clicks through — a pause stacked under a locked outro
+  stays grabbable, and the playhead always wins on shared frames.
+- **Keyframe copy/paste** per property row — across elements and scenes,
+  at absolute frames.
+- **On-stage mask handles**: move and resize a layer's mask visually
+  (animated or rotated masks show as outline only).
+- Grid snapping is **centered**: element anchors are centers, so the
+  exact canvas center is now snappable.
+- MCP server grew from 14 to **48 tools** — the full authoring surface
+  (sets, scenes, layers, keyframes, masks, markers, presets, assets,
+  conversions, live bench). A blank-set-to-finished-graphic build is
+  possible over MCP alone.
+- Inert Loopic leftovers (`this.play()` action markers) documented and
+  removed from the stock sets.
+
+### Fixed
+- **Loop regions inside nested components** now cycle: a looping
+  component keeps animating while its parent scene holds at a pause
+  marker — the component-library pattern works.
+- Timeline geometry: keyframes on indented property rows drew offset to
+  the right, the frame-0 diamond was half-clipped, and the last frame
+  could sit under the window edge. The track now has a left inset and
+  one shared frame→pixel mapping.
+- **Headless renders work again** (`render_scene`, `render_filmstrip`,
+  `bench-shot.ps1`): the bench's SSE connection stalled the browser's
+  virtual clock so no screenshot was ever written, and Edge's
+  self-relaunch made the spawned process exit before rendering — the
+  renderers now skip SSE in headless mode and wait for the file itself.
+
 ## 0.5.0 — 2026-07-17
 
 ### Added
