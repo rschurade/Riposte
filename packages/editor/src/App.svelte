@@ -5,6 +5,7 @@
   import Inspector from './lib/Inspector.svelte';
   import SetOptions from './lib/SetOptions.svelte';
   import DeployDialog from './lib/DeployDialog.svelte';
+  import PresetFx from './lib/PresetFx.svelte';
   import { ed } from './lib/state.svelte.ts';
 
   $effect(() => {
@@ -162,6 +163,7 @@
 </div>
 <SetOptions />
 <DeployDialog />
+<PresetFx />
 
 <style>
   :global(body) {

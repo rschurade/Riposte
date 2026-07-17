@@ -210,6 +210,20 @@
     return () => cancelAnimationFrame(raf);
   });
 
+  // ---- preset dialog: live preview of the effect on the scene root -----------
+  // Reading fx.preset deeply means ANY edit in the dialog (value, keyframe,
+  // mask toggle) re-applies the frame instantly; the cleanup undoes everything
+  // when the dialog closes or the scene rebuilds.
+  $effect(() => {
+    void ed.version;
+    const fx = ed.fxEdit;
+    if (!fx || !built || !comp || ed.cg.active) return;
+    applyOutroFrame(built.contentEl, comp, fx.preset, fx.previewFrame);
+    return () => {
+      if (built) clearOutroEffect(built.contentEl);
+    };
+  });
+
   // ---- fit to view ----------------------------------------------------------
   $effect(() => {
     if (!wrapEl) return;

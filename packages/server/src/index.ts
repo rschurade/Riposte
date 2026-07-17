@@ -102,6 +102,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/scene/create' && req.method === 'POST') return apiCreateScene(req, res);
   if (path === '/api/scene/remove' && req.method === 'POST') return apiRemoveScene(req, res);
   if (path === '/api/scene/rename' && req.method === 'POST') return apiRenameScene(req, res);
+  if (path === '/api/preset/save' && req.method === 'POST') return apiSavePreset(req, res);
+  if (path === '/api/preset/delete' && req.method === 'POST') return apiDeletePreset(req, res);
+  if (path === '/api/preset/stock' && req.method === 'POST') return apiStockPresets(req, res);
   if (path === '/api/assets/delete' && req.method === 'POST') return apiDeleteAssets(req, res);
   if (path === '/api/assets/rename' && req.method === 'POST') return apiRenameAsset(req, res);
   if (path === '/api/assets/rename-sequence' && req.method === 'POST') return apiRenameSequence(req, res);
@@ -248,6 +251,80 @@ async function apiSaveScene(req: IncomingMessage, res: ServerResponse): Promise<
   if (!SCENE_FILE_RE.test(body.file)) throw Object.assign(new Error('bad scene file'), { status: 400 });
   await writeFile(join(dir, body.file), JSON.stringify(body.doc, null, 2) + '\n', 'utf8');
   broadcast('scene-saved', { root: body.root, name: body.name, file: body.file });
+  return json(res, { ok: true });
+}
+
+// ---- intro/outro effect presets ({outros,intros}/<name>.json) -----------------
+
+const PRESET_FOLDERS = new Set(['outros', 'intros']);
+const PRESET_NAME_RE = /^[\w-]+$/;
+
+function presetPathOf(body: { root: string; name: string; folder: string }, presetName: string): string {
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  if (!PRESET_FOLDERS.has(body.folder) || !PRESET_NAME_RE.test(presetName))
+    throw Object.assign(new Error('bad preset ref'), { status: 400 });
+  return join(dir, body.folder, `${presetName}.json`);
+}
+
+/**
+ * Stock presets shipped with the app (server/stock in the repo, stock/ in the
+ * packaged dist). Copied into sets — never resolved at runtime, so sets stay
+ * self-contained and portable.
+ */
+const stockDir = join(serverRoot, 'stock');
+
+/** Copy stock presets MISSING from the set (no overwrites); names per folder. */
+async function seedStockPresets(dir: string): Promise<Record<string, string[]>> {
+  const added: Record<string, string[]> = { intros: [], outros: [] };
+  for (const folder of ['intros', 'outros']) {
+    let entries: string[];
+    try {
+      entries = await readdir(join(stockDir, folder));
+    } catch {
+      continue; // no stock shipped — nothing to seed
+    }
+    for (const f of entries) {
+      if (!f.endsWith('.json')) continue;
+      const target = join(dir, folder, f);
+      if (existsSync(target)) continue;
+      await mkdir(join(dir, folder), { recursive: true });
+      await writeFile(target, await readFile(join(stockDir, folder, f), 'utf8'), 'utf8');
+      added[folder]!.push(f.slice(0, -5));
+    }
+  }
+  return added;
+}
+
+/** Copy missing stock presets into an existing set (the Set Options button). */
+async function apiStockPresets(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  const added = await seedStockPresets(dir);
+  for (const folder of ['intros', 'outros']) {
+    for (const n of added[folder] ?? []) {
+      const preset: unknown = JSON.parse(await readFile(join(dir, folder, `${n}.json`), 'utf8'));
+      broadcast('preset-saved', { root: body.root, name: body.name, folder, preset });
+    }
+  }
+  return json(res, { ok: true, added });
+}
+
+async function apiSavePreset(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; folder: string; preset: { name?: unknown } };
+  const presetName = typeof body.preset?.name === 'string' ? body.preset.name : '';
+  const path = presetPathOf(body, presetName);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(body.preset, null, 2) + '\n', 'utf8');
+  broadcast('preset-saved', { root: body.root, name: body.name, folder: body.folder, preset: body.preset });
+  return json(res, { ok: true });
+}
+
+async function apiDeletePreset(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; folder: string; presetName: string };
+  await unlink(presetPathOf(body, body.presetName));
+  broadcast('preset-deleted', { root: body.root, name: body.name, folder: body.folder, presetName: body.presetName });
   return json(res, { ok: true });
 }
 
@@ -411,6 +488,7 @@ async function apiCreateSet(req: IncomingMessage, res: ServerResponse): Promise<
   await mkdir(join(dir, 'scenes'), { recursive: true });
   const set = { formatVersion: 1, name, scenes: [], components: [], fonts: [] };
   await writeFile(join(dir, 'set.json'), JSON.stringify(set, null, 2) + '\n', 'utf8');
+  await seedStockPresets(dir); // every new set starts with the stock intros/outros
   return json(res, { ok: true, name });
 }
 

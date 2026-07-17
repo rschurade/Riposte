@@ -1,0 +1,32 @@
+{
+  "name": "slide-in-left",
+  "duration": 15,
+  "style": {
+    "opacity": {
+      "value": 0,
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": 0
+        },
+        {
+          "frame": 15,
+          "value": 1
+        }
+      ]
+    },
+    "x": {
+      "value": 0,
+      "keyframes": [
+        {
+          "frame": 0,
+          "value": -1000
+        },
+        {
+          "frame": 15,
+          "value": 0
+        }
+      ]
+    }
+  }
+}

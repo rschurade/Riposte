@@ -36,9 +36,41 @@
             }
           }
         }
+      },
+      {
+        "id": "layer-mrosvpxl-4ljz",
+        "startFrame": 0,
+        "duration": 100,
+        "element": {
+          "id": "layer-mrosvpxl-4ljz-el",
+          "type": "text",
+          "content": "Hello World",
+          "textAlign": "center",
+          "style": {
+            "x": {
+              "value": 900
+            },
+            "y": {
+              "value": 925
+            },
+            "width": {
+              "value": 900
+            },
+            "height": {
+              "value": 150
+            },
+            "fontSize": {
+              "value": 64
+            },
+            "color": {
+              "value": "#ffffff",
+              "unit": "color"
+            }
+          }
+        }
       }
     ]
   },
-  "outro": "wipe-right",
-  "intro": "wipe-in-left"
+  "outro": "scale-out",
+  "intro": "slide-in-left"
 }

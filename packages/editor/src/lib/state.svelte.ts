@@ -88,6 +88,87 @@ class EditorState {
   cgOff(): void {
     if (this.cg.active) this.cg = { ...this.cg, active: false, held: false };
   }
+
+  // ---- intro/outro preset editor (dialog + live stage preview) ---------------
+  /**
+   * Working copy while the preset dialog is open; the Stage applies
+   * `previewFrame` of it to the scene root live. `source` = the pool entry
+   * being edited (null for a new preset; save-as when the name is changed).
+   */
+  fxEdit = $state<{ folder: 'outros' | 'intros'; preset: OutroPreset; source: string | null; previewFrame: number } | null>(null);
+
+  openFxEditor(folder: 'outros' | 'intros', name: string | null): void {
+    this.cgOff(); // the CG sim and the preview would fight over the root styles
+    const pool = folder === 'outros' ? this.outros : this.intros;
+    const source = name && pool[name] ? name : null;
+    const fadeIn = folder === 'intros'; // new-preset default: plain fade
+    const preset: OutroPreset = source
+      ? (JSON.parse(JSON.stringify(pool[source])) as OutroPreset)
+      : {
+          name: '',
+          duration: 15,
+          style: {
+            opacity: {
+              value: fadeIn ? 0 : 1,
+              keyframes: [
+                { frame: 0, value: fadeIn ? 0 : 1 },
+                { frame: 15, value: fadeIn ? 1 : 0 },
+              ],
+            },
+          },
+        };
+    this.fxEdit = { folder, preset, source, previewFrame: 0 };
+  }
+
+  closeFxEditor(): void {
+    this.fxEdit = null;
+  }
+
+  /** Write the working copy to {folder}/<name>.json; changed name = save-as. */
+  async saveFxPreset(): Promise<boolean> {
+    const fx = this.fxEdit;
+    if (!fx) return false;
+    const name = fx.preset.name.trim();
+    if (!/^[\w-]+$/.test(name)) {
+      this.flash('preset name: letters, digits, dash, underscore only');
+      return false;
+    }
+    fx.preset.name = name;
+    const r = await this.post('/api/preset/save', { folder: fx.folder, preset: JSON.parse(JSON.stringify(fx.preset)) });
+    if (!r) return false;
+    const pool = fx.folder === 'outros' ? this.outros : this.intros;
+    pool[name] = JSON.parse(JSON.stringify(fx.preset)) as OutroPreset;
+    fx.source = name;
+    this.flash(`saved ${fx.folder.slice(0, -1)} "${name}"`);
+    return true;
+  }
+
+  async deleteFxPreset(folder: 'outros' | 'intros', name: string): Promise<void> {
+    const r = await this.post('/api/preset/delete', { folder, presetName: name });
+    if (!r) return;
+    const pool = folder === 'outros' ? this.outros : this.intros;
+    delete pool[name];
+    if (this.fxEdit?.folder === folder && this.fxEdit.source === name) this.fxEdit = null;
+    this.flash(`deleted ${folder.slice(0, -1)} "${name}"`);
+  }
+
+  /** Copy the app's stock presets into the set (missing ones only — no overwrites). */
+  async addStockPresets(): Promise<void> {
+    const r = await this.post('/api/preset/stock', {});
+    if (!r) return;
+    const added = r['added'] as { intros?: string[]; outros?: string[] };
+    const n = (added?.intros?.length ?? 0) + (added?.outros?.length ?? 0);
+    // the pools themselves update via the preset-saved SSE broadcasts
+    this.flash(n > 0 ? `added ${n} stock preset${n === 1 ? '' : 's'}` : 'all stock presets already in this set');
+  }
+
+  /** Pool updates pushed from other editor windows (via the server SSE). */
+  private onRemotePreset(msg: { root: string; name: string; folder: string; preset?: OutroPreset; presetName?: string }): void {
+    if (!this.setRef || this.setRef.root !== msg.root || this.setRef.name !== msg.name) return;
+    const pool = msg.folder === 'outros' ? this.outros : this.intros;
+    if (msg.preset) pool[msg.preset.name] = msg.preset;
+    else if (msg.presetName) delete pool[msg.presetName];
+  }
   /** Script preview: stage runs the FULL runtime (actions + previewData). */
   scriptPreview = $state(false);
   selectedLayerId = $state<string | null>(null);
@@ -290,6 +371,13 @@ class EditorState {
       if (typeof data !== 'string') return;
       void this.onRemoteSaved(JSON.parse(data));
     });
+    for (const ev of ['preset-saved', 'preset-deleted']) {
+      es.addEventListener(ev, (e) => {
+        const data = (e as MessageEvent).data;
+        if (typeof data !== 'string') return;
+        this.onRemotePreset(JSON.parse(data));
+      });
+    }
   }
 
   private async onRemoteOpen(p: { root: string; name: string; file?: string; frame?: number }): Promise<void> {

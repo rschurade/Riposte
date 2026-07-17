@@ -788,27 +788,39 @@
     <h3>Intro / outro effects</h3>
     <div class="grid">
       <label for="scene-intro" title="Scene-level intro: play() runs this preset on the whole scene over the normal build-up, from hidden (frame 0) to neutral. Presets are intros/*.json files in the set.">Intro</label>
-      <select
-        id="scene-intro"
-        value={ed.scene.intro ?? ''}
-        onchange={(e) => ed.setSceneIntro((e.currentTarget as HTMLSelectElement).value)}
-      >
-        <option value="">(none)</option>
-        {#each Object.keys(ed.intros).sort() as name (name)}
-          <option value={name}>{name}{ed.intros[name] ? ` (${ed.intros[name].duration}f)` : ''}</option>
-        {/each}
-      </select>
+      <span class="fxrow">
+        <select
+          id="scene-intro"
+          value={ed.scene.intro ?? ''}
+          onchange={(e) => ed.setSceneIntro((e.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value="">(none)</option>
+          {#each Object.keys(ed.intros).sort() as name (name)}
+            <option value={name}>{name}{ed.intros[name] ? ` (${ed.intros[name].duration}f)` : ''}</option>
+          {/each}
+        </select>
+        <button class="fxbtn" title="Edit this intro preset (live preview on the stage)"
+          disabled={!ed.scene.intro || !ed.intros[ed.scene.intro]}
+          onclick={() => ed.openFxEditor('intros', ed.scene?.intro ?? null)}>✎</button>
+        <button class="fxbtn" title="New intro preset" onclick={() => ed.openFxEditor('intros', null)}>＋</button>
+      </span>
       <label for="scene-outro" title="Scene-level outro: stop() — or NEXT off the last pause — runs this preset on the whole scene (every layer at once) INSTEAD of the marker outro. Presets are outros/*.json files in the set.">Outro</label>
-      <select
-        id="scene-outro"
-        value={ed.scene.outro ?? ''}
-        onchange={(e) => ed.setSceneOutro((e.currentTarget as HTMLSelectElement).value)}
-      >
-        <option value="">(none — marker outro)</option>
-        {#each Object.keys(ed.outros).sort() as name (name)}
-          <option value={name}>{name}{ed.outros[name] ? ` (${ed.outros[name].duration}f)` : ''}</option>
-        {/each}
-      </select>
+      <span class="fxrow">
+        <select
+          id="scene-outro"
+          value={ed.scene.outro ?? ''}
+          onchange={(e) => ed.setSceneOutro((e.currentTarget as HTMLSelectElement).value)}
+        >
+          <option value="">(none — marker outro)</option>
+          {#each Object.keys(ed.outros).sort() as name (name)}
+            <option value={name}>{name}{ed.outros[name] ? ` (${ed.outros[name].duration}f)` : ''}</option>
+          {/each}
+        </select>
+        <button class="fxbtn" title="Edit this outro preset (live preview on the stage)"
+          disabled={!ed.scene.outro || !ed.outros[ed.scene.outro]}
+          onclick={() => ed.openFxEditor('outros', ed.scene?.outro ?? null)}>✎</button>
+        <button class="fxbtn" title="New outro preset" onclick={() => ed.openFxEditor('outros', null)}>＋</button>
+      </span>
     </div>
     {#if (ed.scene.outro && !ed.outros[ed.scene.outro]) || (ed.scene.intro && !ed.intros[ed.scene.intro])}
       <p class="hint">⚠ referenced preset missing from this set's intros/ or outros/ folder — that slot falls back to default behavior.</p>
@@ -880,6 +892,20 @@
     padding: 0 7px;
     float: right;
   }
+  .fxrow { display: flex; gap: 4px; align-items: center; min-width: 0; }
+  .fxrow select { flex: 1; min-width: 0; }
+  .fxbtn {
+    background: #23262e;
+    border: 1px solid #383c46;
+    color: #cfd3da;
+    border-radius: 4px;
+    padding: 3px 7px;
+    cursor: pointer;
+    font-size: 11px;
+    flex: none;
+  }
+  .fxbtn:hover:not(:disabled) { border-color: #d9a441; color: #e6e6e6; }
+  .fxbtn:disabled { opacity: 0.4; cursor: default; }
   .minor.inline:hover { color: #e07777; }
   .minor {
     margin-top: 6px;
