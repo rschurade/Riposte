@@ -1623,11 +1623,27 @@ class EditorState {
     return toSave.length;
   }
 
+  /**
+   * Status flashes are transient by design, but transient-only is bad design
+   * for errors — every message is also timestamped into statusLog (the ≣
+   * header panel) and mirrored to the devtools console, and error-looking
+   * messages stay on screen longer.
+   */
+  statusLog = $state<{ t: string; msg: string; err: boolean }[]>([]);
+  statusLogOpen = $state(false);
+  statusErr = $state(false);
+
   flash(msg: string): void {
+    const err = /fail|error|invalid|denied|missing|⚠/i.test(msg);
+    const t = new Date().toLocaleTimeString();
+    this.statusLog.unshift({ t, msg, err });
+    if (this.statusLog.length > 200) this.statusLog.length = 200;
+    (err ? console.warn : console.log)(`[riposte ${t}] ${msg}`);
     this.status = msg;
+    this.statusErr = err;
     setTimeout(() => {
       if (this.status === msg) this.status = '';
-    }, 4000);
+    }, err ? 12000 : 4000);
   }
 }
 

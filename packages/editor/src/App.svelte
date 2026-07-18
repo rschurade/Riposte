@@ -146,7 +146,9 @@
       {#if ed.dirty}<span class="dirty">●</span>{/if}
     </span>
     <span class="spacer"></span>
-    <span class="status">{ed.status}</span>
+    <span class="status" class:err={ed.statusErr}>{ed.status}</span>
+    <button class="log" class:attn={!ed.statusLogOpen && ed.statusLog.some((e) => e.err)}
+      onclick={() => (ed.statusLogOpen = !ed.statusLogOpen)} title="Message log">≣</button>
     <button onclick={() => ed.undo()} title="Ctrl+Z">↶</button>
     <button onclick={() => ed.redo()} title="Ctrl+Y">↷</button>
     <button class="primary" onclick={() => ed.save()} disabled={!ed.dirty} title="Ctrl+S">Save</button>
@@ -167,6 +169,22 @@
     onpointerdown={(e) => splitDown(e, 'timeline')} onpointermove={splitMove} onpointerup={splitUp}></div>
   <Timeline />
 </div>
+{#if ed.statusLogOpen}
+  <div class="msglog">
+    <div class="msglog-head">
+      <span>Messages</span>
+      <button onclick={() => (ed.statusLog = [])} title="Clear the log">clear</button>
+      <button onclick={() => (ed.statusLogOpen = false)}>✕</button>
+    </div>
+    {#if ed.statusLog.length === 0}
+      <div class="msglog-row muted">no messages yet</div>
+    {/if}
+    {#each ed.statusLog as e (e)}
+      <div class="msglog-row" class:err={e.err}><span class="t">{e.t}</span>{e.msg}</div>
+    {/each}
+  </div>
+{/if}
+
 <SetOptions />
 <DeployDialog />
 <PresetFx />
@@ -203,6 +221,56 @@
   .dirty { color: #d9a441; }
   .spacer { flex: 1; }
   .status { color: #7fb069; font-size: 12px; }
+  .status.err { color: #e07070; }
+  header button.log { padding: 3px 8px; }
+  header button.log.attn { border-color: #e07070; color: #e07070; }
+  .msglog {
+    position: fixed;
+    top: 38px;
+    right: 8px;
+    z-index: 90;
+    width: 520px;
+    max-height: 55vh;
+    overflow-y: auto;
+    background: #1c1f26;
+    border: 1px solid #383c46;
+    border-radius: 6px;
+    box-shadow: 0 6px 24px #000a;
+    font-size: 12px;
+  }
+  .msglog-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #2c2f38;
+    color: #aab;
+    position: sticky;
+    top: 0;
+    background: #1c1f26;
+  }
+  .msglog-head span { flex: 1; text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; }
+  .msglog-head button {
+    background: none;
+    border: none;
+    color: #aab;
+    cursor: pointer;
+    padding: 2px 6px;
+  }
+  .msglog-head button:hover { color: #e6e6e6; }
+  .msglog-row {
+    padding: 4px 10px;
+    border-bottom: 1px solid #22252c;
+    color: #cbd0da;
+    word-break: break-word;
+  }
+  .msglog-row.err { color: #e07070; }
+  .msglog-row.muted { color: #667; }
+  .msglog-row .t {
+    color: #667;
+    margin-right: 8px;
+    font-variant-numeric: tabular-nums;
+  }
   header button {
     background: #23262e;
     border: 1px solid #383c46;
