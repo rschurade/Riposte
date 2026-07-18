@@ -56,13 +56,20 @@ const MIME: Record<string, string> = {
 
 const port = Number(process.env['PORT'] ?? 5720);
 
-createServer((req, res) => {
+const httpServer = createServer((req, res) => {
   void handle(req, res).catch((err: Error & { status?: number }) => {
     console.error(err);
     res.writeHead(err.status ?? 500, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: err.message ?? 'internal error' }));
   });
-}).listen(port, () => {
+});
+// Node's 5s keep-alive default races clients that reuse idle sockets without
+// retry (the vite proxy): a request written onto a socket we're just closing
+// dies with a reset — the editor flashed "failed to fetch" while the work
+// (e.g. an export) completed anyway. headersTimeout must stay above it.
+httpServer.keepAliveTimeout = 120_000;
+httpServer.headersTimeout = 125_000;
+httpServer.listen(port, () => {
   console.log(`riposte server listening on http://localhost:${port}${packaged ? ' (packaged mode: editor at /, bench at /bench)' : ''}`);
   if (process.argv.includes('--open')) {
     const url = `http://localhost:${port}`;
