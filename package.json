@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.6.0",
   "description": "Riposte — local template studio for CasparCG HTML graphics",
+  "license": "MIT",
   "type": "module",
   "workspaces": [
     "packages/*"

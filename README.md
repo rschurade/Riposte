@@ -125,3 +125,7 @@ npm run server    # local file/project server
 See [docs/design.md](docs/design.md) for the design record and as-built status,
 and [CLAUDE.md](CLAUDE.md) for operational guidance (commands, ports, format
 essentials, gotchas).
+
+## License
+
+[MIT](LICENSE)
