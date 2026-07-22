@@ -288,6 +288,35 @@ export function buildScene(scene: SceneDoc, root: HTMLElement, opts: BuildOption
   const sizeAppliers: (() => void)[] = [];
   for (const { el, node } of registry.sizeBinds) {
     const bind = el.sizeBind!;
+    // sourceId "*" = bind to the longest text element in the scene
+    if (bind.sourceId === '*') {
+      const axis = bind.axis ?? 'x';
+      const authoredW = Number(el.style.width?.value) || 0;
+      const allSources = [...registry.textContent.values()];
+      if (allSources.length === 0) continue;
+      sizeAppliers.push(() => {
+        let maxW = 0;
+        let maxH = 0;
+        for (const src of allSources) {
+          const m = measureContent(src.node, src.span.innerHTML);
+          if (m.w > maxW) { maxW = m.w; maxH = m.h; }
+        }
+        if (maxW <= 0 && maxH <= 0) return;
+        if (axis !== 'y') {
+          const w = maxW + 2 * (bind.padX ?? 0);
+          node.style.width = `${w}px`;
+          const grow = bind.grow ?? 'center';
+          if (grow !== 'center' && authoredW > 0) {
+            const off = (w - authoredW) / 2;
+            node.style.marginLeft = `${grow === 'left' ? off : -off}px`;
+          }
+        }
+        if (axis !== 'x') {
+          node.style.height = `${maxH + 2 * (bind.padY ?? 0)}px`;
+        }
+      });
+      continue;
+    }
     const src = registry.textContent.get(bind.sourceId);
     if (!src) {
       console.warn(`riposte: sizeBind source "${bind.sourceId}" is not a text element — ignored`);
@@ -676,9 +705,9 @@ function buildElement(
       if (el.borderRadius) {
         const br = el.borderRadius;
         if (br.keyframes?.length) {
-          dynamics.push({ apply: (f) => (node.style.borderRadius = `${numberAtFrame(br, f, 0)}px`) });
+          dynamics.push({ apply: (f) => { const v = valueAtFrame(br, f); node.style.borderRadius = cssRadius(v); } });
         } else {
-          node.style.borderRadius = `${Number(br.value) || 0}px`;
+          node.style.borderRadius = cssRadius(br.value);
         }
       }
       break;
@@ -860,9 +889,22 @@ function bindStyle(el: SceneElement, node: HTMLElement, dynamics: DynamicBinding
       if (s.width && bindAxis !== 'x' && bindAxis !== 'both') node.style.width = `${numberAtFrame(s.width, frame, 0)}px`;
       if (s.height && bindAxis !== 'y' && bindAxis !== 'both') node.style.height = `${numberAtFrame(s.height, frame, 0)}px`;
     }
-    // translate to center point, center self, then rotate/scale about center
+    // translate to the authored anchor point, then rotate/scale about it.
+    // For autoSize text, textAlign / verticalAlign control the anchor origin
+    // (left/center/right for x, top/middle/bottom for y), matching Loopic/OGraf
+    // conventions where x/y define the aligned edge.
+    let anchorX = '-50%';
+    let anchorY = '-50%';
+    if (autoSized) {
+      const ta = (el as { textAlign?: string }).textAlign ?? 'center';
+      const va = (el as { verticalAlign?: string }).verticalAlign ?? 'middle';
+      if (ta === 'left') anchorX = '0%';
+      else if (ta === 'right') anchorX = '-100%';
+      if (va === 'top') anchorY = '0%';
+      else if (va === 'bottom') anchorY = '-100%';
+    }
     node.style.transform =
-      `translate(${x}px, ${y}px) translate(-50%, -50%)` +
+      `translate(${x}px, ${y}px) translate(${anchorX}, ${anchorY})` +
       (rot ? ` rotate(${rot}deg)` : '') +
       (sx !== 1 || sy !== 1 ? ` scale(${sx}, ${sy})` : '');
   };
@@ -876,7 +918,7 @@ function bindStyle(el: SceneElement, node: HTMLElement, dynamics: DynamicBinding
     const style = node.style as unknown as Record<string, string>;
     const apply = (frame: number) => {
       const v = valueAtFrame(sp, frame);
-      style[def.css] = def.px && typeof v === 'number' ? `${v}px` : String(v);
+      style[def.css] = prop === 'borderRadius' ? cssRadius(v) : (def.px && typeof v === 'number' ? `${v}px` : String(v));
     };
     if (sp.keyframes?.length) dynamics.push({ apply });
     else apply(0);

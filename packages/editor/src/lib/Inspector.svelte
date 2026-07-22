@@ -125,6 +125,38 @@
     setElementField('padding', pads.every((p) => p === 0) ? undefined : pads);
   }
 
+  const radiusValues = $derived(parseRadius(el?.style.borderRadius?.value));
+  function parseRadius(raw: unknown): number[] {
+    if (typeof raw === 'number') return [raw, raw, raw, raw];
+    if (typeof raw === 'string') {
+      const parts = raw.split(/\s+/).map(Number);
+      // pad to 4 values if fewer (CSS shorthand)
+      while (parts.length < 4) parts.push(parts[parts.length - 1] ?? 0);
+      return parts;
+    }
+    return [0, 0, 0, 0];
+  }
+
+  function setTextRadius(index: number, raw: string): void {
+    if (!layer || el?.type !== 'text') return;
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < 0) return;
+    const radii = [...radiusValues] as [number, number, number, number];
+    radii[index] = v;
+    if (radii.every((r) => r === 0)) {
+      ed.mutate('clear text radius', (scene) => {
+        const l = scene.composition.layers.find((x) => x.id === layer.id);
+        if (l) delete l.element.style['borderRadius'];
+      });
+    } else {
+      const val = radii.join(' ');
+      ed.mutate('set text radius', (scene) => {
+        const l = scene.composition.layers.find((x) => x.id === layer.id);
+        if (l) l.element.style['borderRadius'] = { value: val };
+      });
+    }
+  }
+
   const TEXT_STYLE_PROPS: PropDef[] = [
     { prop: 'lineHeight', label: 'Line height', fallback: 1.2 },
     { prop: 'letterSpacing', label: 'Letter spacing', fallback: 0 },
@@ -443,8 +475,8 @@
             checked={mask.inverted === true}
             onchange={(e) => setMaskInverted(mi, (e.currentTarget as HTMLInputElement).checked)}
           />
-        </div>
-      {/if}
+      </div>
+    {/if}
     {/each}
     <button
       class="minor"
@@ -545,9 +577,27 @@
               id="in-pad-{side}"
               type="number"
               step="1"
+              size="3"
               title="padding {side}"
               value={el.padding?.[i] ?? 0}
               onchange={(e) => setPadding(i, (e.currentTarget as HTMLInputElement).value)}
+            />
+          {/each}
+        </span>
+      </div>
+      <div class="grid spaced">
+        <label for="in-rad-tl">Radius</label>
+        <span class="padrow">
+          {#each ['TL', 'TR', 'BR', 'BL'] as corner, i (corner)}
+            <input
+              id="in-rad-{corner.toLowerCase()}"
+              type="number"
+              step="1"
+              min="0"
+              size="3"
+              title="radius {corner}"
+              value={radiusValues[i] ?? 0}
+              onchange={(e) => setTextRadius(i, (e.currentTarget as HTMLInputElement).value)}
             />
           {/each}
         </span>
@@ -602,16 +652,23 @@
       <div class="grid">
         {@render colorRow('in-fill', 'Fill', el.fill ?? '', '(transparent)', (v) => setElementField('fill', v.trim() || undefined))}
         {#if el.type === 'rectangle'}
-          <label for="in-radius">Radius</label>
+          <label for="in-radius" title="Corner radii in px — one value for all, or four (TL TR BR BL)">Radius</label>
           <input
             id="in-radius"
-            type="number"
-            min="0"
-            step="1"
-            value={typeof el.borderRadius?.value === 'number' ? el.borderRadius.value : 0}
+            type="text"
+            spellcheck="false"
+            placeholder="20 20 20 0"
+            value={typeof el.borderRadius?.value === 'string' ? el.borderRadius.value : (typeof el.borderRadius?.value === 'number' ? String(el.borderRadius.value) : '')}
             onchange={(e) => {
-              const v = Number((e.currentTarget as HTMLInputElement).value);
-              setElementField('borderRadius', Number.isFinite(v) && v > 0 ? { value: v } : undefined);
+              const v = (e.currentTarget as HTMLInputElement).value.trim();
+              if (!layer || layer.element.type !== 'rectangle') return;
+              const id = layer.id;
+              ed.mutate('set radius', (scene) => {
+                const l = scene.composition.layers.find((x) => x.id === id);
+                if (!l) return;
+                if (!v) delete l.element.borderRadius;
+                else (l.element as { borderRadius?: { value: number | string } }).borderRadius = { value: v };
+              });
             }}
           />
         {/if}
@@ -628,6 +685,7 @@
           onchange={(e) => setSizeBind({ sourceId: (e.currentTarget as HTMLSelectElement).value })}
         >
           <option value="">(none)</option>
+          <option value="*">longest — match widest text</option>
           {#each textLayers as t (t.id)}
             <option value={t.element.id}>{layerLabel(t)}</option>
           {/each}
@@ -971,7 +1029,10 @@
   }
   .mlockbtn.on { opacity: 1; }
   .padrow { display: flex; gap: 4px; min-width: 0; }
-  .padrow input { flex: 1; min-width: 0; width: 100%; }
+  .padrow input { flex: 1; min-width: 0; width: 100%; padding: 3px 2px; }
+  .padrow input[type='number'] { -moz-appearance: textfield; }
+  .padrow input[type='number']::-webkit-outer-spin-button,
+  .padrow input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .ro { font-size: 12px; color: #aab; }
   .dim { color: #676c76; font-size: 10px; text-transform: none; letter-spacing: 0; }
   .code {
