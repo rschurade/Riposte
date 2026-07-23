@@ -18,7 +18,7 @@ export interface SetRef {
 }
 
 export interface SetExportSettings {
-  mode?: 'external' | 'baked';
+  mode?: 'external' | 'baked' | 'ograf' | 'spx';
   preloadAssets?: boolean;
   imageFormat?: 'png' | 'webp';
   webpQuality?: number | 'lossless';
@@ -492,6 +492,11 @@ class EditorState {
         this.onRemotePreset(JSON.parse(data));
       });
     }
+    for (const ev of ['set-deleted', 'set-created']) {
+      es.addEventListener(ev, async () => {
+        await this.loadSets();
+      });
+    }
   }
 
   private async onRemoteOpen(p: { root: string; name: string; file?: string; frame?: number }): Promise<void> {
@@ -605,6 +610,52 @@ class EditorState {
     return ref;
   }
 
+  /** Delete a set entirely (projects/ only). */
+  async deleteSet(s: SetRef): Promise<void> {
+    if (s.root !== 'projects') return;
+    if (!confirm(`Delete set "${s.name}" and all its scenes? This cannot be undone.`)) return;
+    try {
+      const res = await fetch('/api/set/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: s.root, name: s.name }),
+      });
+      if (!res.ok) {
+        const r = (await res.json()) as Record<string, unknown>;
+        this.flash(`DELETE FAILED: ${r['error'] ?? res.status}`);
+        return;
+      }
+      if (this.setRef === s) this.setRef = null;
+      await this.loadSets();
+      this.flash(`deleted set "${s.name}"`);
+    } catch (err) {
+      this.flash(`DELETE FAILED: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  /** Duplicate a set under a new name. */
+  async duplicateSet(s: SetRef): Promise<void> {
+    if (s.root !== 'projects') return;
+    const newName = prompt('Duplicate as:', `${s.name}-copy`)?.trim();
+    if (!newName) return;
+    try {
+      const res = await fetch('/api/set/duplicate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: s.root, name: s.name, newName }),
+      });
+      if (!res.ok) {
+        const r = (await res.json()) as Record<string, unknown>;
+        this.flash(`DUPLICATE FAILED: ${r['error'] ?? res.status}`);
+        return;
+      }
+      await this.loadSets();
+      this.flash(`duplicated → "${newName}"`);
+    } catch (err) {
+      this.flash(`DUPLICATE FAILED: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   /** Upload .loo files into an existing or new set; the server-side importer
    * does the real work (shared asset pool, script migration). */
   async importLooFiles(files: File[]): Promise<void> {
@@ -637,6 +688,46 @@ class EditorState {
     const ref = this.sets.find((s) => s.root === 'projects' && s.name === name);
     if (ref) await this.openSet(ref);
     this.flash(`imported ${allScenes.length} scene(s) from ${files.length} .loo file(s) into ${name}`);
+  }
+
+  /** Import an OGraf graphic folder from a local disk path into a set. */
+  async importOgrafSet(ografDir: string, setName: string): Promise<void> {
+    if (!ografDir.trim() || !setName.trim()) return;
+    // create the set if it doesn't exist
+    if (!this.sets.some((s) => s.root === 'projects' && s.name === setName)) {
+      this.status = `creating set "${setName}"…`;
+      const cr = await fetch('/api/set/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: setName }),
+      });
+      if (!cr.ok) {
+        const err = (await cr.json()) as Record<string, unknown>;
+        this.flash(`CREATE FAILED: ${err['error'] ?? cr.status}`);
+        return;
+      }
+    }
+    this.status = 'importing OGraf…';
+    try {
+      const res = await fetch('/api/set/import-ograf', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: 'projects', name: setName, ografDir }),
+      });
+      const r = (await res.json()) as Record<string, unknown>;
+      if (!res.ok) {
+        this.flash(`OGRAF IMPORT FAILED: ${r['error'] ?? res.status}`);
+        return;
+      }
+      for (const w of (r['warnings'] as string[]) ?? []) console.warn(`ograf: ${w}`);
+      this.ografImportDialogOpen = false;
+      await this.loadSets();
+      const ref = this.sets.find((s) => s.root === 'projects' && s.name === setName);
+      if (ref) await this.openSet(ref);
+      this.flash(`imported OGraf → ${r['scene']} (${(r['sceneFile'] as string) ?? '?'})`);
+    } catch (err) {
+      this.flash(`OGRAF IMPORT FAILED: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   /** Upload asset files into the open set; fonts are auto-registered. */
@@ -1132,9 +1223,14 @@ class EditorState {
     if (!layer) return;
     if (layer.element.key) this.setElementKey(id, value);
     else {
+      const oldName = layer.name;
       this.mutate('rename layer', (scene) => {
         const l = scene.composition.layers.find((x) => x.id === id);
-        if (l) l.name = value;
+        if (!l) return;
+        l.name = value;
+        // Auto-set isGuide when named "reference" (case-insensitive)
+        if (/^reference$/i.test(value)) l.isGuide = true;
+        else if (oldName && /^reference$/i.test(oldName)) l.isGuide = undefined;
       });
     }
   }
@@ -1505,17 +1601,60 @@ class EditorState {
     });
   }
 
+  /** All data-binding keys in the current scene. */
+  getSceneKeys(): { field: string; value: string; ftype: string }[] {
+    if (!this.scene) return [];
+    const byKey = new Map<string, { value: string; ftype: string }>();
+    for (const layer of this.scene.composition.layers) {
+      const el = layer.element as { key?: string; content?: string; type: string };
+      if (!el.key) continue;
+      const ftype = el.type === 'imageLoader' ? 'filelist' 
+        : el.type === 'image' ? 'hidden'
+        : 'textfield';
+      const value = el.type === 'text' ? (el.content ?? '') : '';
+      byKey.set(el.key, { 
+        value: this.scene.previewData?.[el.key] ?? value,
+        ftype,
+      });
+    }
+    return [...byKey.entries()].map(([field, info]) => ({
+      field,
+      value: info.value,
+      ftype: info.ftype,
+    }));
+  }
+
+  /** Load saved SPX field configuration from localStorage. */
+  loadSpxFields(): { field: string; ftype: string; title: string; value: string }[] {
+    const key = `riposte.spxFields.${this.setRef?.name ?? ''}.${this.sceneFile ?? ''}`;
+    try {
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Save SPX field configuration to localStorage. */
+  saveSpxFields(fields: { field: string; ftype: string; title: string; value: string }[]): void {
+    const key = `riposte.spxFields.${this.setRef?.name ?? ''}.${this.sceneFile ?? ''}`;
+    localStorage.setItem(key, JSON.stringify(fields));
+  }
+
   /** Build CasparCG templates into the set's own export/ folder (incremental). */
-  async exportSet(): Promise<void> {
+  async exportSet(outDir?: string, spxFields?: { field?: string; ftype: string; title?: string; value?: string }[]): Promise<void> {
     if (!this.setRef) return;
     const saved = await this.saveAll();
     if (saved) this.flash(`saved ${saved} scene(s) with unsaved edits`);
     this.flash('exporting…');
     try {
+      const body: Record<string, unknown> = { root: this.setRef.root, name: this.setRef.name };
+      if (outDir) body['outDir'] = outDir;
+      if (spxFields) body['spxFields'] = spxFields;
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ root: this.setRef.root, name: this.setRef.name }),
+        body: JSON.stringify(body),
       });
       const r = await res.json();
       if (!res.ok) throw new Error(r.error ?? `server responded ${res.status}`);
@@ -1525,6 +1664,10 @@ class EditorState {
           `${r.assetsCopied} assets copied (${r.assetsUpToDate} up to date, ${mb} MB total)`,
       );
       if (r.warnings?.length) console.warn('export warnings', r.warnings);
+      if (outDir) {
+        localStorage.setItem('riposte.exportDir', outDir);
+        this.exportDialogOpen = false;
+      }
       this.reportContract(r.contract);
     } catch (err) {
       this.flash(`EXPORT FAILED: ${err instanceof Error ? err.message : err}`);
@@ -1553,6 +1696,12 @@ class EditorState {
 
   /** The Deploy button opens the dialog (target dir + force option). */
   deployDialogOpen = $state(false);
+
+  /** Export dialog — target folder selection for every export. */
+  exportDialogOpen = $state(false);
+
+  /** OGraf import dialog — folder path picker. */
+  ografImportDialogOpen = $state(false);
 
   deploySet(): void {
     if (!this.setRef) return;

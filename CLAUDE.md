@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Riposte is a local, standalone studio for designing and exporting CasparCG HTML graphic templates. It replaces Loopic (a cloud editor whose exports bake every asset into one 8–23 MB base64 HTML file). It is used to author the fencing broadcast graphics that the sibling **TV-Grafik** repo's ControlCenter drives on air.
+Riposte is a local, standalone studio for designing and exporting CasparCG HTML graphic templates. It also exports to SPX (CasparCG HTML with embedded SPXGCTemplateDefinition) and OGraf (EBU standard). It replaces Loopic (a cloud editor whose exports bake every asset into one 8–23 MB base64 HTML file). It is used to author the fencing broadcast graphics that the sibling **TV-Grafik** repo's ControlCenter drives on air.
 
 **Core principle: the runtime is the product; the editor is a client of it.** One zero-dependency engine (`@riposte/runtime`, built to a single `riposte.js` IIFE) renders a `scene.json` via DOM+CSS and implements the CasparCG template contract. The editor's preview canvas, the bench, and the on-air template all run that exact engine, so WYSIWYG holds by construction.
 
@@ -18,8 +18,8 @@ TypeScript ESM monorepo (npm workspaces, Node ≥ 24 — server/importer/mcp run
 |---|---|
 | `packages/shared` | Scene/set format types (`src/scene.ts`, `src/set.ts`), `trimToContent` |
 | `packages/runtime` | The rendering engine — zero deps, esbuild → `dist/riposte.js` (IIFE) |
-| `packages/importer` | Loopic `.loo` (primary) + Loopic HTML-export (fallback) → set projects; script→binding migrator |
-| `packages/exporter` | Set project → CasparCG templates (`external` default / `baked` fallback), `syncDir` for deploy |
+| `packages/importer` | Loopic `.loo` (primary) + Loopic HTML-export (fallback) + OGraf import → set projects; script→binding migrator |
+| `packages/exporter` | Set project → CasparCG templates (`external` default / `baked` fallback) + SPX (CasparCG HTML with embedded SPXGCTemplateDefinition) + OGraf (EBU manifest + graphic.mjs); `syncDir` for deploy |
 | `packages/server` | Node server on **:5720** — bench at `/`, file/project/asset HTTP API, SSE (`src/index.ts`, single file) |
 | `packages/editor` | Svelte 5 + Vite UI on **:5719** (proxies to :5720). State: `src/lib/state.svelte.ts`; panels: Sidebar/Stage/Timeline/Inspector |
 | `packages/mcp` | MCP server (`riposte`, stdio) — semantic tools over the HTTP API |
@@ -50,7 +50,7 @@ subjects; the zip ships it), then `npm run dist`.
 
 `npm run dist` packs a folder that runs anywhere with only a Node.js LTS install: the esbuild-bundled `server.js` (no native TS → no Node-24 requirement, no npm install), the built editor, runtime, bench/playout, the demo set, an empty `projects/`, and `start.cmd`/`start.sh` (run `node server.js --open`). **Packaged layout is auto-detected** (a `public/` dir next to `server.js`): the editor is then served at `/` and the bench moves to `/bench`; in the dev repo, `/` stays the bench (bench-shot.ps1 and A/B tooling depend on that) and the editor stays on vite. `RIPOSTE_PROJECTS_DIR` / `RIPOSTE_EXAMPLES_DIR` override the set roots in both modes. Recipients share sets by copying folders into `projects/`.
 
-CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html <set-dir> <export.html>`, `riposte-migrate <set-dir>`, `riposte-export <set-dir> [outDir] [--baked]`, `riposte-mcp`.
+CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html <set-dir> <export.html>`, `riposte-import-ograf <set-dir> <ograf-dir>`, `riposte-migrate <set-dir>`, `riposte-export <set-dir> [outDir] [--baked]`, `riposte-mcp`.
 
 ### Dev server rules
 
@@ -97,7 +97,55 @@ Types in `packages/shared/src/scene.ts` + `set.ts`. `SceneDoc { formatVersion, n
 
 ## CasparCG Contract
 
-Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `update` accepts **both** JSON and `<templateData><componentData…>` XML (ControlCenter sends XML). Play runs to the first `pause` marker; `next` resumes past it; `stop` plays from the `outro` marker to the end. Export modes: `external` (default — ~70 KB HTML shell + shared `assets/` incl. `riposte.js`; only referenced assets copied) and `baked` (single file, compat fallback). Export dir: `projects/<Set>/export`. **Deploy** (editor button / `deploy_set`) = export + additive `syncDir` into the CasparCG template dir — it never deletes foreign files.
+Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `update` accepts **both** JSON and `<templateData><componentData…>` XML (ControlCenter sends XML). Play runs to the first `pause` marker; `next` resumes past it; `stop` plays from the `outro` marker to the end. Export modes (set per-set in **Set Options**): `external` (default — ~70 KB HTML shell + shared `assets/` incl. `riposte.js`; only referenced assets copied), `baked` (single file, compat fallback), `spx` (like external but each HTML shell carries an embedded `window.SPXGCTemplateDefinition` that maps data-binding keys to SPX controller UI fields), and `ograf` (EBU standard: per-scene folder with `*.ograf.json` manifest + `graphic.mjs` bridge custom element wrapping the Riposte runtime). Export dir is chosen per-export via a dialog (target folder text input). **Deploy** (editor button / `deploy_set`) = export + additive `syncDir` into the CasparCG template dir — it never deletes foreign files.
+
+## SPX Export
+
+SPX exports are CasparCG HTML templates (same as `external` mode) with an additional `<script>` block in `<head>` that sets `window.SPXGCTemplateDefinition`. SPX's controller parses this with JSDOM to discover what update-data fields a template accepts and how to present them in its UI.
+
+- **DataField generation**: each element with a `key` becomes a field definition. Text elements → `"textfield"`, image loaders → `"filelist"`, visibility bindKeys → `"dropdown"` with on/off items. Default values come from `previewData`.
+- **`out` field**: scenes with pause/outro markers → `"manual"`; fire-and-forget scenes → auto-computed duration in milliseconds.
+- **`steps`**: count of `pause` markers + 1 (SPX shows step controls for multi-step graphics).
+- **No runtime changes needed**: Riposte's `boot()` already registers `window.update()`/`play()`/`stop()`/`next()` — SPX calls these directly. No hidden divs or `spx_interface.js` bridge required.
+- Code: `packages/exporter/src/spx-def.ts`; injected via `spxShell()` in `packages/exporter/src/index.ts`.
+
+## OGraf Export
+
+OGraf (EBU standard) exports are per-scene self-contained folders containing a manifest and a bridge `graphic.mjs` ES module.
+
+- **Output structure**: `<name>/<name>.ograf.json` + `graphic.mjs` + `riposte.js` + `scene.json` + `assets/`.
+- **Manifest**: generated from scene metadata — id (slugified name), schema (JSON Schema from data-binding keys), stepCount (pause markers), actionDurations (frame counts → ms), renderRequirements (canvas size + fps).
+- **Bridge `graphic.mjs`**: an ES module exporting a custom `HTMLElement` that wraps the Riposte runtime via `createRuntime()`. Maps the OGraf lifecycle:
+  - `load({data, renderType})` → loads `riposte.js` via `<script>`, creates content root, calls `createRuntime(scene, root, opts)`, applies initial data.
+  - `playAction({goto, delta})` → maps OGraf step model to Riposte pause markers. `goto:0` → `runtime.play()`, `delta:1` → `runtime.next()`.
+  - `stopAction()` → `runtime.stop()`, resolves when outro completes (via `useOnStop` middleware).
+  - `updateAction({data})` → `runtime.update(data)`.
+  - `customAction({id, payload})` → `runtime.invoke(id, payload)`.
+  - `dispose()` → `runtime.destroy()`, clears DOM.
+- Code: `packages/exporter/src/ograf-export.ts`.
+
+## OGraf Import
+
+Imports an OGraf graphic folder from a local disk path into a Riposte set.
+
+- **Manifest parsing**: finds `*.ograf.json` → extracts name, id, schema (→ previewData), custom actions, stepCount (→ approximate pause markers).
+- **Moderate code analysis of `graphic.mjs`**: regex-based extraction of `createElement()` (→ element types), inline styles (→ position/color/font), `innerText`/`textContent` (→ default values), GSAP tweens (→ approximate keyframes), image refs (→ asset paths).
+- **Conversion to SceneDoc**: each detected element → a Riposte layer (text, rectangle, image). Nested elements become separate layers. GSAP hints become keyframes on style properties.
+- **Assets**: `lib/` contents copied into set's `assets/` via content-hash dedup (`AssetPool`).
+- **Limitations**: inherently lossy — imperative code cannot be perfectly converted to declarative data. Complex logic, Canvas/WebGL, and external library behavior are flagged as warnings.
+- **Editor UI**: "+ OGraf" button in sidebar opens a dialog with a folder path text input + set name. Server reads the path directly (no upload — local filesystem access).
+- **Server endpoint**: `POST /api/set/import-ograf` with `{ root, name, ografDir }`.
+- CLI: `riposte-import-ograf <set-dir> <ograf-dir>`.
+- Code: `packages/importer/src/import-ograf.ts`.
+
+## Export Dialog
+
+The Export button in the header now opens a dialog (instead of exporting immediately). The dialog shows:
+
+- **Current export mode** (from Set Options, read-only display).
+- **Target directory** — free-form text input, persisted in localStorage as `riposte.exportDir`. Defaults to the set's own `export/` folder when empty.
+- On confirm: `POST /api/export` with `outDir` parameter → server writes to the chosen directory.
+- Code: `packages/editor/src/lib/ExportDialog.svelte`.
 
 ## Design Rules (user-established — do not violate)
 

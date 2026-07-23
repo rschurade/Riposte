@@ -237,5 +237,5 @@ function withExt(name: string, fileType: string | undefined): string {
 }
 
 function sanitizeDir(name: string): string {
-  return name.replace(/[<>:"/\\|?*\s]/g, '_');
+  return name.replace(/[<>:"/\\|?*\s]+/g, '_');
 }

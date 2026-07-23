@@ -87,6 +87,7 @@ export interface LooElement {
   // IMAGE / IMAGE_SEQUENCE
   imageResourceId?: string;
   imageSequenceResourceId?: string;
+  svgResourceId?: string;
   imageIds?: string[];
   // IMAGE_LOADER
   size?: string; // fit mode: original|contain|cover|stretch|...

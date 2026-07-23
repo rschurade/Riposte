@@ -12,7 +12,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { mkdir, readFile, readdir, stat, writeFile, unlink, rename, rmdir } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile, unlink, rename, rmdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -20,7 +20,7 @@ import { join, resolve, extname, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { exportSet, syncDir, checkContract, type ContractReport } from '@riposte/exporter';
-import { importLoo } from '@riposte/importer';
+import { importLoo, importOgraf } from '@riposte/importer';
 import { startAmcp, getAmcpState, setAmcpPorts } from './amcp.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -104,6 +104,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/assets') return apiAssets(url, res);
   if (path === '/api/set/create' && req.method === 'POST') return apiCreateSet(req, res);
   if (path === '/api/set/import-loo' && req.method === 'POST') return apiImportLoo(url, req, res);
+  if (path === '/api/set/import-ograf' && req.method === 'POST') return apiImportOgraf(req, res);
+  if (path === '/api/set/delete' && req.method === 'POST') return apiDeleteSet(req, res);
+  if (path === '/api/set/duplicate' && req.method === 'POST') return apiDuplicateSet(req, res);
   if (path === '/api/assets/upload' && req.method === 'POST') return apiUploadAsset(url, req, res);
   if (path === '/api/scene' && req.method === 'PUT') return apiSaveScene(req, res);
   if (path === '/api/scene/create' && req.method === 'POST') return apiCreateScene(req, res);
@@ -338,12 +341,12 @@ async function apiDeletePreset(req: IncomingMessage, res: ServerResponse): Promi
 
 /** Export a set to CasparCG templates. Default target: <set-dir>/export. */
 async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked'; outDir?: string };
+  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked' | 'ograf' | 'spx'; outDir?: string; spxFields?: { field?: string; ftype: string; title?: string; value?: string }[] };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const setDir = setDirOf(url);
   // relative paths resolve against the repo root, not the server CWD
   const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(setDir, 'export');
-  const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode } : {});
+  const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode, spxFields: body.spxFields } : {});
   return json(res, { ...result, contract: await runContractChecks(setDir) });
 }
 
@@ -409,7 +412,7 @@ async function apiContractConfig(req: IncomingMessage, res: ServerResponse): Pro
  * the target dir has and the export doesn't.
  */
 async function apiDeploy(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; targetDir: string; mode?: 'external' | 'baked'; force?: boolean };
+  const body = (await readBody(req)) as { root: string; name: string; targetDir: string; mode?: 'external' | 'baked' | 'ograf' | 'spx'; force?: boolean };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const setDir = setDirOf(url);
   const targetDir = resolve(repoRoot, (body.targetDir ?? '').trim());
@@ -451,7 +454,7 @@ async function apiSetSettings(req: IncomingMessage, res: ServerResponse): Promis
   const e = body.export ?? {};
   const patch: Record<string, unknown> = {};
   if (e.mode !== undefined) {
-    if (e.mode !== 'external' && e.mode !== 'baked') throw Object.assign(new Error('bad mode'), { status: 400 });
+    if (e.mode !== 'external' && e.mode !== 'baked' && e.mode !== 'ograf' && e.mode !== 'spx') throw Object.assign(new Error('bad mode'), { status: 400 });
     patch['mode'] = e.mode;
   }
   if (e.preloadAssets !== undefined) patch['preloadAssets'] = !!e.preloadAssets;
@@ -497,7 +500,59 @@ async function apiCreateSet(req: IncomingMessage, res: ServerResponse): Promise<
   const set = { formatVersion: 1, name, scenes: [], components: [], fonts: [] };
   await writeFile(join(dir, 'set.json'), JSON.stringify(set, null, 2) + '\n', 'utf8');
   await seedStockPresets(dir); // every new set starts with the stock intros/outros
+  broadcast('set-created', { root: 'projects', name });
   return json(res, { ok: true, name });
+}
+
+/** Delete a set folder entirely. Only allowed for sets in projects/ (not examples/). */
+async function apiDeleteSet(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string };
+  if (body.root !== 'projects') throw Object.assign(new Error('can only delete sets in projects/'), { status: 400 });
+  const dir = join(projectsDir, body.name);
+  try {
+    await stat(join(dir, 'set.json'));
+  } catch {
+    throw Object.assign(new Error(`set "${body.name}" not found`), { status: 404 });
+  }
+  await rm(dir, { recursive: true, force: true });
+  broadcast('set-deleted', { root: body.root, name: body.name });
+  return json(res, { ok: true });
+}
+
+/** Duplicate a set under a new name. Copies to projects/<newName>/. */
+async function apiDuplicateSet(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; newName: string };
+  const newName = (body.newName ?? '').trim();
+  if (!/^[\w .()-]+$/.test(newName) || !newName) {
+    throw Object.assign(new Error('bad set name'), { status: 400 });
+  }
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const srcDir = setDirOf(url);
+  const dstDir = join(projectsDir, newName);
+  try {
+    await stat(join(dstDir, 'set.json'));
+    throw Object.assign(new Error(`set "${newName}" already exists`), { status: 409 });
+  } catch (err) {
+    if ((err as { status?: number }).status === 409) throw err;
+  }
+  await copyDir(srcDir, dstDir);
+  // Update the set name in the copied set.json
+  const set = JSON.parse(await readFile(join(dstDir, 'set.json'), 'utf8')) as { name: string };
+  set.name = newName;
+  await writeFile(join(dstDir, 'set.json'), JSON.stringify(set, null, 2) + '\n', 'utf8');
+  broadcast('set-created', { root: 'projects', name: newName });
+  return json(res, { ok: true, name: newName });
+}
+
+/** Recursive directory copy for set duplication. */
+async function copyDir(src: string, dst: string): Promise<void> {
+  await mkdir(dst, { recursive: true });
+  for (const entry of await readdir(src, { withFileTypes: true })) {
+    const s = join(src, entry.name);
+    const d = join(dst, entry.name);
+    if (entry.isDirectory()) await copyDir(s, d);
+    else await writeFile(d, await readFile(s));
+  }
 }
 
 /**
@@ -527,6 +582,31 @@ async function apiImportLoo(url: URL, req: IncomingMessage, res: ServerResponse)
   } finally {
     await unlink(tmp).catch(() => {});
   }
+}
+
+/**
+ * Import an OGraf graphic folder from a local disk path.
+ * Body: { root, name, ografDir } — server reads the folder directly (no upload).
+ */
+async function apiImportOgraf(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; ografDir: string };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const dir = setDirOf(url);
+  const ografDir = (body.ografDir ?? '').trim();
+  if (!ografDir) throw Object.assign(new Error('ografDir required'), { status: 400 });
+  try {
+    if (!(await stat(ografDir)).isDirectory()) throw new Error();
+  } catch {
+    throw Object.assign(new Error(`not a folder: ${ografDir}`), { status: 400 });
+  }
+  const r = await importOgraf(ografDir, dir);
+  return json(res, {
+    ok: true,
+    scene: r.scene,
+    sceneFile: r.sceneFile,
+    warnings: r.warnings,
+    assets: { written: r.assetReport.written.length, deduplicated: r.assetReport.deduplicated.length },
+  });
 }
 
 const FONT_EXT_RE = /\.(ttf|otf|woff2?)$/i;

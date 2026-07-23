@@ -5,6 +5,8 @@
   import Inspector from './lib/Inspector.svelte';
   import SetOptions from './lib/SetOptions.svelte';
   import DeployDialog from './lib/DeployDialog.svelte';
+  import ExportDialog from './lib/ExportDialog.svelte';
+  import OgrafImportDialog from './lib/OgrafImportDialog.svelte';
   import PresetFx from './lib/PresetFx.svelte';
   import { ed } from './lib/state.svelte.ts';
 
@@ -152,7 +154,7 @@
     <button onclick={() => ed.undo()} title="Ctrl+Z">↶</button>
     <button onclick={() => ed.redo()} title="Ctrl+Y">↷</button>
     <button class="primary" onclick={() => ed.save()} disabled={!ed.dirty} title="Ctrl+S">Save</button>
-    <button onclick={() => ed.exportSet()} disabled={!ed.setRef} title="Build CasparCG templates into the set's export folder (incremental)">Export</button>
+    <button onclick={() => { ed.exportDialogOpen = true; }} disabled={!ed.setRef} title="Build templates into a chosen directory (incremental)">Export</button>
     <button onclick={() => ed.deploySet()} disabled={!ed.setRef} title="Export + copy changed files into the CasparCG template directory">Deploy</button>
     <button onclick={() => window.open('/playout.html', 'riposte-playout')} title="Open the virtual CasparCG output (ControlCenter connects to ports 6250/6251)">Playout</button>
   </header>
@@ -187,6 +189,8 @@
 
 <SetOptions />
 <DeployDialog />
+<ExportDialog />
+<OgrafImportDialog />
 <PresetFx />
 
 <style>

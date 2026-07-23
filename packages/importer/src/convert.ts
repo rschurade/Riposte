@@ -170,6 +170,11 @@ async function convertElement(loo: LooElement, ctx: Ctx, where: string, frameOff
       if (loo.autoPlay) el.autoPlay = true;
       return el;
     }
+    case 'SVG': {
+      const asset = loo.svgResourceId ? await ctx.resolve.image(loo.svgResourceId) : '';
+      if (!asset) ctx.warnings.push(`${where}: SVG without resolvable resource`);
+      return { ...base, type: 'image', asset };
+    }
     default:
       ctx.warnings.push(`${where}: unsupported element type ${loo.type} — imported as hidden placeholder`);
       return { ...base, type: 'rectangle' };
@@ -260,13 +265,22 @@ function convertStyle(loo: LooElement, ctx: Ctx, where: string, off: number): El
   }
 
   const br = loo.borderRadiusProperties;
-  if (br && isMeaningful(br['radius'], 0)) {
-    style.borderRadius = prop(br['radius'], 0, off);
-    for (const corner of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) {
-      if (isMeaningful(br[corner], 0)) {
-        ctx.warnings.push(`${where}: per-corner border radius not supported — uniform radius used`);
-        break;
-      }
+  if (br) {
+    const syncRadius = br['syncRadius']?.value !== false;
+    const tl = numberValue(br['topLeftRadius'], 0);
+    const tr = numberValue(br['topRightRadius'], 0);
+    const bl = numberValue(br['bottomLeftRadius'], 0);
+    const brv = numberValue(br['bottomRightRadius'], 0);
+    const hasPerCorner = !syncRadius && (tl !== 0 || tr !== 0 || bl !== 0 || brv !== 0);
+
+    if (hasPerCorner) {
+      style.borderRadius = { value: `${tl} ${tr} ${brv} ${bl}` };
+      if (tl > 0) (style as Record<string, unknown>)['borderTopLeftRadius'] = { value: tl };
+      if (tr > 0) (style as Record<string, unknown>)['borderTopRightRadius'] = { value: tr };
+      if (bl > 0) (style as Record<string, unknown>)['borderBottomLeftRadius'] = { value: bl };
+      if (brv > 0) (style as Record<string, unknown>)['borderBottomRightRadius'] = { value: brv };
+    } else if (isMeaningful(br['radius'], 0)) {
+      style.borderRadius = prop(br['radius'], 0, off);
     }
   }
 
@@ -327,8 +341,13 @@ function applyTextProperties(el: TextElement, loo: LooElement, style: ElementSty
 
   const color = colorValue(tp['color'] as LooColorProperty | undefined);
   if (color) style['color'] = { value: color, unit: 'color' };
-  const bg = colorValue(tp['backgroundColor'] as LooColorProperty | undefined);
-  if (bg && !isTransparent(bg)) style['backgroundColor'] = { value: bg, unit: 'color' };
+  // Check for backgroundColor — Loopic text properties may store it as LooColorProperty
+  const bgProp = tp['backgroundColor'] as Record<string, unknown> | undefined;
+  if (bgProp) {
+    const inner = (bgProp['color'] ?? bgProp) as Record<string, unknown> | undefined;
+    const v = inner?.['value'] as string | undefined;
+    if (v && !isTransparent(v)) style['backgroundColor'] = { value: v, unit: 'color' };
+  }
 
   const tsh = loo.textShadowProperties;
   if (tsh) {
@@ -394,5 +413,6 @@ function colorValue(c: LooColorProperty | undefined): string | undefined {
 
 function isTransparent(color: string): boolean {
   const c = color.replace(/\s/g, '').toLowerCase();
-  return c === 'transparent' || c === '#ffffff00' || /^#.{6}00$/.test(c) || /,0\)$/.test(c);
+  return c === 'transparent' || c === '#ffffff00' || /^#.{6}00$/.test(c)
+    || (c.startsWith('rgba(') && c.endsWith(',0)'));
 }

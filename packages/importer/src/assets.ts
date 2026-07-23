@@ -104,5 +104,8 @@ function withHashSuffix(rel: string, hash: string): string {
 /** Decode a Loopic resource `content` field (data URI or raw base64). */
 export function decodeContent(content: string): Buffer {
   const comma = content.startsWith('data:') ? content.indexOf(',') : -1;
-  return Buffer.from(comma >= 0 ? content.slice(comma + 1) : content, 'base64');
+  const raw = comma >= 0 ? content.slice(comma + 1) : content;
+  // Detect non-base64 content (e.g. raw SVG XML)
+  if (raw.trimStart().startsWith('<')) return Buffer.from(raw, 'utf8');
+  return Buffer.from(raw, 'base64');
 }

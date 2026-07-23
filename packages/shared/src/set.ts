@@ -37,7 +37,7 @@ export interface ExportSettings {
    * 'external' — HTML shells + shared assets folder (default deployment).
    * 'baked'    — self-contained single-file HTML per scene (compatibility).
    */
-  mode: 'external' | 'baked';
+  mode: 'external' | 'baked' | 'ograf' | 'spx';
   /**
    * Fetch every referenced asset at template load, before first play —
    * prevents asset-load flash on the first ADD after a server restart.

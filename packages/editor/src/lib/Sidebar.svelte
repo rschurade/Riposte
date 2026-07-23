@@ -249,12 +249,15 @@
   <h2 class="hrow">
     <button class="linkish" onclick={() => toggle('sets')}>{collapsed.sets ? '▸' : '▾'} Sets</button>
     <button class="hbtn wide" title="Import Loopic .loo project files into a new or existing set" onclick={() => looInput?.click()}>+ .loo</button>
+    <!-- OGraf importer not production-ready yet
+    <button class="hbtn wide" title="Import an OGraf graphic folder from disk" onclick={() => { ed.ografImportDialogOpen = true; }}>+ OGraf</button>
+    -->
     <button class="hbtn" title="New empty set" onclick={() => ed.createSet()}>+</button>
   </h2>
   {#if !collapsed.sets}
     <ul class="sets">
       {#each ed.sets as s (s.root + s.name)}
-        <li>
+        <li class="set-row">
           <button
             class:active={ed.setRef?.root === s.root && ed.setRef?.name === s.name}
             title="Click to open the set (pick a scene below) — double-click for set options"
@@ -264,6 +267,10 @@
             {s.name}
             <span class="dim">{s.root === 'examples' ? 'demo' : ''}</span>
           </button>
+          {#if s.root === 'projects'}
+            <button class="rowbtn" title="Duplicate set" onclick={(e) => { e.stopPropagation(); void ed.duplicateSet(s); }}>⧉</button>
+            <button class="rowbtn remove" title="Delete set" onclick={(e) => { e.stopPropagation(); void ed.deleteSet(s); }}>✕</button>
+          {/if}
         </li>
       {/each}
     </ul>
@@ -524,6 +531,19 @@
   .scene-row .rowbtn:hover { color: #cfd3da; background: #23262e; }
   .scene-row .remove { color: #a55; }
   .scene-row .remove:hover { color: #e07777; background: #2a2020; }
+  .set-row { display: flex; align-items: center; }
+  .set-row .rowbtn {
+    display: none;
+    flex: none;
+    width: 22px;
+    padding: 2px;
+    color: #8a8f98;
+    text-align: center;
+  }
+  .set-row:hover .rowbtn { display: block; }
+  .set-row .rowbtn:hover { color: #cfd3da; background: #23262e; }
+  .set-row .remove { color: #a55; }
+  .set-row .remove:hover { color: #e07777; background: #2a2020; }
   /* Hidden scenes (visible while "show all" is on): ghosted, eye always shown. */
   .scene-row.ghosted > button:first-of-type { color: #676c76; }
   .scene-row .eye.off { display: block; opacity: 0.5; }

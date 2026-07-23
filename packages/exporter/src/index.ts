@@ -15,20 +15,26 @@ import { copyFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/pro
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { OutroPreset, SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
+import { generateSpxDef, spxDefScript } from './spx-def.ts';
+import { exportOgraf } from './ograf-export.ts';
+import { webpAvailable, webpCached, type WebpStats } from './webp.ts';
 
 export { checkContract, collectSceneKeys, type ContractReport, type ContractSceneReport } from './contract.ts';
-import { webpAvailable, webpCached, type WebpStats } from './webp.ts';
 export { webpAvailable, type WebpStats } from './webp.ts';
+export { generateSpxDef, spxDefScript, type SpxDataField, type SpxTemplateDefinition } from './spx-def.ts';
+export { exportOgraf, type OgrafExportResult } from './ograf-export.ts';
 
 export interface ExportOptions {
-  mode?: 'external' | 'baked';
+  mode?: 'external' | 'baked' | 'ograf' | 'spx';
   /** Path to the runtime IIFE; defaults to the workspace build. */
   runtimeJs?: string;
+  /** Pre-configured SPX DataFields (user-edited); bypasses auto-detection. */
+  spxFields?: { field?: string; ftype: string; title?: string; value?: string }[];
 }
 
 export interface ExportResult {
   outDir: string;
-  mode: 'external' | 'baked';
+  mode: 'external' | 'baked' | 'ograf' | 'spx';
   scenes: string[];
   /** Scenes whose HTML actually changed on disk this run. */
   scenesUpdated: string[];
@@ -193,6 +199,33 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
   };
 
   await mkdir(outDir, { recursive: true });
+
+  // OGraf mode: each scene becomes its own self-contained OGraf graphic folder
+  if (mode === 'ograf') {
+    const ografScenes: string[] = [];
+    let totalAssets = 0;
+    for (const file of set.scenes) {
+      const doc = await readScene(file);
+      if (!doc) continue;
+      const sceneComponents: Record<string, SceneDoc> = {};
+      collectComponents(doc, components, sceneComponents, warnings);
+      const r = await exportOgraf(doc, file, sceneComponents, set, setDir, outDir);
+      ografScenes.push(r.name);
+      totalAssets += r.assetsCopied;
+    }
+    return {
+      outDir,
+      mode,
+      scenes: ografScenes,
+      scenesUpdated: ografScenes,
+      assetsCopied: totalAssets,
+      assetsUpToDate: 0,
+      assetBytes: 0,
+      runtimeUpdated: false,
+      warnings,
+    };
+  }
+
   const scenes: string[] = [];
   const scenesUpdated: string[] = [];
   const allAssets = new Set<string>();
@@ -215,20 +248,34 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     const outro = doc.outro ? await readPreset('outros', doc.outro) : null;
     const intro = doc.intro ? await readPreset('intros', doc.intro) : null;
 
-    // external: refs rewritten to the re-encoded names; baked: original refs
-    // (assets become data URIs — only the bytes and mime change).
-    const html =
-      mode === 'external'
-        ? externalShell(
-            name,
-            rewriteRefs(doc),
-            webpOn ? Object.fromEntries(Object.entries(sceneComponents).map(([k, v]) => [k, rewriteRefs(v)])) : sceneComponents,
-            set,
-            preloadAssets ? [...assets].map(renameRef) : [],
-            outro,
-            intro,
-          )
-        : await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null, outro, intro);
+    // external / spx: refs rewritten to the re-encoded names; baked / ograf: original refs
+    // (assets become data URIs in baked mode — only the bytes and mime change).
+    let html: string;
+    if (mode === 'spx') {
+      html = spxShell(
+        name,
+        rewriteRefs(doc),
+        webpOn ? Object.fromEntries(Object.entries(sceneComponents).map(([k, v]) => [k, rewriteRefs(v)])) : sceneComponents,
+        set,
+        preloadAssets ? [...assets].map(renameRef) : [],
+        outro,
+        intro,
+        components,
+        opts.spxFields,
+      );
+    } else if (mode === 'external') {
+      html = externalShell(
+        name,
+        rewriteRefs(doc),
+        webpOn ? Object.fromEntries(Object.entries(sceneComponents).map(([k, v]) => [k, rewriteRefs(v)])) : sceneComponents,
+        set,
+        preloadAssets ? [...assets].map(renameRef) : [],
+        outro,
+        intro,
+      );
+    } else {
+      html = await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null, outro, intro);
+    }
 
     if (await writeIfChanged(join(outDir, `${name}.html`), html)) scenesUpdated.push(name);
     scenes.push(name);
@@ -238,7 +285,7 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
   let assetsUpToDate = 0;
   let assetBytes = 0;
   let runtimeUpdated = false;
-  if (mode === 'external') {
+  if (mode === 'external' || mode === 'spx') {
     await mkdir(join(outDir, 'assets'), { recursive: true });
     runtimeUpdated = await writeIfChanged(join(outDir, 'assets', 'riposte.js'), runtimeJs);
     const written = new Set<string>();
@@ -310,12 +357,12 @@ function inlineJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-function shellHtml(name: string, width: number, height: number, runtimeTag: string, bootScript: string): string {
+function shellHtml(name: string, width: number, height: number, runtimeTag: string, bootScript: string, headExtra = '', bodyPre = ''): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${name}</title>
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:${width}px;height:${height}px}</style>
-</head><body>
-${runtimeTag}
+${headExtra}</head><body>
+${bodyPre}${runtimeTag}
 <script>
 ${bootScript}
 </script>
@@ -358,6 +405,46 @@ function externalShell(
     scene.composition.height,
     '<script src="assets/riposte.js"></script>',
     bootScript(scene, components, fonts, preload, outro, intro),
+  );
+}
+
+function spxShell(
+  name: string,
+  scene: SceneDoc,
+  components: Record<string, SceneDoc>,
+  set: SetDoc,
+  preload: string[],
+  outro: OutroPreset | null,
+  intro: OutroPreset | null,
+  allComponents: Record<string, SceneDoc>,
+  spxFields?: { field?: string; ftype: string; title?: string; value?: string }[],
+): string {
+  const fonts = (set.fonts ?? []).map((f) => ({ family: f.family, url: f.file }));
+  const def = generateSpxDef(scene, allComponents, set, spxFields);
+  const base = bootScript(scene, components, fonts, preload, outro, intro);
+
+  // Hidden data divs: SPX writes textContent into elements matching DataField
+  // field names. The bridge below flushes them into riposte on play().
+  const dataFields = def.DataFields.filter((f) => f.field);
+  const spxDivs = dataFields.map((f) => `    <div id="${f.field}">${f.value ?? ''}</div>`).join('\n');
+  const bodyPre = spxDivs
+    ? `\n<div id="spxData" style="display:none">\n${spxDivs}\n</div>\n`
+    : '';
+
+  // Bridge: on play(), read hidden divs and forward to riposte.update().
+  // Also intercepts update() to keep hidden divs in sync both ways.
+  const spxBridge = spxDivs
+    ? `\n// SPX data bridge\n(function() {\n  var _origUpdate = window.update;\n  var _origPlay = window.play;\n  window.update = function(data) {\n    // Keep hidden divs in sync for SPX\n    var obj = typeof data === 'string' ? (data.trim()[0] === '<' ? data : JSON.parse(data)) : data;\n    if (obj && typeof obj === 'object') {\n      for (var k in obj) {\n        var el = document.getElementById(k);\n        if (el) el.textContent = typeof obj[k] === 'string' ? obj[k] : '';\n      }\n    }\n    if (_origUpdate) _origUpdate.call(window, data);\n  };\n  window.play = function() {\n    // Flush SPX hidden divs into riposte before playing\n    var divs = document.querySelectorAll('#spxData div[id]');\n    var data = {};\n    var dirty = false;\n    for (var i = 0; i < divs.length; i++) {\n      var d = divs[i];\n      var val = d.textContent || '';\n      if (val !== (d._spxPrev || '')) { dirty = true; d._spxPrev = val; }\n      if (val) data[d.id] = val;\n    }\n    if (dirty && _origUpdate) _origUpdate.call(window, data);\n    if (_origPlay) _origPlay.call(window);\n  };\n})();\n`
+    : '';
+
+  return shellHtml(
+    name,
+    scene.composition.width,
+    scene.composition.height,
+    '<script src="assets/riposte.js"></script>',
+    base + spxBridge,
+    spxDefScript(def),
+    bodyPre,
   );
 }
 

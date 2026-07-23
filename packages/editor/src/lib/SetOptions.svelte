@@ -2,7 +2,7 @@
   import { ed } from './state.svelte.ts';
 
   const e = $derived(ed.setRef?.export ?? {});
-  let mode = $state<'external' | 'baked'>('external');
+  let mode = $state<'external' | 'baked' | 'ograf' | 'spx'>('external');
   let preload = $state(true);
   let imageFormat = $state<'png' | 'webp'>('png');
   let webpQuality = $state<string>('92');
@@ -44,6 +44,8 @@
         <select id="so-mode" bind:value={mode}>
           <option value="external">external — shells + shared assets (default)</option>
           <option value="baked">baked — single-file HTML (compat)</option>
+          <option value="spx">SPX — external + SPXGCTemplateDefinition</option>
+          <option value="ograf">OGraf — manifest + graphic.mjs (EBU standard)</option>
         </select>
 
         <label for="so-preload">Preload assets</label>
