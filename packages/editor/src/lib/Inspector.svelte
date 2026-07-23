@@ -540,6 +540,13 @@
           checked={el.multiline ?? false}
           onchange={(e) => setElementField('multiline', (e.currentTarget as HTMLInputElement).checked || undefined)}
         />
+        <label for="in-autosize" title="Box auto-sizes to content width — width becomes minimum/maximum">Auto size</label>
+        <input
+          id="in-autosize"
+          type="checkbox"
+          checked={el.autoSize ?? false}
+          onchange={(e) => setElementField('autoSize', (e.currentTarget as HTMLInputElement).checked || undefined)}
+        />
         <label for="in-tabnums" title="Fixed-advance digits — scores/clocks don't jitter as digits change">Tab. nums</label>
         <input
           id="in-tabnums"
