@@ -103,9 +103,10 @@ Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `upd
 
 SPX exports are CasparCG HTML templates (same as `external` mode) with an additional `<script>` block in `<head>` that sets `window.SPXGCTemplateDefinition`. SPX's controller parses this with JSDOM to discover what update-data fields a template accepts and how to present them in its UI.
 
-- **DataField generation**: each element with a `key` becomes a field definition. Text elements → `"textfield"`, image loaders → `"filelist"`, visibility bindKeys → `"dropdown"` with on/off items. Default values come from `previewData`.
+- **DataField generation**: each element with a `key` becomes a field definition. Text elements → `"textfield"`, image loaders → `"filelist"`, visibility bindKeys → `"dropdown"` with on/off items. Default values come from `previewData` (falling back to element content).
+- **`dataformat: "json"`**: always emitted — SPX then delivers data via the global `spxData` object (not XML). A bridge script flushes `spxData` into `riposte.update()` on `play()` and `next()`; `window.update()` (CG UPDATE from CasparCG playout) passes straight through. Field names are the data keys 1:1 — no `f0/f1` translation.
 - **`out` field**: scenes with pause/outro markers → `"manual"`; fire-and-forget scenes → auto-computed duration in milliseconds.
-- **`steps`**: count of `pause` markers + 1 (SPX shows step controls for multi-step graphics).
+- **`steps`**: string, count of `pause` markers + 1 (SPX shows step controls for multi-step graphics).
 - **No runtime changes needed**: Riposte's `boot()` already registers `window.update()`/`play()`/`stop()`/`next()` — SPX calls these directly. No hidden divs or `spx_interface.js` bridge required.
 - Code: `packages/exporter/src/spx-def.ts`; injected via `spxShell()` in `packages/exporter/src/index.ts`.
 
@@ -114,14 +115,16 @@ SPX exports are CasparCG HTML templates (same as `external` mode) with an additi
 OGraf (EBU standard) exports are per-scene self-contained folders containing a manifest and a bridge `graphic.mjs` ES module.
 
 - **Output structure**: `<name>/<name>.ograf.json` + `graphic.mjs` + `riposte.js` + `scene.json` + `assets/`.
-- **Manifest**: generated from scene metadata — id (slugified name), schema (JSON Schema from data-binding keys), stepCount (pause markers), actionDurations (frame counts → ms), renderRequirements (canvas size + fps).
+- **Manifest**: generated from scene metadata — id (slugified name), schema (JSON Schema from data-binding keys: text content/previewData as defaults, imageLoader keys get a description, `_`-prefixed keys marked `hidden`, visibility bindKeys become `enum: ["0","1"]`), customActions (scanned from `useOnInvoke('name', …)` calls in scene/component action code), stepCount (pause markers), actionDurations (frame counts → ms), renderRequirements (canvas size + fps).
 - **Bridge `graphic.mjs`**: an ES module exporting a custom `HTMLElement` that wraps the Riposte runtime via `createRuntime()`. Maps the OGraf lifecycle:
   - `load({data, renderType})` → loads `riposte.js` via `<script>`, creates content root, calls `createRuntime(scene, root, opts)`, applies initial data.
-  - `playAction({goto, delta})` → maps OGraf step model to Riposte pause markers. `goto:0` → `runtime.play()`, `delta:1` → `runtime.next()`.
-  - `stopAction()` → `runtime.stop()`, resolves when outro completes (via `useOnStop` middleware).
-  - `updateAction({data})` → `runtime.update(data)`.
+  - `playAction({goto, delta, skipAnimation})` → maps OGraf step model to Riposte pause markers. Resolves when the playhead actually parks at the target pause (`runtime.onPaused`), not on a timer. `skipAnimation: true` → `play()` + instant `goTo(pauseFrame)`. Zero-step scenes (no pauses) play the full scene and resolve on end. Backward `goto` restarts from frame 0 and steps forward. Target ≥ stepCount transitions to the end.
+  - `stopAction({skipAnimation})` → `runtime.stop()`; resolves when the outro actually completes (`runtime.onEnded` — covers marker outro, preset outro, and instant-hide paths). `skipAnimation: true` → instant hide. No outro marker + parked at the last pause → `next()` plays the exit keyframes out naturally.
+  - `updateAction({data})` → `runtime.update(data)` (instant DOM mutation — no animation to skip).
   - `customAction({id, payload})` → `runtime.invoke(id, payload)`.
   - `dispose()` → `runtime.destroy()`, clears DOM.
+- **Runtime API additions** (used by the bridge, backward compatible with the CasparCG contract): `stop({ skipAnimation })` instant-hide option, `onPaused(cb)` / `onEnded(cb)` lifecycle listeners (fired on pause-marker parking and on every hide path: play end, marker outro, preset outro, instant stop).
+- Verification: `packages/exporter/test/ograf-lifecycle.mjs` drives the full EBU lifecycle in headless Chromium (Playwright): `node --experimental-strip-types packages/exporter/test/ograf-lifecycle.mjs <ograf-export-dir> <SceneName> [zero-step]`.
 - Code: `packages/exporter/src/ograf-export.ts`.
 
 ## OGraf Import

@@ -30,7 +30,8 @@ export interface SpxTemplateDefinition {
   webplayout: string;
   out: string;
   uicolor: string;
-  steps?: number;
+  dataformat: 'json' | 'xml';
+  steps?: string;
   DataFields: SpxDataField[];
 }
 
@@ -172,11 +173,12 @@ export function generateSpxDef(
     webplayout: '5',
     out,
     uicolor: '3',
+    dataformat: 'json',
     DataFields: dataFields,
   };
 
   if (pauseCount > 0) {
-    def.steps = pauseCount + 1;
+    def.steps = String(pauseCount + 1);
   }
 
   return def;

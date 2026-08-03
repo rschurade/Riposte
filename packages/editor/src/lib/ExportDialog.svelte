@@ -3,6 +3,7 @@
 
   let outDir = $state('');
   let busy = $state(false);
+  let expMode = $state<'external' | 'baked' | 'spx' | 'ograf'>('external');
 
   // SPX field configuration
   interface SpxFieldRow {
@@ -16,16 +17,27 @@
 
   const SPX_FTYPES = ['textfield', 'textarea', 'number', 'filelist', 'dropdown', 'instruction', 'hidden'];
 
+  // Seed the form when the dialog opens. Must NOT read expMode — reading it
+  // would make this effect depend on it, and every dropdown change would
+  // re-fire this effect and reset the user's selection back to the saved mode.
   $effect(() => {
     if (!ed.exportDialogOpen) return;
     outDir = localStorage.getItem('riposte.exportDir') ?? '';
     busy = false;
-    // Load SPX fields when mode is SPX
-    if ((ed.setRef?.export?.mode ?? 'external') === 'spx') {
+    expMode = ed.setRef?.export?.mode ?? 'external';
+  });
+
+  // React to mode dropdown changes (fires for the initial seed too).
+  $effect(() => {
+    if (!ed.exportDialogOpen) return;
+    loadSpxFields(expMode);
+  });
+
+  function loadSpxFields(mode: string): void {
+    if (mode === 'spx') {
       showSpxFields = true;
       const saved = ed.loadSpxFields();
       const keys = ed.getSceneKeys();
-      // Merge saved fields with scene keys (add new keys, keep saved config)
       const savedByField = new Map(saved.map((f) => [f.field, f]));
       spxFields = keys.map((k) => {
         const existing = savedByField.get(k.field);
@@ -40,11 +52,15 @@
       showSpxFields = false;
       spxFields = [];
     }
-  });
+  }
 
   async function doExport(): Promise<void> {
     if (!outDir.trim() || busy) return;
     busy = true;
+    // Save mode if changed from set settings
+    if (expMode !== (ed.setRef?.export?.mode ?? 'external')) {
+      await ed.saveSetSettings({ mode: expMode });
+    }
     if (showSpxFields) {
       ed.saveSpxFields(spxFields);
       await ed.exportSet(outDir.trim(), spxFields);
@@ -86,13 +102,13 @@
     <div class="dialog" role="dialog" aria-label="Export set" onclick={(ev) => ev.stopPropagation()}>
       <h2>{ed.setRef.name} <span class="dim">export</span></h2>
       <p class="meta">
-        Mode: <strong>{ed.setRef.export?.mode ?? 'external'}</strong>
-        {#if (ed.setRef.export?.mode ?? 'external') === 'spx'}
-          &mdash; CasparCG HTML shells with SPX template definition
-        {/if}
-        {#if (ed.setRef.export?.mode ?? 'external') === 'ograf'}
-          &mdash; OGraf manifest + graphic.mjs (EBU standard)
-        {/if}
+        <label for="ed-mode">Mode</label>
+        <select id="ed-mode" bind:value={expMode}>
+          <option value="external">external — shells + shared assets (default)</option>
+          <option value="baked">baked — single-file HTML (compat)</option>
+          <option value="spx">SPX — external + SPXGCTemplateDefinition</option>
+          <option value="ograf">OGraf — manifest + graphic.mjs (EBU standard)</option>
+        </select>
       </p>
 
       <label class="lbl" for="ed-target">Target directory</label>
@@ -140,12 +156,12 @@
       {/if}
 
       <p class="hint">
-        {#if (ed.setRef.export?.mode ?? 'external') === 'external'}
+        {#if expMode === 'external'}
           Writes HTML shells + shared assets folder. Only changed files are updated.
-        {:else if (ed.setRef.export?.mode ?? 'external') === 'spx'}
+          {:else if expMode === 'spx'}
           Each HTML shell carries an embedded SPXGCTemplateDefinition.
           Configure DataFields above to control what SPX shows in its controller UI.
-        {:else if (ed.setRef.export?.mode ?? 'external') === 'ograf'}
+          {:else if expMode === 'ograf'}
           Generates OGraf graphic: manifest + graphic.mjs + riposte.js + assets.
         {:else}
           Writes self-contained single-file HTML per scene.
@@ -186,7 +202,15 @@
   h2 { margin: 0 0 2px; font-size: 15px; }
   .dim { color: #8a8f98; font-weight: 400; font-size: 12px; }
   .meta { color: #8a8f98; font-size: 11px; margin: 0 0 14px; }
-  .meta strong { color: #d9a441; }
+  .meta label { margin-right: 6px; }
+  .meta select {
+    background: #23262e;
+    color: #e6e6e6;
+    border: 1px solid #383c46;
+    border-radius: 5px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
   .lbl { display: block; font-size: 12px; color: #aab; margin-bottom: 4px; }
   input[type='text'] {
     width: 100%;

@@ -48,8 +48,8 @@ export interface Runtime {
   /** Accepts JSON string/object or `<templateData>` XML (ControlCenter sends XML). */
   update(data: string | Record<string, unknown>): void;
   play(): void;
-  /** Plays from the outro marker to the end (hides immediately when no outro). */
-  stop(): void;
+  /** Plays from the outro marker to the end (hides immediately when no outro, or when skipAnimation). */
+  stop(opts?: { skipAnimation?: boolean }): void;
   /** Resumes past the current pause marker. */
   next(): void;
   invoke(name: string, ...args: unknown[]): unknown;
@@ -59,6 +59,11 @@ export interface Runtime {
   useOnStop(cb: StopMiddleware): void;
   useOnNext(cb: PlayMiddleware): void;
   useOnInvoke(name: string, cb: (...args: unknown[]) => unknown): void;
+
+  /** Listener (not middleware): playhead parked on a pause marker. */
+  onPaused(cb: (frame: number) => void): void;
+  /** Listener (not middleware): scene finished and hid (end of play/outro, or instant hide). */
+  onEnded(cb: () => void): void;
 
   readonly composition: CompositionApi;
   readonly templateData: Record<string, string>;
@@ -78,6 +83,26 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
   const invokables = new Map<string, (...args: unknown[]) => unknown>();
   const templateData: Record<string, string> = {};
   const flags = { play: false, update: false, stop: false, next: false };
+  const pausedListeners: ((frame: number) => void)[] = [];
+  const endedListeners: (() => void)[] = [];
+  const firePaused = (frame: number): void => {
+    for (const cb of pausedListeners) {
+      try {
+        cb(frame);
+      } catch (err) {
+        console.error('riposte: onPaused listener failed', err);
+      }
+    }
+  };
+  const fireEnded = (): void => {
+    for (const cb of endedListeners) {
+      try {
+        cb();
+      } catch (err) {
+        console.error('riposte: onEnded listener failed', err);
+      }
+    }
+  };
 
   // Hold clock: while the playhead is parked on a pause marker, loop layers
   // keep animating — advance their shared `hold` time and re-render the
@@ -117,9 +142,15 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
 
   const player = new Player(comp, {
     onFrame: (f) => built.setFrame(f),
-    onEnded: () => built.hide(),
+    onEnded: () => {
+      built.hide();
+      fireEnded();
+    },
     runAction: (source) => runAction(source),
-    onPaused: () => startHoldClock(),
+    onPaused: (f) => {
+      startHoldClock();
+      firePaused(f);
+    },
     onOutro: (f) => latchExit(f),
   });
   built.setFrame(0);
@@ -231,6 +262,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
       stopHoldClock();
       built.hide();
       clearOutroEffect(built.contentEl);
+      fireEnded();
     });
   };
 
@@ -281,11 +313,24 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
         (mw, next) => mw(next),
       );
     },
-    stop() {
+    stop(o) {
       flags.stop = true;
       chain(
         stopMws,
         () => {
+          if (o?.skipAnimation) {
+            // instant hide: cancel any running effects, park the clock, hide
+            cancelOutroFx?.();
+            cancelOutroFx = null;
+            cancelIntroFx?.();
+            cancelIntroFx = null;
+            clearOutroEffect(built.contentEl);
+            player.pause();
+            stopHoldClock();
+            built.hide();
+            fireEnded();
+            return;
+          }
           if (opts.outro) {
             // scene-level effect on the root: the playhead stays where it is
             // (loops keep cycling underneath) while the effect wipes it out
@@ -297,6 +342,7 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
             player.pause();
             stopHoldClock();
             built.hide();
+            fireEnded();
           }
         },
         (mw, next) => mw(next),
@@ -333,6 +379,8 @@ export function createRuntime(scene: SceneDoc, root: HTMLElement, opts: RuntimeO
     useOnPlay: (cb) => playMws.push(cb),
     useOnStop: (cb) => stopMws.push(cb),
     useOnNext: (cb) => nextMws.push(cb),
+    onPaused: (cb) => pausedListeners.push(cb),
+    onEnded: (cb) => endedListeners.push(cb),
     useOnUpdate(key, cb) {
       const list = updateMws.get(key) ?? [];
       list.push(cb);

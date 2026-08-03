@@ -25,7 +25,6 @@ import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CompositionElement, OutroPreset, SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
-import { collectSceneKeys } from './contract.ts';
 
 export interface OgrafExportResult {
   outDir: string;
@@ -39,17 +38,97 @@ export interface OgrafExportResult {
 const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_RUNTIME = resolve(here, '..', '..', 'runtime', 'dist', 'riposte.js');
 
-/** Derive a JSON Schema from the scene's data-binding keys. */
-function buildSchema(doc: SceneDoc, components: Record<string, SceneDoc | null>): Record<string, unknown> | undefined {
-  const keys = collectSceneKeys(doc, components);
-  const all = new Set([...keys.content, ...keys.visibility]);
-  if (all.size === 0) return undefined;
+/** Derive a human-readable label from a data-binding key name. */
+function humanLabel(key: string): string {
+  return key
+    .replace(/^_/, '')
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/_/g, ' ')
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase());
+}
 
+/**
+ * Derive a JSON Schema from the scene's data-binding keys. Visibility bindKeys
+ * become 0/1 enums; underscore-prefixed keys are marked hidden (operator-facing
+ * GUIs should not use them as the display label); defaults come from previewData.
+ */
+function buildSchema(doc: SceneDoc, components: Record<string, SceneDoc | null>): Record<string, unknown> | undefined {
   const props: Record<string, unknown> = {};
-  for (const k of all) {
-    props[k] = { type: 'string', title: k.replace(/^_/, '').replace(/_/g, ' ') };
-  }
-  return { type: 'object', properties: props };
+
+  const walk = (d: SceneDoc, prefix: string, depth: number): void => {
+    const pd = (d.previewData ?? {}) as Record<string, unknown>;
+    for (const layer of d.composition.layers) {
+      const el = layer.element as SceneElement & { compositionId?: string };
+
+      if (el.key && el.type !== 'composition') {
+        const k = prefix + el.key;
+        if (!props[k]) {
+          const def: Record<string, unknown> = { type: 'string', title: humanLabel(el.key) };
+          // default: previewData wins, else the element's design-time content
+          const dv = pd[el.key];
+          if (typeof dv === 'string') def['default'] = dv;
+          else if (el.type === 'text' && typeof el.content === 'string') def['default'] = el.content.replace(/<[^>]*>/g, '');
+          if (el.type === 'imageLoader') def['description'] = 'Image file path';
+          if (el.key.startsWith('_')) def['hidden'] = true;
+          props[k] = def;
+        }
+      }
+
+      if (el.visibility?.bindKey) {
+        const bk = el.visibility.bindKey;
+        const k = prefix + bk;
+        if (!props[k]) {
+          const def: Record<string, unknown> = {
+            type: 'string',
+            title: humanLabel(bk),
+            enum: ['0', '1'],
+            default: '0',
+          };
+          if (bk.startsWith('_')) def['hidden'] = true;
+          props[k] = def;
+        }
+      }
+
+      if (el.type === 'composition' && el.compositionId && depth < 4) {
+        const sub = components[el.compositionId];
+        if (sub) walk(sub, el.key ? `${prefix}${el.key}.` : prefix, depth + 1);
+      }
+    }
+  };
+
+  walk(doc, '', 0);
+  return Object.keys(props).length > 0 ? { type: 'object', properties: props } : undefined;
+}
+
+/**
+ * Scan scene action code (composition action + action markers, recursing into
+ * nested components) for `useOnInvoke('name', …)` registrations. These are the
+ * graphic's invokable custom actions — the OGraf customAction surface.
+ */
+function collectInvokables(doc: SceneDoc, components: Record<string, SceneDoc | null>): string[] {
+  const out = new Set<string>();
+  const re = /useOnInvoke\(\s*['"`]([\w-]+)['"`]/g;
+  const scan = (source: string | undefined): void => {
+    if (!source) return;
+    for (const m of source.matchAll(re)) out.add(m[1]!);
+  };
+  const walk = (d: SceneDoc, depth: number): void => {
+    scan(d.composition.action);
+    for (const marker of d.composition.markers ?? []) {
+      if (marker.type === 'action') scan(marker.source);
+    }
+    if (depth >= 4) return;
+    for (const layer of d.composition.layers) {
+      const el = layer.element as SceneElement & { compositionId?: string };
+      if (el.type === 'composition' && el.compositionId) {
+        const sub = components[el.compositionId];
+        if (sub) walk(sub, depth + 1);
+      }
+    }
+  };
+  walk(doc, 0);
+  return [...out].sort();
 }
 
 /** Build actionDurations array from scene markers (frames → ms). */
@@ -81,6 +160,7 @@ function bridgeModule(
   sceneName: string,
   width: number,
   height: number,
+  durationFrames: number,
   pauseFrames: number[],
   hasOutro: boolean,
   scenePayload: Record<string, unknown>,
@@ -94,9 +174,13 @@ export default class extends HTMLElement {
   #runtime = null;
   #currentStep = undefined;
   #pauseFrames = /** @type {number[]} */ (${pauseJson});
+  #durationFrames = ${durationFrames};
   #hasOutro = ${hasOutro};
-  #outroResolve = null;
   #contentRoot = null;
+  // Pending step chain: resolves when the playhead parks at the target pause.
+  #parked = null;
+  // Pending end waiter: resolves when the scene finishes hiding.
+  #ended = null;
 
   async load({ data, renderType }) {
     this.#contentRoot = this.appendChild(document.createElement('div'));
@@ -139,13 +223,33 @@ export default class extends HTMLElement {
 
     // Use createRuntime directly — we own the lifecycle
     this.#runtime = globalThis.riposte.createRuntime(scene, this.#contentRoot, opts);
-    this.#runtime.useOnStop((next) => {
-      next();
-      if (this.#outroResolve) {
-        const r = this.#outroResolve;
-        this.#outroResolve = null;
-        this.#currentStep = undefined;
-        r();
+
+    this.#runtime.onPaused((frame) => {
+      const idx = this.#pauseFrames.indexOf(frame);
+      if (idx >= 0) this.#currentStep = idx;
+      if (this.#parked) {
+        this.#parked.remaining--;
+        if (this.#parked.remaining <= 0) {
+          const p = this.#parked;
+          this.#parked = null;
+          p.resolve({ statusCode: 200, currentStep: p.target });
+        } else {
+          this.#runtime.next();
+        }
+      }
+    });
+    this.#runtime.onEnded(() => {
+      this.#currentStep = undefined;
+      if (this.#ended) {
+        const e = this.#ended;
+        this.#ended = null;
+        e();
+      }
+      if (this.#parked) {
+        // reached the end mid-step-chain (shouldn't happen — target < stepCount)
+        const p = this.#parked;
+        this.#parked = null;
+        p.resolve({ statusCode: 200, currentStep: undefined });
       }
     });
 
@@ -168,11 +272,26 @@ export default class extends HTMLElement {
     return { statusCode: 200 };
   }
 
+  /** Settle any pending waiters (a new action supersedes them). */
+  #settle() {
+    if (this.#parked) {
+      const p = this.#parked;
+      this.#parked = null;
+      p.resolve({ statusCode: 200, currentStep: this.#currentStep });
+    }
+    if (this.#ended) {
+      const e = this.#ended;
+      this.#ended = null;
+      e();
+    }
+  }
+
   async playAction({ goto, delta, skipAnimation }) {
     if (!this.#runtime) return { statusCode: 400, statusMessage: 'Not loaded' };
+    this.#settle();
 
-    // Determine target step
-    let target = 0;
+    // Determine target step (zero-based; undefined currentStep = start state)
+    let target;
     if (goto !== undefined && goto >= 0) {
       target = goto;
     } else {
@@ -180,63 +299,90 @@ export default class extends HTMLElement {
       target = base + (delta ?? 1);
     }
 
-    if (this.#pauseFrames.length === 0 || target >= this.#pauseFrames.length) {
-      // No more steps — transition to end via stop
+    const stepCount = this.#pauseFrames.length;
+
+    // Zero-step graphic (fire-and-forget): play the full scene, it ends itself.
+    if (stepCount === 0) {
       this.#currentStep = undefined;
-      return new Promise((resolve) => {
-        this.#outroResolve = resolve;
-        this.#runtime.stop();
-      }).then(() => ({ statusCode: 200 }));
-    }
-
-    if (this.#currentStep === undefined) {
-      // Fresh play from start
-      this.#currentStep = 0;
-      this.#runtime.play();
-    } else if (target > this.#currentStep) {
-      // Step forward
-      for (let i = this.#currentStep; i < target; i++) {
-        this.#runtime.next();
+      if (skipAnimation) {
+        this.#runtime.play();
+        this.#runtime.composition.goTo(this.#durationFrames - 1);
+        return { statusCode: 200, currentStep: undefined };
       }
-      this.#currentStep = target;
-    } else {
-      // No movement needed (already at or past target)
+      return new Promise((resolve) => {
+        this.#ended = () => resolve({ statusCode: 200, currentStep: undefined });
+        this.#runtime.play();
+      });
     }
 
-    // playAction resolves when the animation reaches the pause
-    // The riposte player pauses on the pause marker — we resolve here
-    // after a microtask to let the marker processing complete
-    await new Promise((r) => setTimeout(r, 0));
-    return { statusCode: 200, currentStep: this.#currentStep };
+    // Target at or past stepCount → transition to the end.
+    if (target >= stepCount) {
+      return this.#toEnd(skipAnimation);
+    }
+
+    // Backward target (or fresh start): restart from the beginning.
+    if (this.#currentStep === undefined || target < this.#currentStep) {
+      if (skipAnimation) {
+        this.#runtime.play();
+        this.#runtime.composition.goTo(this.#pauseFrames[target]);
+        this.#currentStep = target;
+        return { statusCode: 200, currentStep: target };
+      }
+      return new Promise((resolve) => {
+        // pauses to cross: play() reaches pause 0, then next() × target
+        this.#parked = { remaining: target + 1, target, resolve };
+        this.#runtime.play();
+      });
+    }
+
+    // Already at the requested step.
+    if (target === this.#currentStep) {
+      return { statusCode: 200, currentStep: target };
+    }
+
+    // Forward steps.
+    if (skipAnimation) {
+      this.#runtime.composition.goTo(this.#pauseFrames[target]);
+      this.#currentStep = target;
+      return { statusCode: 200, currentStep: target };
+    }
+    return new Promise((resolve) => {
+      this.#parked = { remaining: target - this.#currentStep, target, resolve };
+      this.#runtime.next();
+    });
+  }
+
+  /** Shared stop path: play the outro (or hide instantly) and resolve when hidden. */
+  #toEnd(skipAnimation) {
+    // No outro marker: resuming past the LAST pause plays the exit keyframes
+    // out naturally (ControlCenter-style NEXT-out). Mid-scene stops hide at once.
+    const atLastPause =
+      this.#currentStep !== undefined && this.#currentStep === this.#pauseFrames.length - 1;
+    this.#currentStep = undefined;
+    return new Promise((resolve) => {
+      this.#ended = () => resolve({ statusCode: 200 });
+      if (!skipAnimation && !this.#hasOutro && atLastPause) {
+        this.#runtime.next();
+      } else {
+        this.#runtime.stop({ skipAnimation: !!skipAnimation });
+      }
+    });
   }
 
   async stopAction({ skipAnimation }) {
     if (!this.#runtime) return { statusCode: 400, statusMessage: 'Not loaded' };
-    return new Promise((resolve) => {
-      this.#outroResolve = resolve;
-      // If scene has an outro marker, runtime.stop() plays the outro.
-      // If no outro but has pause markers, next() resumes past the last
-      // pause so the scene plays its out keyframes naturally.
-      if (this.#hasOutro) {
-        this.#runtime.stop();
-      } else if (this.#pauseFrames.length > 0) {
-        this.#runtime.next();
-      } else {
-        // Fire-and-forget: no pauses, just hide
-        this.#outroResolve = null;
-        this.#runtime.stop();
-        resolve();
-      }
-    }).then(() => ({ statusCode: 200 }));
+    this.#settle();
+    return this.#toEnd(skipAnimation);
   }
 
-  async updateAction({ data }) {
+  async updateAction({ data, skipAnimation }) {
     if (!this.#runtime) return { statusCode: 400, statusMessage: 'Not loaded' };
+    // Riposte updates are instant DOM mutations — no animation to skip.
     this.#runtime.update(data);
     return { statusCode: 200 };
   }
 
-  async customAction({ id, payload }) {
+  async customAction({ id, payload, skipAnimation }) {
     if (!this.#runtime) return { statusCode: 400, statusMessage: 'Not loaded' };
     try {
       this.#runtime.invoke(id, payload);
@@ -301,6 +447,11 @@ export async function exportOgraf(
   const schema = buildSchema(scene, components);
   if (schema) manifest['schema'] = schema;
 
+  const customActions = collectInvokables(scene, components);
+  if (customActions.length > 0) {
+    manifest['customActions'] = customActions.map((id) => ({ id, name: id, schema: null }));
+  }
+
   const durations = buildActionDurations(scene);
   if (durations) manifest['actionDurations'] = durations;
 
@@ -330,6 +481,7 @@ export async function exportOgraf(
     scene.name,
     scene.composition.width,
     scene.composition.height,
+    scene.composition.duration,
     pauseFrames,
     hasOutro,
     scenePayload,

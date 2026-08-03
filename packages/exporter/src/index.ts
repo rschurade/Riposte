@@ -423,19 +423,13 @@ function spxShell(
   const def = generateSpxDef(scene, allComponents, set, spxFields);
   const base = bootScript(scene, components, fonts, preload, outro, intro);
 
-  // Hidden data divs: SPX writes textContent into elements matching DataField
-  // field names. The bridge below flushes them into riposte on play().
-  const dataFields = def.DataFields.filter((f) => f.field);
-  const spxDivs = dataFields.map((f) => `    <div id="${f.field}">${f.value ?? ''}</div>`).join('\n');
-  const bodyPre = spxDivs
-    ? `\n<div id="spxData" style="display:none">\n${spxDivs}\n</div>\n`
-    : '';
-
-  // Bridge: on play(), read hidden divs and forward to riposte.update().
-  // Also intercepts update() to keep hidden divs in sync both ways.
-  const spxBridge = spxDivs
-    ? `\n// SPX data bridge\n(function() {\n  var _origUpdate = window.update;\n  var _origPlay = window.play;\n  window.update = function(data) {\n    // Keep hidden divs in sync for SPX\n    var obj = typeof data === 'string' ? (data.trim()[0] === '<' ? data : JSON.parse(data)) : data;\n    if (obj && typeof obj === 'object') {\n      for (var k in obj) {\n        var el = document.getElementById(k);\n        if (el) el.textContent = typeof obj[k] === 'string' ? obj[k] : '';\n      }\n    }\n    if (_origUpdate) _origUpdate.call(window, data);\n  };\n  window.play = function() {\n    // Flush SPX hidden divs into riposte before playing\n    var divs = document.querySelectorAll('#spxData div[id]');\n    var data = {};\n    var dirty = false;\n    for (var i = 0; i < divs.length; i++) {\n      var d = divs[i];\n      var val = d.textContent || '';\n      if (val !== (d._spxPrev || '')) { dirty = true; d._spxPrev = val; }\n      if (val) data[d.id] = val;\n    }\n    if (dirty && _origUpdate) _origUpdate.call(window, data);\n    if (_origPlay) _origPlay.call(window);\n  };\n})();\n`
-    : '';
+  // SPX delivers data via the global `spxData` object (JSON dataformat),
+  // injected before the template scripts run and mutated on operator edits.
+  // CasparCG playout additionally calls window.update() via CG UPDATE.
+  // Bridge: flush spxData into riposte on play() and next(); pass update()
+  // straight through. Field names in DataFields are our data keys, so
+  // spxData maps 1:1 — no translation needed.
+  const spxBridge = `\n// SPX data bridge\n(function() {\n  var _origUpdate = window.update;\n  var _origPlay = window.play;\n  var _origNext = window.next;\n  function flushSpxData() {\n    var d = window.spxData;\n    if (!d || typeof d !== 'object') return;\n    var data = {};\n    var has = false;\n    for (var k in d) {\n      if (Object.prototype.hasOwnProperty.call(d, k) && (typeof d[k] === 'string' || typeof d[k] === 'number')) {\n        data[k] = String(d[k]);\n        has = true;\n      }\n    }\n    if (has && _origUpdate) _origUpdate.call(window, data);\n  }\n  window.update = function(data) {\n    if (_origUpdate) _origUpdate.call(window, data);\n  };\n  window.play = function() {\n    flushSpxData();\n    if (_origPlay) _origPlay.call(window);\n  };\n  window.next = function() {\n    flushSpxData();\n    if (_origNext) _origNext.call(window);\n  };\n})();\n`;
 
   return shellHtml(
     name,
@@ -444,7 +438,6 @@ function spxShell(
     '<script src="assets/riposte.js"></script>',
     base + spxBridge,
     spxDefScript(def),
-    bodyPre,
   );
 }
 
