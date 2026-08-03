@@ -72,7 +72,7 @@ Registered via `.mcp.json` (here relative, in TV-Grafik absolute+gitignored). Re
 
 Deliberately NOT exposed: guides/eye-filter (personal workspace state), undo (session concept), AMCP port and contract-dir setting (read-only status instead).
 
-**When the server is up, prefer these tools** over hand-editing scene JSON or `bench-shot.ps1`: `set_element` saves + live-syncs the editor; `render_scene` returns a PNG (default frame = the hold/pause frame) — that is the visual feedback loop.
+**When the server is up, ALL scene/set changes MUST go through these tools — never edit scene JSON directly, never raw `PUT /api/scene`.** The open editor keeps scenes in memory and does not reload on external changes: it silently overwrites out-of-band edits with its stale copy on its next save. Only the MCP tools save + live-sync the editor. This holds for bulk edits too — loop `set_element` rather than scripting a file rewrite. `render_scene` returns a PNG (default frame = the hold/pause frame) — that is the visual feedback loop (preferred over `bench-shot.ps1`).
 
 ## Virtual CasparCG
 
