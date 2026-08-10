@@ -346,12 +346,13 @@ async function apiDeletePreset(req: IncomingMessage, res: ServerResponse): Promi
 
 /** Export a set to CasparCG templates. Default target: <set-dir>/export. */
 async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked' | 'ograf' | 'spx'; outDir?: string; spxFields?: { field?: string; ftype: string; title?: string; value?: string }[]; spxScene?: string };
+  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked' | 'ograf' | 'spx'; outDir?: string; spxFields?: { field?: string; ftype: string; title?: string; value?: string }[]; spxScene?: string; ografAssets?: 'shared' | 'bundled' };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const setDir = setDirOf(url);
   // relative paths resolve against the repo root, not the server CWD
   const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(setDir, 'export');
-  const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode, spxFields: body.spxFields, spxScene: body.spxScene } : { spxFields: body.spxFields, spxScene: body.spxScene });
+  // mode/ografAssets are per-export overrides (undefined = the set's settings)
+  const result = await exportSet(setDir, outDir, { mode: body.mode, ografAssets: body.ografAssets, spxFields: body.spxFields, spxScene: body.spxScene });
   return json(res, { ...result, contract: await runContractChecks(setDir) });
 }
 
@@ -452,7 +453,7 @@ async function apiSetSettings(req: IncomingMessage, res: ServerResponse): Promis
   const body = (await readBody(req)) as {
     root: string;
     name: string;
-    export?: { mode?: string; preloadAssets?: boolean; imageFormat?: string; webpQuality?: number | string };
+    export?: { mode?: string; preloadAssets?: boolean; imageFormat?: string; webpQuality?: number | string; ografAssets?: string };
   };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const dir = setDirOf(url);
@@ -473,6 +474,10 @@ async function apiSetSettings(req: IncomingMessage, res: ServerResponse): Promis
       throw Object.assign(new Error('webpQuality must be 1-100 or "lossless"'), { status: 400 });
     }
     patch['webpQuality'] = q;
+  }
+  if (e.ografAssets !== undefined) {
+    if (e.ografAssets !== 'shared' && e.ografAssets !== 'bundled') throw Object.assign(new Error('bad ografAssets'), { status: 400 });
+    patch['ografAssets'] = e.ografAssets;
   }
   const setPath = join(dir, 'set.json');
   const set = JSON.parse(await readFile(setPath, 'utf8')) as { export?: Record<string, unknown> };

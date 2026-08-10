@@ -36,6 +36,8 @@ export interface ExportOptions {
   spxFields?: { field?: string; ftype: string; title?: string; value?: string }[];
   /** Scene name (file basename, no .json) the spxFields belong to. */
   spxScene?: string;
+  /** OGraf asset layout override; defaults to the set's setting, then 'shared'. */
+  ografAssets?: 'shared' | 'bundled';
 }
 
 export interface ExportResult {
@@ -206,44 +208,16 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
 
   await mkdir(outDir, { recursive: true });
 
-  // OGraf mode: each scene becomes its own self-contained OGraf graphic folder
-  if (mode === 'ograf') {
-    if (webpOn) warnings.push('ograf export ignores imageFormat "webp" — raw assets are copied per graphic folder');
-    const ografScenes: string[] = [];
-    const ografUpdated: string[] = [];
-    let assetsCopied = 0;
-    let assetsUpToDate = 0;
-    let assetBytes = 0;
-    let runtimeUpdated = false;
-    for (const file of set.scenes) {
-      const doc = await readScene(file);
-      if (!doc) continue;
-      const sceneComponents: Record<string, SceneDoc> = {};
-      collectComponents(doc, components, sceneComponents, warnings);
-      const r = await exportOgraf(doc, file, sceneComponents, set, setDir, outDir, warnings);
-      ografScenes.push(r.name);
-      if (r.changed) ografUpdated.push(r.name);
-      assetsCopied += r.assetsCopied;
-      assetsUpToDate += r.assetsUpToDate;
-      assetBytes += r.assetBytes;
-      runtimeUpdated ||= r.runtimeUpdated;
-    }
-    return {
-      outDir,
-      mode,
-      scenes: ografScenes,
-      scenesUpdated: ografUpdated,
-      assetsCopied,
-      assetsUpToDate,
-      assetBytes,
-      runtimeUpdated,
-      warnings,
-    };
+  // ograf asset layout: shared (set model, default) or bundled (spec-portable)
+  const ografLayout = opts.ografAssets ?? set.export?.ografAssets ?? 'shared';
+  if (mode === 'ograf' && ografLayout === 'bundled' && webpOn) {
+    warnings.push('ograf bundled layout ignores imageFormat "webp" — raw assets are copied per graphic folder (shared layout supports webp)');
   }
 
   const scenes: string[] = [];
   const scenesUpdated: string[] = [];
   const allAssets = new Set<string>();
+  let ografCopied = 0, ografUpToDate = 0, ografBytes = 0, ografRuntime = false;
 
   for (const file of set.scenes) {
     const doc = await readScene(file);
@@ -263,8 +237,38 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     const outro = doc.outro ? await readPreset('outros', doc.outro) : null;
     const intro = doc.intro ? await readPreset('intros', doc.intro) : null;
 
-    // external / spx: refs rewritten to the re-encoded names; baked / ograf: original refs
-    // (assets become data URIs in baked mode — only the bytes and mime change).
+    // ograf: per-scene folder with manifest + graphic.mjs. Layout 'shared'
+    // (default) keeps assets + riposte.js in the ONE assets/ dir next to the
+    // graphic folders (set model; bridge resolves ../assets/ via
+    // import.meta.url, webp re-encoding applies); 'bundled' copies both into
+    // every folder for spec-portable single-folder handoff.
+    if (mode === 'ograf') {
+      const sharedLayout = ografLayout === 'shared';
+      const useWebp = webpOn && sharedLayout;
+      const r = await exportOgraf(
+        useWebp ? rewriteRefs(doc) : doc,
+        file,
+        useWebp ? Object.fromEntries(Object.entries(sceneComponents).map(([k, v]) => [k, rewriteRefs(v)])) : sceneComponents,
+        set,
+        setDir,
+        outDir,
+        {
+          layout: ografLayout,
+          preload: preloadAssets ? [...assets].map(useWebp ? renameRef : (a) => a) : [],
+          warnings,
+        },
+      );
+      if (r.changed) scenesUpdated.push(r.name);
+      scenes.push(r.name);
+      ografCopied += r.assetsCopied;
+      ografUpToDate += r.assetsUpToDate;
+      ografBytes += r.assetBytes;
+      ografRuntime ||= r.runtimeUpdated;
+      continue;
+    }
+
+    // external / spx: refs rewritten to the re-encoded names; baked: original refs
+    // (assets become data URIs — only the bytes and mime change).
     let html: string;
     if (mode === 'spx') {
       html = spxShell(
@@ -297,11 +301,11 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
     scenes.push(name);
   }
 
-  let assetsCopied = 0;
-  let assetsUpToDate = 0;
-  let assetBytes = 0;
-  let runtimeUpdated = false;
-  if (mode === 'external' || mode === 'spx') {
+  let assetsCopied = ografCopied;
+  let assetsUpToDate = ografUpToDate;
+  let assetBytes = ografBytes;
+  let runtimeUpdated = ografRuntime;
+  if (mode === 'external' || mode === 'spx' || (mode === 'ograf' && ografLayout === 'shared')) {
     await mkdir(join(outDir, 'assets'), { recursive: true });
     runtimeUpdated = await writeIfChanged(join(outDir, 'assets', 'riposte.js'), runtimeJs);
     const written = new Set<string>();

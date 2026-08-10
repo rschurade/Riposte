@@ -4,6 +4,7 @@
   let outDir = $state('');
   let busy = $state(false);
   let expMode = $state<'external' | 'baked' | 'spx' | 'ograf'>('external');
+  let ografAssets = $state<'shared' | 'bundled'>('shared');
 
   // SPX field configuration
   interface SpxFieldRow {
@@ -20,11 +21,14 @@
   // Seed the form when the dialog opens. Must NOT read expMode — reading it
   // would make this effect depend on it, and every dropdown change would
   // re-fire this effect and reset the user's selection back to the saved mode.
+  // The remembered target dir is PER SET — a global key would leak one set's
+  // target (e.g. a Caspar template dir) into every other set's export.
   $effect(() => {
     if (!ed.exportDialogOpen) return;
-    outDir = localStorage.getItem('riposte.exportDir') ?? '';
+    outDir = localStorage.getItem(`riposte.exportDir.${ed.setRef?.name ?? ''}`) ?? '';
     busy = false;
     expMode = ed.setRef?.export?.mode ?? 'external';
+    ografAssets = ed.setRef?.export?.ografAssets ?? 'shared';
   });
 
   // React to mode dropdown changes (fires for the initial seed too).
@@ -55,18 +59,20 @@
   }
 
   async function doExport(): Promise<void> {
-    if (!outDir.trim() || busy) return;
+    if (busy) return;
     busy = true;
-    // Save mode if changed from set settings
-    if (expMode !== (ed.setRef?.export?.mode ?? 'external')) {
-      await ed.saveSetSettings({ mode: expMode });
-    }
-    if (showSpxFields) {
-      ed.saveSpxFields(spxFields);
-      await ed.exportSet(outDir.trim(), spxFields);
-    } else {
-      await ed.exportSet(outDir.trim());
-    }
+    // Mode and layout here are PER-EXPORT overrides — never written back to
+    // the set. Trying an OGraf export must not silently rewrite the set's
+    // on-air settings; Set Options is where the default is changed deliberately.
+    // Empty target = the classic workflow: <set-dir>/export (server default);
+    // Deploy remains the way changes reach the CasparCG template dir.
+    if (showSpxFields) ed.saveSpxFields(spxFields);
+    await ed.exportSet({
+      outDir: outDir.trim() || undefined,
+      mode: expMode,
+      ografAssets: expMode === 'ograf' ? ografAssets : undefined,
+      spxFields: showSpxFields ? spxFields : undefined,
+    });
   }
 
   function resetSpxFields(): void {
@@ -102,21 +108,28 @@
     <div class="dialog" role="dialog" aria-label="Export set" onclick={(ev) => ev.stopPropagation()}>
       <h2>{ed.setRef.name} <span class="dim">export</span></h2>
       <p class="meta">
-        <label for="ed-mode">Mode</label>
+        <label for="ed-mode" title="This export only — the set's saved mode (Set Options) is not changed">Mode</label>
         <select id="ed-mode" bind:value={expMode}>
           <option value="external">external — shells + shared assets (default)</option>
           <option value="baked">baked — single-file HTML (compat)</option>
           <option value="spx">SPX — external + SPXGCTemplateDefinition</option>
           <option value="ograf">OGraf — manifest + graphic.mjs (EBU standard)</option>
         </select>
+        {#if expMode === 'ograf'}
+          <label for="ed-ograf-assets">Assets</label>
+          <select id="ed-ograf-assets" bind:value={ografAssets}>
+            <option value="shared">shared — one assets/ folder for the whole set</option>
+            <option value="bundled">bundled — every graphic folder self-contained</option>
+          </select>
+        {/if}
       </p>
 
-      <label class="lbl" for="ed-target">Target directory</label>
+      <label class="lbl" for="ed-target">Target directory <span class="dim">— optional; empty = the set's own export/ folder</span></label>
       <input
         id="ed-target"
         type="text"
         bind:value={outDir}
-        placeholder="e.g. C:\CasparCG\template\MySet"
+        placeholder="<set>/export (use Deploy to reach the CasparCG template dir)"
         spellcheck="false"
         disabled={busy}
       />
@@ -163,14 +176,23 @@
           The DataFields above apply to the open scene; every other scene's
           fields are auto-detected from its data-binding keys.
           {:else if expMode === 'ograf'}
-          Generates OGraf graphic: manifest + graphic.mjs + riposte.js + assets.
+          {#if ografAssets === 'shared'}
+            One thin folder per scene (manifest + graphic.mjs) sharing a single
+            assets/ folder — deploy the export dir as a whole. WebP re-encoding applies.
+          {:else}
+            Every graphic folder carries its own riposte.js + assets — a single
+            folder can be handed to any OGraf host, at the cost of duplicating
+            assets per scene.
+          {/if}
+          For OGraf hosts (SPX, Sofie, …) — on-air CasparCG output stays
+          external mode + Deploy.
         {:else}
           Writes self-contained single-file HTML per scene.
         {/if}
       </p>
 
       <div class="row">
-        <button class="primary" onclick={doExport} disabled={!outDir.trim() || busy}>
+        <button class="primary" onclick={doExport} disabled={busy}>
           {busy ? '…' : 'Export'}
         </button>
         <button onclick={() => (ed.exportDialogOpen = false)} disabled={busy}>Cancel</button>

@@ -22,6 +22,7 @@ export interface SetExportSettings {
   preloadAssets?: boolean;
   imageFormat?: 'png' | 'webp';
   webpQuality?: number | 'lossless';
+  ografAssets?: 'shared' | 'bundled';
 }
 
 export interface AssetInfo {
@@ -1617,15 +1618,25 @@ class EditorState {
     localStorage.setItem(key, JSON.stringify(fields));
   }
 
-  /** Build CasparCG templates into the set's own export/ folder (incremental). */
-  async exportSet(outDir?: string, spxFields?: { field?: string; ftype: string; title?: string; value?: string }[]): Promise<void> {
+  /** Build templates into the set's own export/ folder (incremental) or a
+   * chosen dir. mode/ografAssets are per-export overrides — the set's saved
+   * settings are never touched from here. */
+  async exportSet(o: {
+    outDir?: string;
+    mode?: 'external' | 'baked' | 'ograf' | 'spx';
+    ografAssets?: 'shared' | 'bundled';
+    spxFields?: { field?: string; ftype: string; title?: string; value?: string }[];
+  } = {}): Promise<void> {
     if (!this.setRef) return;
+    const { outDir, spxFields } = o;
     const saved = await this.saveAll();
     if (saved) this.flash(`saved ${saved} scene(s) with unsaved edits`);
     this.flash('exporting…');
     try {
       const body: Record<string, unknown> = { root: this.setRef.root, name: this.setRef.name };
       if (outDir) body['outDir'] = outDir;
+      if (o.mode) body['mode'] = o.mode;
+      if (o.ografAssets) body['ografAssets'] = o.ografAssets;
       if (spxFields) {
         body['spxFields'] = spxFields;
         // fields were configured against the OPEN scene — they apply only to it,
@@ -1645,10 +1656,12 @@ class EditorState {
           `${r.assetsCopied} assets copied (${r.assetsUpToDate} up to date, ${mb} MB total)`,
       );
       if (r.warnings?.length) console.warn('export warnings', r.warnings);
-      if (outDir) {
-        localStorage.setItem('riposte.exportDir', outDir);
-        this.exportDialogOpen = false;
-      }
+      // remember the target per set (a global key would leak one set's dir into
+      // every other set); an empty target forgets it → back to <set>/export
+      const dirKey = `riposte.exportDir.${this.setRef.name}`;
+      if (outDir) localStorage.setItem(dirKey, outDir);
+      else localStorage.removeItem(dirKey);
+      this.exportDialogOpen = false;
       this.reportContract(r.contract);
     } catch (err) {
       this.flash(`EXPORT FAILED: ${err instanceof Error ? err.message : err}`);

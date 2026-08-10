@@ -163,7 +163,10 @@ function buildActionDurations(doc: SceneDoc): Record<string, unknown>[] | undefi
 
 // ---- bridge graphic.mjs generation -------------------------------------------
 
-/** Generate the bridge ES module that wraps a Riposte scene as an OGraf custom element. */
+/** Generate the bridge ES module that wraps a Riposte scene as an OGraf custom element.
+ * `base` is the URL prefix from the graphic folder to the asset root: './' for the
+ * bundled layout (assets inside the folder), '../' for the shared layout (one
+ * assets/ dir next to all graphic folders). `runtimeUrl` likewise. */
 function bridgeModule(
   sceneName: string,
   width: number,
@@ -172,6 +175,8 @@ function bridgeModule(
   pauseFrames: number[],
   hasOutro: boolean,
   scenePayload: Record<string, unknown>,
+  base: string,
+  runtimeUrl: string,
 ): string {
   const pauseJson = JSON.stringify(pauseFrames);
   const sceneInline = JSON.stringify(scenePayload);
@@ -196,7 +201,7 @@ export default class extends HTMLElement {
       'position:relative;overflow:hidden;width:${width}px;height:${height}px';
 
     // Import riposte.js (IIFE that sets globalThis.riposte)
-    const rp = new URL('./riposte.js', import.meta.url).href;
+    const rp = new URL('${runtimeUrl}', import.meta.url).href;
     await new Promise((ok, fail) => {
       const s = document.createElement('script');
       s.src = rp;
@@ -214,7 +219,7 @@ export default class extends HTMLElement {
     // Register fonts before boot
     if (scene.v_ografFonts?.length) {
       await Promise.all(scene.v_ografFonts.map((f) => {
-        const fontUrl = new URL(f.url, import.meta.url).href;
+        const fontUrl = new URL('${base}' + f.url, import.meta.url).href;
         const face = new FontFace(f.family, 'url("' + fontUrl + '")');
         return face.load().then((ff) => document.fonts.add(ff)).catch(() => {});
       }));
@@ -229,12 +234,12 @@ export default class extends HTMLElement {
         const img = new Image();
         img.onload = ok;
         img.onerror = ok; // missing asset must not block load
-        img.src = new URL(u, import.meta.url).href;
+        img.src = new URL('${base}' + u, import.meta.url).href;
       })));
     }
 
     const opts = {
-      assetBase: new URL('./', import.meta.url).href,
+      assetBase: new URL('${base}', import.meta.url).href,
       components,
       ...(scene.v_ografOutro ? { outro: scene.v_ografOutro } : {}),
       ...(scene.v_ografIntro ? { intro: scene.v_ografIntro } : {}),
@@ -416,6 +421,16 @@ export default class extends HTMLElement {
 
 // ---- main export function ----------------------------------------------------
 
+export interface OgrafSceneOptions {
+  /** 'shared' (default): assets + riposte.js live in ONE assets/ dir next to the
+   * graphic folders — the set stays a single deduplicated unit. 'bundled':
+   * every folder is spec-portable and carries its own copies. */
+  layout: 'shared' | 'bundled';
+  /** Preload URLs, set-relative ("assets/…"), already webp-renamed if applicable. */
+  preload: string[];
+  warnings?: string[];
+}
+
 export async function exportOgraf(
   scene: SceneDoc,
   sceneFile: string,
@@ -423,8 +438,9 @@ export async function exportOgraf(
   set: SetDoc,
   setDir: string,
   outDir: string,
-  warnings?: string[],
+  o: OgrafSceneOptions,
 ): Promise<OgrafExportResult> {
+  const { layout, warnings } = o;
   const name = sceneName(sceneFile);
   const sceneOutDir = join(outDir, name);
   await mkdir(sceneOutDir, { recursive: true });
@@ -491,10 +507,9 @@ export async function exportOgraf(
     ...JSON.parse(JSON.stringify(scene)),
     v_ografComponents: components,
     v_ografFonts: (set.fonts ?? []).map((f) => ({ family: f.family, url: f.file })),
-    // refs are set-relative ("assets/foo.png") and the copy step mirrors that
-    // layout into the graphic folder — so the refs ARE the preload URLs,
-    // resolved against import.meta.url in the bridge
-    v_ografPreload: [...assetsOf(scene, components)].map((a) => a.replace(/\\/g, '/')),
+    // set-relative refs ("assets/foo.png"); the bridge resolves them against
+    // its layout base ('./' bundled, '../' shared) via import.meta.url
+    v_ografPreload: o.preload.map((a) => a.replace(/\\/g, '/')),
   };
 
   // Pre-load outro/intro presets
@@ -516,9 +531,17 @@ export async function exportOgraf(
     pauseFrames,
     hasOutro,
     scenePayload,
+    layout === 'bundled' ? './' : '../',
+    layout === 'bundled' ? './riposte.js' : '../assets/riposte.js',
   ));
 
-  // Copy riposte.js (only when the build actually changed)
+  // shared layout: done — assets + riposte.js live in the set-wide assets/
+  // dir, written once by exportSet's shared-asset pass
+  if (layout === 'shared') {
+    return { outDir: sceneOutDir, name, filesWritten, changed, assetsCopied: 0, assetsUpToDate: 0, assetBytes: 0, runtimeUpdated: false };
+  }
+
+  // bundled layout: this folder carries its own runtime + assets
   const runtimeJs = await readFile(DEFAULT_RUNTIME);
   let runtimeUpdated = false;
   const runtimeDst = join(sceneOutDir, 'riposte.js');
@@ -529,7 +552,7 @@ export async function exportOgraf(
     runtimeUpdated = true;
   }
 
-  // Copy assets (byte compare — repeats are cheap, like the external mode)
+  // byte compare — repeats are cheap, like the external mode
   let assetsCopied = 0;
   let assetsUpToDate = 0;
   let assetBytes = 0;

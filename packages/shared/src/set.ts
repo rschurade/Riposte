@@ -58,4 +58,15 @@ export interface ExportSettings {
    * bit-perfect. 'lossless' forces bit-perfect everywhere.
    */
   webpQuality?: number | 'lossless';
+  /**
+   * OGraf asset layout.
+   * 'shared'  — one assets/ folder (incl. riposte.js) next to the per-scene
+   *             graphic folders; bridges reference ../assets/. The set stays
+   *             one deduplicated unit — deploy the export dir as a whole.
+   *             (default; matches the set model)
+   * 'bundled' — every graphic folder carries its own riposte.js + assets copy.
+   *             Spec-portable: a single folder can be handed to any OGraf host,
+   *             at the cost of duplicating assets per scene.
+   */
+  ografAssets?: 'shared' | 'bundled';
 }

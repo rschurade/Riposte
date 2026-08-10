@@ -97,7 +97,7 @@ Types in `packages/shared/src/scene.ts` + `set.ts`. `SceneDoc { formatVersion, n
 
 ## CasparCG Contract
 
-Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `update` accepts **both** JSON and `<templateData><componentData…>` XML (ControlCenter sends XML). Play runs to the first `pause` marker; `next` resumes past it; `stop` plays from the `outro` marker to the end. Export modes (set per-set in **Set Options**): `external` (default — ~70 KB HTML shell + shared `assets/` incl. `riposte.js`; only referenced assets copied), `baked` (single file, compat fallback), `spx` (like external but each HTML shell carries an embedded `window.SPXGCTemplateDefinition` that maps data-binding keys to SPX controller UI fields), and `ograf` (EBU standard: per-scene folder with `*.ograf.json` manifest + `graphic.mjs` bridge custom element wrapping the Riposte runtime). Export dir is chosen per-export via a dialog (target folder text input). **Deploy** (editor button / `deploy_set`) = export + additive `syncDir` into the CasparCG template dir — it never deletes foreign files.
+Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `update` accepts **both** JSON and `<templateData><componentData…>` XML (ControlCenter sends XML). Play runs to the first `pause` marker; `next` resumes past it; `stop` plays from the `outro` marker to the end. Export modes (set per-set in **Set Options**): `external` (default — ~70 KB HTML shell + shared `assets/` incl. `riposte.js`; only referenced assets copied), `baked` (single file, compat fallback), `spx` (like external but each HTML shell carries an embedded `window.SPXGCTemplateDefinition` that maps data-binding keys to SPX controller UI fields), and `ograf` (EBU standard: per-scene folder with `*.ograf.json` manifest + `graphic.mjs` bridge custom element wrapping the Riposte runtime). Export dir: `projects/<Set>/export` by default (the Export dialog's optional target-dir overrides per export). **Deploy** (editor button / `deploy_set`) = export + additive `syncDir` into the CasparCG template dir — it never deletes foreign files. `ograf` output is per-scene self-contained folders for OGraf hosts (SPX/Sofie), **not** for the CasparCG template dir.
 
 ## SPX Export
 
@@ -113,9 +113,10 @@ SPX exports are CasparCG HTML templates (same as `external` mode) with an additi
 
 ## OGraf Export
 
-OGraf (EBU standard) exports are per-scene self-contained folders containing a manifest and a bridge `graphic.mjs` ES module.
+OGraf (EBU standard) exports are per-scene folders containing a manifest and a bridge `graphic.mjs` ES module.
 
-- **Output structure**: `<name>/<name>.ograf.json` + `graphic.mjs` + `riposte.js` + `scene.json` + `assets/`.
+- **Asset layout** (`export.ografAssets`, dialog-selectable): `shared` (default) — ONE `assets/` dir (incl. `riposte.js`) next to the graphic folders, bridges reference `../assets/`; the set stays a deduplicated unit and webp re-encoding applies; deploy the export dir as a whole. `bundled` — every folder carries its own `riposte.js` + `assets/` copy (spec-portable single-folder handoff; no webp).
+- **Output structure**: `<name>/<name>.ograf.json` + `graphic.mjs` (+ per-folder `riposte.js`/`assets/` in bundled layout). Scene data is inlined into the bridge.
 - **Manifest**: generated from scene metadata — id (slugified name), schema (JSON Schema from data-binding keys: text content/previewData as defaults, imageLoader keys get a description, `_`-prefixed keys marked `hidden`, visibility bindKeys become `enum: ["0","1"]`), customActions (scanned from `useOnInvoke('name', …)` calls in scene/component action code), stepCount (pause markers), actionDurations (frame counts → ms), renderRequirements (canvas size + fps).
 - **Bridge `graphic.mjs`**: an ES module exporting a custom `HTMLElement` that wraps the Riposte runtime via `createRuntime()`. Maps the OGraf lifecycle:
   - `load({data, renderType})` → loads `riposte.js` via `<script>`, creates content root, calls `createRuntime(scene, root, opts)`, applies initial data.
@@ -132,10 +133,10 @@ OGraf (EBU standard) exports are per-scene self-contained folders containing a m
 
 The Export button in the header opens a dialog (instead of exporting immediately). The dialog shows:
 
-- **Export mode** dropdown (seeded from Set Options; changing it saves back to the set).
-- **Target directory** — free-form text input, persisted in localStorage as `riposte.exportDir`. Defaults to the set's own `export/` folder when empty.
+- **Export mode** + OGraf asset-layout dropdowns — **per-export overrides**, seeded from Set Options but NEVER written back to the set (trying an OGraf export must not silently rewrite a set's on-air settings; Set Options is where defaults change deliberately).
+- **Target directory** — optional. Empty (the default) = the classic workflow: incremental export into the set's own `export/` folder; **Deploy stays the only path into the CasparCG template dir**. A non-empty dir is remembered **per set** (`riposte.exportDir.<set>` — never a global key, so one set's target can't leak into another's); clearing the field forgets it.
 - In SPX mode, a per-scene **DataFields configurator** (see SPX Export above).
-- On confirm: `POST /api/export` with `outDir` parameter → server writes to the chosen directory.
+- On confirm: `POST /api/export` (with `outDir` only when set) → server resolves empty to `<set>/export`.
 - Code: `packages/editor/src/lib/ExportDialog.svelte`.
 
 ## Design Rules (user-established — do not violate)
