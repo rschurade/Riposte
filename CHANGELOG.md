@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.7.0 — 2026-08-10
+
+SPX and OGraf export contributed by Markus Nygård (@markusnygard).
+
+### Added
+- **SPX export mode**: external-style HTML shells with an embedded
+  `SPXGCTemplateDefinition` — the SPX controller discovers a template's
+  fields automatically. A per-scene **DataFields configurator** in the
+  Export dialog controls field types, titles, defaults and order;
+  unconfigured scenes auto-detect their keys (including nested
+  components and visibility switches). Steps map to pause markers.
+- **OGraf export mode** (EBU standard): one folder per scene with a
+  manifest + `graphic.mjs` custom element wrapping the real Riposte
+  runtime — WYSIWYG holds in OGraf hosts too. The OGraf step model maps
+  to pause markers; action promises resolve when the playhead actually
+  parks or the outro actually completes; `skipAnimation` is honored.
+  Two **asset layouts**: `shared` (default — one deduplicated `assets/`
+  folder for the whole set, WebP re-encoding applies) or `bundled`
+  (spec-portable, each graphic folder self-contained).
+- **Export dialog**: the Export button now opens a dialog — mode and
+  target directory are **per-export overrides** that never touch the
+  set's saved settings. Empty target = the classic `<set>/export`
+  incremental flow; Deploy remains the route to the CasparCG template
+  dir. Target dirs are remembered per set.
+- Runtime contract additions: `stop({ skipAnimation })` and
+  `onPaused`/`onEnded` lifecycle listeners (used by the OGraf bridge;
+  fully backward compatible).
+- Sidebar: **duplicate and delete sets** (projects only; duplicates
+  skip regenerable export/cache folders).
+- Text: **Auto size** checkbox — with textAlign anchoring the box edge
+  (left/right-aligned autoSize text pins x at the aligned edge, the
+  Loopic/OGraf convention); **per-corner border radius** for text and
+  rectangles.
+- Size binding: bind a bar to the **longest text in the scene** (`*`),
+  not just a single source element.
+- Loopic import: SVG elements, per-corner border radius, raw-XML
+  resource content.
+- Opt-in headless drivers verifying exported SPX/OGraf templates
+  end-to-end in Chromium (`test:spx` / `test:ograf`).
+
+### Fixed
+- **The portable zip's server actually starts.** Every zip since 0.3.0
+  shipped a `server.js` that died on launch ("Dynamic require of util is
+  not supported") — the WebP encoder pulled CommonJS code into the ESM
+  bundle without a `require` shim. Nobody noticed because dev machines
+  run from the repo.
+- Loopic import: fully transparent-yellow confusion — `rgb(255,255,0)`
+  backgrounds were dropped as "transparent" on import.
+- `/api/set/delete` validates the set name like every other endpoint
+  (no path escapes from `projects/`).
+- Naming a layer "reference" marks it as a guide layer automatically.
+
 ## 0.6.0 — 2026-07-17
 
 ### Added

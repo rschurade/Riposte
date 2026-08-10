@@ -6,7 +6,7 @@
   "scripts": {
     "check": "tsc -p .",
     "dev": "node --watch src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/server.js"
+    "build": "node build.mjs"
   },
   "dependencies": {
     "@riposte/exporter": "*",
