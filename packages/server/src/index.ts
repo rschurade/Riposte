@@ -346,12 +346,12 @@ async function apiDeletePreset(req: IncomingMessage, res: ServerResponse): Promi
 
 /** Export a set to CasparCG templates. Default target: <set-dir>/export. */
 async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked' | 'ograf' | 'spx'; outDir?: string; spxFields?: { field?: string; ftype: string; title?: string; value?: string }[] };
+  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked' | 'ograf' | 'spx'; outDir?: string; spxFields?: { field?: string; ftype: string; title?: string; value?: string }[]; spxScene?: string };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const setDir = setDirOf(url);
   // relative paths resolve against the repo root, not the server CWD
   const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(setDir, 'export');
-  const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode, spxFields: body.spxFields } : {});
+  const result = await exportSet(setDir, outDir, body.mode ? { mode: body.mode, spxFields: body.spxFields, spxScene: body.spxScene } : { spxFields: body.spxFields, spxScene: body.spxScene });
   return json(res, { ...result, contract: await runContractChecks(setDir) });
 }
 

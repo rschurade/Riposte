@@ -28,8 +28,14 @@ export interface ExportOptions {
   mode?: 'external' | 'baked' | 'ograf' | 'spx';
   /** Path to the runtime IIFE; defaults to the workspace build. */
   runtimeJs?: string;
-  /** Pre-configured SPX DataFields (user-edited); bypasses auto-detection. */
+  /** Pre-configured SPX DataFields (user-edited); bypasses auto-detection —
+   * but only for the scene named in `spxScene`. Every other scene keeps its
+   * own auto-detected keys (the fields were configured against ONE scene's
+   * key set; stamping them set-wide would give every template that scene's
+   * fields). */
   spxFields?: { field?: string; ftype: string; title?: string; value?: string }[];
+  /** Scene name (file basename, no .json) the spxFields belong to. */
+  spxScene?: string;
 }
 
 export interface ExportResult {
@@ -261,7 +267,8 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
         outro,
         intro,
         components,
-        opts.spxFields,
+        // configured fields apply only to their own scene; others auto-detect
+        name === opts.spxScene ? opts.spxFields : undefined,
       );
     } else if (mode === 'external') {
       html = externalShell(

@@ -1561,22 +1561,38 @@ class EditorState {
     });
   }
 
-  /** All data-binding keys in the current scene. */
+  /** All data-binding keys in the current scene — content keys AND visibility
+   * bindKeys, recursing into nested components (mirrors the exporter's
+   * collectKeyTypes so the SPX dialog never shows fewer keys than an
+   * unconfigured export would emit). */
   getSceneKeys(): { field: string; value: string; ftype: string }[] {
     if (!this.scene) return [];
     const byKey = new Map<string, { value: string; ftype: string }>();
-    for (const layer of this.scene.composition.layers) {
-      const el = layer.element as { key?: string; content?: string; type: string };
-      if (!el.key) continue;
-      const ftype = el.type === 'imageLoader' ? 'filelist' 
-        : el.type === 'image' ? 'hidden'
-        : 'textfield';
-      const value = el.type === 'text' ? (el.content ?? '') : '';
-      byKey.set(el.key, { 
-        value: this.scene.previewData?.[el.key] ?? value,
-        ftype,
-      });
-    }
+    const walk = (doc: SceneDoc, prefix: string, depth: number): void => {
+      for (const layer of doc.composition.layers) {
+        const el = layer.element as {
+          key?: string; content?: string; type: string;
+          compositionId?: string; visibility?: { bindKey?: string };
+        };
+        if (el.key && el.type !== 'composition') {
+          const k = prefix + el.key;
+          if (!byKey.has(k)) {
+            const ftype = el.type === 'imageLoader' ? 'filelist' : 'textfield';
+            const value = el.type === 'text' ? (el.content ?? '').replace(/<[^>]*>/g, '') : '';
+            byKey.set(k, { value: doc.previewData?.[el.key] ?? value, ftype });
+          }
+        }
+        if (el.visibility?.bindKey) {
+          const k = prefix + el.visibility.bindKey;
+          if (!byKey.has(k)) byKey.set(k, { value: '', ftype: 'dropdown' });
+        }
+        if (el.type === 'composition' && el.compositionId && depth < 4) {
+          const sub = this.allScenes[el.compositionId];
+          if (sub) walk(sub, el.key ? `${prefix}${el.key}.` : prefix, depth + 1);
+        }
+      }
+    };
+    walk(this.scene, '', 0);
     return [...byKey.entries()].map(([field, info]) => ({
       field,
       value: info.value,
@@ -1610,7 +1626,12 @@ class EditorState {
     try {
       const body: Record<string, unknown> = { root: this.setRef.root, name: this.setRef.name };
       if (outDir) body['outDir'] = outDir;
-      if (spxFields) body['spxFields'] = spxFields;
+      if (spxFields) {
+        body['spxFields'] = spxFields;
+        // fields were configured against the OPEN scene — they apply only to it,
+        // every other scene in the set auto-detects its own keys
+        body['spxScene'] = this.sceneFile?.split('/').pop()?.replace(/\.json$/i, '') ?? '';
+      }
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

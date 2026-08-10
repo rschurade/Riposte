@@ -124,7 +124,7 @@
       {#if showSpxFields}
         <div class="spx-section">
           <div class="spx-header">
-            <span>SPX DataFields</span>
+            <span>SPX DataFields — <b>{ed.sceneFile?.split('/').pop()?.replace(/\.json$/i, '') ?? '?'}</b> only (other scenes auto-detect)</span>
             <button class="sm" onclick={resetSpxFields} disabled={busy}>auto-detect</button>
           </div>
           <div class="spx-table">
@@ -160,7 +160,8 @@
           Writes HTML shells + shared assets folder. Only changed files are updated.
           {:else if expMode === 'spx'}
           Each HTML shell carries an embedded SPXGCTemplateDefinition.
-          Configure DataFields above to control what SPX shows in its controller UI.
+          The DataFields above apply to the open scene; every other scene's
+          fields are auto-detected from its data-binding keys.
           {:else if expMode === 'ograf'}
           Generates OGraf graphic: manifest + graphic.mjs + riposte.js + assets.
         {:else}

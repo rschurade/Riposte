@@ -103,7 +103,8 @@ Templates expose `update(data)`, `play()`, `stop()`, `next()`, AMCP INVOKE. `upd
 
 SPX exports are CasparCG HTML templates (same as `external` mode) with an additional `<script>` block in `<head>` that sets `window.SPXGCTemplateDefinition`. SPX's controller parses this with JSDOM to discover what update-data fields a template accepts and how to present them in its UI.
 
-- **DataField generation**: each element with a `key` becomes a field definition. Text elements → `"textfield"`, image loaders → `"filelist"`, visibility bindKeys → `"dropdown"` with on/off items. Default values come from `previewData` (falling back to element content).
+- **DataField generation**: each element with a `key` becomes a field definition. Text elements → `"textfield"`, image loaders → `"filelist"`, visibility bindKeys → `"dropdown"` with on/off items. Default values come from `previewData` (falling back to element content). Recurses into nested components (keys prefixed `parentKey.`).
+- **Per-scene configurator**: the Export dialog's DataFields table (persisted in localStorage per set+scene) applies **only to the scene it was configured on** (`spxScene` in the export request); every other scene auto-detects. The dialog's key list mirrors the exporter's auto-detection (nested components + visibility keys included), so configuring is always a superset-safe edit, never a silent key drop.
 - **`dataformat: "json"`**: always emitted — SPX then delivers data via the global `spxData` object (not XML). A bridge script flushes `spxData` into `riposte.update()` on `play()` and `next()`; `window.update()` (CG UPDATE from CasparCG playout) passes straight through. Field names are the data keys 1:1 — no `f0/f1` translation.
 - **`out` field**: scenes with pause/outro markers → `"manual"`; fire-and-forget scenes → auto-computed duration in milliseconds.
 - **`steps`**: string, count of `pause` markers + 1 (SPX shows step controls for multi-step graphics).

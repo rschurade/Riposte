@@ -123,7 +123,17 @@ export function generateSpxDef(
   const dataFields: SpxDataField[] = [];
 
   if (configuredFields) {
-    dataFields.push(...configuredFields.filter((f) => f.field || f.ftype === 'instruction') as SpxDataField[]);
+    for (const f of configuredFields.filter((f) => f.field || f.ftype === 'instruction') as SpxDataField[]) {
+      // the editor's configurator has no items UI — default dropdowns to on/off
+      // so SPX doesn't render an empty select
+      if (f.ftype === 'dropdown' && !f.items?.length) {
+        f.items = [
+          { text: 'Off', value: '0' },
+          { text: 'On', value: '1' },
+        ];
+      }
+      dataFields.push(f);
+    }
   } else {
     for (const [key, info] of keyTypes!) {
       if (info.ftype === 'dropdown') {
