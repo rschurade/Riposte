@@ -690,46 +690,6 @@ class EditorState {
     this.flash(`imported ${allScenes.length} scene(s) from ${files.length} .loo file(s) into ${name}`);
   }
 
-  /** Import an OGraf graphic folder from a local disk path into a set. */
-  async importOgrafSet(ografDir: string, setName: string): Promise<void> {
-    if (!ografDir.trim() || !setName.trim()) return;
-    // create the set if it doesn't exist
-    if (!this.sets.some((s) => s.root === 'projects' && s.name === setName)) {
-      this.status = `creating set "${setName}"…`;
-      const cr = await fetch('/api/set/create', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: setName }),
-      });
-      if (!cr.ok) {
-        const err = (await cr.json()) as Record<string, unknown>;
-        this.flash(`CREATE FAILED: ${err['error'] ?? cr.status}`);
-        return;
-      }
-    }
-    this.status = 'importing OGraf…';
-    try {
-      const res = await fetch('/api/set/import-ograf', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ root: 'projects', name: setName, ografDir }),
-      });
-      const r = (await res.json()) as Record<string, unknown>;
-      if (!res.ok) {
-        this.flash(`OGRAF IMPORT FAILED: ${r['error'] ?? res.status}`);
-        return;
-      }
-      for (const w of (r['warnings'] as string[]) ?? []) console.warn(`ograf: ${w}`);
-      this.ografImportDialogOpen = false;
-      await this.loadSets();
-      const ref = this.sets.find((s) => s.root === 'projects' && s.name === setName);
-      if (ref) await this.openSet(ref);
-      this.flash(`imported OGraf → ${r['scene']} (${(r['sceneFile'] as string) ?? '?'})`);
-    } catch (err) {
-      this.flash(`OGRAF IMPORT FAILED: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-
   /** Upload asset files into the open set; fonts are auto-registered. */
   async uploadAssets(files: File[]): Promise<void> {
     const ref = this.setRef;
@@ -1699,9 +1659,6 @@ class EditorState {
 
   /** Export dialog — target folder selection for every export. */
   exportDialogOpen = $state(false);
-
-  /** OGraf import dialog — folder path picker. */
-  ografImportDialogOpen = $state(false);
 
   deploySet(): void {
     if (!this.setRef) return;

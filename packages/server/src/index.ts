@@ -20,7 +20,7 @@ import { join, resolve, extname, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { exportSet, syncDir, checkContract, type ContractReport } from '@riposte/exporter';
-import { importLoo, importOgraf } from '@riposte/importer';
+import { importLoo } from '@riposte/importer';
 import { startAmcp, getAmcpState, setAmcpPorts } from './amcp.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -104,7 +104,6 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/assets') return apiAssets(url, res);
   if (path === '/api/set/create' && req.method === 'POST') return apiCreateSet(req, res);
   if (path === '/api/set/import-loo' && req.method === 'POST') return apiImportLoo(url, req, res);
-  if (path === '/api/set/import-ograf' && req.method === 'POST') return apiImportOgraf(req, res);
   if (path === '/api/set/delete' && req.method === 'POST') return apiDeleteSet(req, res);
   if (path === '/api/set/duplicate' && req.method === 'POST') return apiDuplicateSet(req, res);
   if (path === '/api/assets/upload' && req.method === 'POST') return apiUploadAsset(url, req, res);
@@ -582,31 +581,6 @@ async function apiImportLoo(url: URL, req: IncomingMessage, res: ServerResponse)
   } finally {
     await unlink(tmp).catch(() => {});
   }
-}
-
-/**
- * Import an OGraf graphic folder from a local disk path.
- * Body: { root, name, ografDir } — server reads the folder directly (no upload).
- */
-async function apiImportOgraf(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; ografDir: string };
-  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
-  const dir = setDirOf(url);
-  const ografDir = (body.ografDir ?? '').trim();
-  if (!ografDir) throw Object.assign(new Error('ografDir required'), { status: 400 });
-  try {
-    if (!(await stat(ografDir)).isDirectory()) throw new Error();
-  } catch {
-    throw Object.assign(new Error(`not a folder: ${ografDir}`), { status: 400 });
-  }
-  const r = await importOgraf(ografDir, dir);
-  return json(res, {
-    ok: true,
-    scene: r.scene,
-    sceneFile: r.sceneFile,
-    warnings: r.warnings,
-    assets: { written: r.assetReport.written.length, deduplicated: r.assetReport.deduplicated.length },
-  });
 }
 
 const FONT_EXT_RE = /\.(ttf|otf|woff2?)$/i;

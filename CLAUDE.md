@@ -18,7 +18,7 @@ TypeScript ESM monorepo (npm workspaces, Node ≥ 24 — server/importer/mcp run
 |---|---|
 | `packages/shared` | Scene/set format types (`src/scene.ts`, `src/set.ts`), `trimToContent` |
 | `packages/runtime` | The rendering engine — zero deps, esbuild → `dist/riposte.js` (IIFE) |
-| `packages/importer` | Loopic `.loo` (primary) + Loopic HTML-export (fallback) + OGraf import → set projects; script→binding migrator |
+| `packages/importer` | Loopic `.loo` (primary) + Loopic HTML-export (fallback) → set projects; script→binding migrator |
 | `packages/exporter` | Set project → CasparCG templates (`external` default / `baked` fallback) + SPX (CasparCG HTML with embedded SPXGCTemplateDefinition) + OGraf (EBU manifest + graphic.mjs); `syncDir` for deploy |
 | `packages/server` | Node server on **:5720** — bench at `/`, file/project/asset HTTP API, SSE (`src/index.ts`, single file) |
 | `packages/editor` | Svelte 5 + Vite UI on **:5719** (proxies to :5720). State: `src/lib/state.svelte.ts`; panels: Sidebar/Stage/Timeline/Inspector |
@@ -50,7 +50,7 @@ subjects; the zip ships it), then `npm run dist`.
 
 `npm run dist` packs a folder that runs anywhere with only a Node.js LTS install: the esbuild-bundled `server.js` (no native TS → no Node-24 requirement, no npm install), the built editor, runtime, bench/playout, the demo set, an empty `projects/`, and `start.cmd`/`start.sh` (run `node server.js --open`). **Packaged layout is auto-detected** (a `public/` dir next to `server.js`): the editor is then served at `/` and the bench moves to `/bench`; in the dev repo, `/` stays the bench (bench-shot.ps1 and A/B tooling depend on that) and the editor stays on vite. `RIPOSTE_PROJECTS_DIR` / `RIPOSTE_EXAMPLES_DIR` override the set roots in both modes. Recipients share sets by copying folders into `projects/`.
 
-CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html <set-dir> <export.html>`, `riposte-import-ograf <set-dir> <ograf-dir>`, `riposte-migrate <set-dir>`, `riposte-export <set-dir> [outDir] [--baked]`, `riposte-mcp`.
+CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html <set-dir> <export.html>`, `riposte-migrate <set-dir>`, `riposte-export <set-dir> [outDir] [--baked]`, `riposte-mcp`.
 
 ### Dev server rules
 
@@ -127,26 +127,13 @@ OGraf (EBU standard) exports are per-scene self-contained folders containing a m
 - Verification: `packages/exporter/test/ograf-lifecycle.mjs` drives the full EBU lifecycle in headless Chromium (Playwright): `node --experimental-strip-types packages/exporter/test/ograf-lifecycle.mjs <ograf-export-dir> <SceneName> [zero-step]`.
 - Code: `packages/exporter/src/ograf-export.ts`.
 
-## OGraf Import
-
-Imports an OGraf graphic folder from a local disk path into a Riposte set.
-
-- **Manifest parsing**: finds `*.ograf.json` → extracts name, id, schema (→ previewData), custom actions, stepCount (→ approximate pause markers).
-- **Moderate code analysis of `graphic.mjs`**: regex-based extraction of `createElement()` (→ element types), inline styles (→ position/color/font), `innerText`/`textContent` (→ default values), GSAP tweens (→ approximate keyframes), image refs (→ asset paths).
-- **Conversion to SceneDoc**: each detected element → a Riposte layer (text, rectangle, image). Nested elements become separate layers. GSAP hints become keyframes on style properties.
-- **Assets**: `lib/` contents copied into set's `assets/` via content-hash dedup (`AssetPool`).
-- **Limitations**: inherently lossy — imperative code cannot be perfectly converted to declarative data. Complex logic, Canvas/WebGL, and external library behavior are flagged as warnings.
-- **Editor UI**: "+ OGraf" button in sidebar opens a dialog with a folder path text input + set name. Server reads the path directly (no upload — local filesystem access).
-- **Server endpoint**: `POST /api/set/import-ograf` with `{ root, name, ografDir }`.
-- CLI: `riposte-import-ograf <set-dir> <ograf-dir>`.
-- Code: `packages/importer/src/import-ograf.ts`.
-
 ## Export Dialog
 
-The Export button in the header now opens a dialog (instead of exporting immediately). The dialog shows:
+The Export button in the header opens a dialog (instead of exporting immediately). The dialog shows:
 
-- **Current export mode** (from Set Options, read-only display).
+- **Export mode** dropdown (seeded from Set Options; changing it saves back to the set).
 - **Target directory** — free-form text input, persisted in localStorage as `riposte.exportDir`. Defaults to the set's own `export/` folder when empty.
+- In SPX mode, a per-scene **DataFields configurator** (see SPX Export above).
 - On confirm: `POST /api/export` with `outDir` parameter → server writes to the chosen directory.
 - Code: `packages/editor/src/lib/ExportDialog.svelte`.
 

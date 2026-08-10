@@ -6,7 +6,6 @@
   import SetOptions from './lib/SetOptions.svelte';
   import DeployDialog from './lib/DeployDialog.svelte';
   import ExportDialog from './lib/ExportDialog.svelte';
-  import OgrafImportDialog from './lib/OgrafImportDialog.svelte';
   import PresetFx from './lib/PresetFx.svelte';
   import { ed } from './lib/state.svelte.ts';
 
@@ -190,7 +189,6 @@
 <SetOptions />
 <DeployDialog />
 <ExportDialog />
-<OgrafImportDialog />
 <PresetFx />
 
 <style>

@@ -249,9 +249,6 @@
   <h2 class="hrow">
     <button class="linkish" onclick={() => toggle('sets')}>{collapsed.sets ? '▸' : '▾'} Sets</button>
     <button class="hbtn wide" title="Import Loopic .loo project files into a new or existing set" onclick={() => looInput?.click()}>+ .loo</button>
-    <!-- OGraf importer not production-ready yet
-    <button class="hbtn wide" title="Import an OGraf graphic folder from disk" onclick={() => { ed.ografImportDialogOpen = true; }}>+ OGraf</button>
-    -->
     <button class="hbtn" title="New empty set" onclick={() => ed.createSet()}>+</button>
   </h2>
   {#if !collapsed.sets}
