@@ -28,6 +28,10 @@ await new Promise((r) => server.listen(0, r));
 const port = server.address().port;
 
 const scene = process.argv[3] ?? 'Schedule';
+// Two text data keys the target scene actually binds (defaults suit a scene
+// with _name1/_name2, e.g. the demo Schedule) — override via env for other sets.
+const KEY1 = process.env['RIPOSTE_TEST_KEY1'] ?? '_name1';
+const KEY2 = process.env['RIPOSTE_TEST_KEY2'] ?? '_name2';
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage();
 await page.setViewportSize({ width: 1920, height: 1080 });
@@ -43,6 +47,7 @@ await page.setContent(`<!doctype html><html><body><div id="host"></div>
   document.getElementById('host').appendChild(el);
   window.__g = el;
   window.__zeroStep = ${process.argv[4] === 'zero-step' ? 'true' : 'false'};
+  window.__keys = ${JSON.stringify([KEY1, KEY2])};
   window.__log = [];
 </script>`);
 
@@ -53,9 +58,10 @@ const results = await page.evaluate(async () => {
   const out = [];
   const t = (name, ok, extra = '') => out.push(`${ok ? 'PASS' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`);
   const zeroStep = window.__zeroStep === true;
+  const [key1, key2] = window.__keys;
 
   // load
-  const lr = await g.load({ data: { _name1: 'UPDATED NAME', _title: 'LIFECYCLE TEST' }, renderType: 'realtime' });
+  const lr = await g.load({ data: { [key1]: 'UPDATED NAME', [key2]: 'LIFECYCLE TEST' }, renderType: 'realtime' });
   t('load resolves', lr?.statusCode === 200);
 
   if (zeroStep) {
@@ -82,7 +88,7 @@ const results = await page.evaluate(async () => {
   t('updated data rendered', txt.includes('UPDATED NAME') && txt.includes('LIFECYCLE TEST'));
 
   // updateAction
-  const ur = await g.updateAction({ data: { _name1: 'SECOND UPDATE' } });
+  const ur = await g.updateAction({ data: { [key1]: 'SECOND UPDATE' } });
   t('updateAction resolves', ur?.statusCode === 200);
   t('update rendered', (g.textContent ?? '').includes('SECOND UPDATE'));
 

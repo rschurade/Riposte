@@ -36,10 +36,14 @@ page.on('pageerror', (e) => console.error('PAGE ERROR:', e.message));
 const results = [];
 const t = (name2, ok, extra = '') => results.push(`${ok ? 'PASS' : 'FAIL'} ${name2}${extra ? ' — ' + extra : ''}`);
 
+// A text data key the target scene actually binds (default suits the demo
+// Schedule) — override via RIPOSTE_TEST_KEY1 for other sets.
+const KEY1 = process.env['RIPOSTE_TEST_KEY1'] ?? '_name1';
+
 // SPX renderer behavior: spxData set BEFORE the template loads (JSON dataformat)
-await page.addInitScript(() => {
-  window.spxData = { _title: 'SPX INJECTED TITLE' };
-});
+await page.addInitScript((key) => {
+  window.spxData = { [key]: 'SPX INJECTED TITLE' };
+}, KEY1);
 
 await page.goto(`http://localhost:${port}/${name}.html`, { waitUntil: 'load', timeout: 20000 });
 
@@ -60,7 +64,7 @@ const afterPlay = await page.evaluate(() => document.body.textContent ?? '');
 t('spxData flushed on play', afterPlay.includes('SPX INJECTED TITLE'));
 
 // 4. CG UPDATE path (CasparCG playout) — window.update with JSON
-await page.evaluate(() => window.update(JSON.stringify({ _title: 'CG UPDATE VALUE' })));
+await page.evaluate((key) => window.update(JSON.stringify({ [key]: 'CG UPDATE VALUE' })), KEY1);
 await page.waitForTimeout(150);
 const afterUpdate = await page.evaluate(() => document.body.textContent ?? '');
 t('window.update passes through', afterUpdate.includes('CG UPDATE VALUE'));
