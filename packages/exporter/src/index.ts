@@ -208,26 +208,35 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
 
   // OGraf mode: each scene becomes its own self-contained OGraf graphic folder
   if (mode === 'ograf') {
+    if (webpOn) warnings.push('ograf export ignores imageFormat "webp" — raw assets are copied per graphic folder');
     const ografScenes: string[] = [];
-    let totalAssets = 0;
+    const ografUpdated: string[] = [];
+    let assetsCopied = 0;
+    let assetsUpToDate = 0;
+    let assetBytes = 0;
+    let runtimeUpdated = false;
     for (const file of set.scenes) {
       const doc = await readScene(file);
       if (!doc) continue;
       const sceneComponents: Record<string, SceneDoc> = {};
       collectComponents(doc, components, sceneComponents, warnings);
-      const r = await exportOgraf(doc, file, sceneComponents, set, setDir, outDir);
+      const r = await exportOgraf(doc, file, sceneComponents, set, setDir, outDir, warnings);
       ografScenes.push(r.name);
-      totalAssets += r.assetsCopied;
+      if (r.changed) ografUpdated.push(r.name);
+      assetsCopied += r.assetsCopied;
+      assetsUpToDate += r.assetsUpToDate;
+      assetBytes += r.assetBytes;
+      runtimeUpdated ||= r.runtimeUpdated;
     }
     return {
       outDir,
       mode,
       scenes: ografScenes,
-      scenesUpdated: ografScenes,
-      assetsCopied: totalAssets,
-      assetsUpToDate: 0,
-      assetBytes: 0,
-      runtimeUpdated: false,
+      scenesUpdated: ografUpdated,
+      assetsCopied,
+      assetsUpToDate,
+      assetBytes,
+      runtimeUpdated,
       warnings,
     };
   }

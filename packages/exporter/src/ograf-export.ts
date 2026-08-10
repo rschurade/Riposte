@@ -21,7 +21,7 @@
  *   stopAction() → play from outro to end
  */
 
-import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { CompositionElement, OutroPreset, SceneDoc, SceneElement, SetDoc } from '@riposte/shared';
@@ -31,8 +31,16 @@ export interface OgrafExportResult {
   name: string;
   /** Files written this run. */
   filesWritten: string[];
-  /** Number of asset files copied (images, fonts). */
+  /** True when manifest or bridge actually changed on disk this run. */
+  changed: boolean;
+  /** Asset files copied this run (missing or different at the destination). */
   assetsCopied: number;
+  /** Asset files already byte-identical at the destination. */
+  assetsUpToDate: number;
+  /** Total bytes of all referenced assets (copied or not). */
+  assetBytes: number;
+  /** True when riposte.js changed at the destination. */
+  runtimeUpdated: boolean;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -212,11 +220,22 @@ export default class extends HTMLElement {
       }));
     }
 
+    // Preload assets before load() resolves — the OGraf host may play
+    // immediately after, and a cold image cache flashes on first frame.
+    // (fonts/preload are boot() concerns; createRuntime ignores them, so
+    // the bridge does both itself.)
+    if (scene.v_ografPreload?.length) {
+      await Promise.all(scene.v_ografPreload.map((u) => new Promise((ok) => {
+        const img = new Image();
+        img.onload = ok;
+        img.onerror = ok; // missing asset must not block load
+        img.src = new URL(u, import.meta.url).href;
+      })));
+    }
+
     const opts = {
       assetBase: new URL('./', import.meta.url).href,
       components,
-      fonts: scene.v_ografFonts ?? [],
-      preload: scene.v_ografPreload ?? [],
       ...(scene.v_ografOutro ? { outro: scene.v_ografOutro } : {}),
       ...(scene.v_ografIntro ? { intro: scene.v_ografIntro } : {}),
     };
@@ -404,16 +423,25 @@ export async function exportOgraf(
   set: SetDoc,
   setDir: string,
   outDir: string,
+  warnings?: string[],
 ): Promise<OgrafExportResult> {
   const name = sceneName(sceneFile);
   const sceneOutDir = join(outDir, name);
   await mkdir(sceneOutDir, { recursive: true });
 
   const filesWritten: string[] = [];
+  let changed = false;
+  // incremental like the external exporter: only touch files that differ
   const write = async (file: string, content: string): Promise<void> => {
     const path = join(sceneOutDir, file);
+    try {
+      if ((await readFile(path, 'utf8')) === content) return;
+    } catch {
+      /* missing — write it */
+    }
     await writeFile(path, content, 'utf8');
     filesWritten.push(file);
+    changed = true;
   };
 
   // Pause frames (for step model mapping in the bridge)
@@ -463,7 +491,10 @@ export async function exportOgraf(
     ...JSON.parse(JSON.stringify(scene)),
     v_ografComponents: components,
     v_ografFonts: (set.fonts ?? []).map((f) => ({ family: f.family, url: f.file })),
-    v_ografPreload: [...assetsOf(scene, components)].map((a) => relative(sceneOutDir, join(setDir, a)).replace(/\\/g, '/')),
+    // refs are set-relative ("assets/foo.png") and the copy step mirrors that
+    // layout into the graphic folder — so the refs ARE the preload URLs,
+    // resolved against import.meta.url in the bridge
+    v_ografPreload: [...assetsOf(scene, components)].map((a) => a.replace(/\\/g, '/')),
   };
 
   // Pre-load outro/intro presets
@@ -487,13 +518,21 @@ export async function exportOgraf(
     scenePayload,
   ));
 
-  // Copy riposte.js
+  // Copy riposte.js (only when the build actually changed)
   const runtimeJs = await readFile(DEFAULT_RUNTIME);
-  await writeFile(join(sceneOutDir, 'riposte.js'), runtimeJs);
-  filesWritten.push('riposte.js');
+  let runtimeUpdated = false;
+  const runtimeDst = join(sceneOutDir, 'riposte.js');
+  const existingRuntime = await readFile(runtimeDst).catch(() => null);
+  if (!existingRuntime || !existingRuntime.equals(runtimeJs)) {
+    await writeFile(runtimeDst, runtimeJs);
+    filesWritten.push('riposte.js');
+    runtimeUpdated = true;
+  }
 
-  // Copy assets
+  // Copy assets (byte compare — repeats are cheap, like the external mode)
   let assetsCopied = 0;
+  let assetsUpToDate = 0;
+  let assetBytes = 0;
   const allAssets = assetsOf(scene, components);
   for (const f of set.fonts ?? []) allAssets.add(f.file);
 
@@ -506,15 +545,23 @@ export async function exportOgraf(
       const dstDir = subPath && subPath !== '.' ? join(sceneOutDir, 'assets', subPath) : join(sceneOutDir, 'assets');
       await mkdir(dstDir, { recursive: true });
       try {
-        await copyFile(src, join(dstDir, filename));
-        assetsCopied++;
+        const bytes = await readFile(src);
+        assetBytes += bytes.length;
+        const dst = join(dstDir, filename);
+        const existing = await readFile(dst).catch(() => null);
+        if (existing && existing.equals(bytes)) {
+          assetsUpToDate++;
+        } else {
+          await writeFile(dst, bytes);
+          assetsCopied++;
+        }
       } catch {
-        // missing asset — silently skip
+        warnings?.push(`${name}: asset missing — ${rel}`);
       }
     }
   }
 
-  return { outDir: sceneOutDir, name, filesWritten, assetsCopied };
+  return { outDir: sceneOutDir, name, filesWritten, changed, assetsCopied, assetsUpToDate, assetBytes, runtimeUpdated };
 }
 
 // ---- helpers -----------------------------------------------------------------

@@ -125,7 +125,7 @@ OGraf (EBU standard) exports are per-scene self-contained folders containing a m
   - `customAction({id, payload})` → `runtime.invoke(id, payload)`.
   - `dispose()` → `runtime.destroy()`, clears DOM.
 - **Runtime API additions** (used by the bridge, backward compatible with the CasparCG contract): `stop({ skipAnimation })` instant-hide option, `onPaused(cb)` / `onEnded(cb)` lifecycle listeners (fired on pause-marker parking and on every hide path: play end, marker outro, preset outro, instant stop).
-- Verification: `packages/exporter/test/ograf-lifecycle.mjs` drives the full EBU lifecycle in headless Chromium (Playwright): `node --experimental-strip-types packages/exporter/test/ograf-lifecycle.mjs <ograf-export-dir> <SceneName> [zero-step]`.
+- Verification: `packages/exporter/test/ograf-lifecycle.mjs` drives the full EBU lifecycle in headless Chromium (`npm run test:ograf -w @riposte/exporter -- <ograf-export-dir> <SceneName> [zero-step]`); `test/spx-template.mjs` does the same for SPX (`npm run test:spx -w @riposte/exporter -- <spx-export-dir> <TemplateName>`). Both need Playwright's browser once: `npx playwright install chromium`. Opt-in — NOT part of `npm test` (they need a prior export + a browser download).
 - Code: `packages/exporter/src/ograf-export.ts`.
 
 ## Export Dialog

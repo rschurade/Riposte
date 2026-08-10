@@ -8,7 +8,9 @@
     "riposte-export": "src/cli.ts"
   },
   "scripts": {
-    "check": "tsc -p ."
+    "check": "tsc -p .",
+    "test:spx": "node test/spx-template.mjs",
+    "test:ograf": "node test/ograf-lifecycle.mjs"
   },
   "dependencies": {
     "@riposte/shared": "*"
