@@ -12,7 +12,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { mkdir, readFile, readdir, stat, writeFile, unlink, rename, rmdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, readdir, stat, writeFile, unlink, rename, rmdir, rm, cp } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -185,10 +185,16 @@ async function apiOpen(req: IncomingMessage, res: ServerResponse): Promise<void>
 }
 
 /** Resolve a set directory from ?root=&name=, guarding against traversal. */
+/** A set name must be a plain folder name — never a path. Rejects `..`,
+ * dot/space-only names, and anything the char whitelist doesn't cover. */
+function validSetName(name: string): boolean {
+  return /^[\w .()-]+$/.test(name) && !name.includes('..') && !/^[ .]+$/.test(name);
+}
+
 function setDirOf(url: URL): string {
   const root = ROOTS[url.searchParams.get('root') ?? ''];
   const name = url.searchParams.get('name') ?? '';
-  if (!root || !/^[\w .()-]+$/.test(name)) throw Object.assign(new Error('bad set ref'), { status: 400 });
+  if (!root || !validSetName(name)) throw Object.assign(new Error('bad set ref'), { status: 400 });
   return join(root, name);
 }
 
@@ -486,7 +492,7 @@ async function readRawBody(req: IncomingMessage): Promise<Buffer> {
 async function apiCreateSet(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = (await readBody(req)) as { name: string };
   const name = (body.name ?? '').trim();
-  if (!/^[\w .()-]+$/.test(name)) throw Object.assign(new Error('bad set name'), { status: 400 });
+  if (!validSetName(name)) throw Object.assign(new Error('bad set name'), { status: 400 });
   const dir = join(projectsDir, name);
   try {
     await stat(join(dir, 'set.json'));
@@ -507,6 +513,8 @@ async function apiCreateSet(req: IncomingMessage, res: ServerResponse): Promise<
 async function apiDeleteSet(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = (await readBody(req)) as { root: string; name: string };
   if (body.root !== 'projects') throw Object.assign(new Error('can only delete sets in projects/'), { status: 400 });
+  // rm -rf on user input: the name must be a validated plain folder name
+  if (!validSetName(body.name ?? '')) throw Object.assign(new Error('bad set name'), { status: 400 });
   const dir = join(projectsDir, body.name);
   try {
     await stat(join(dir, 'set.json'));
@@ -522,7 +530,7 @@ async function apiDeleteSet(req: IncomingMessage, res: ServerResponse): Promise<
 async function apiDuplicateSet(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = (await readBody(req)) as { root: string; name: string; newName: string };
   const newName = (body.newName ?? '').trim();
-  if (!/^[\w .()-]+$/.test(newName) || !newName) {
+  if (!validSetName(newName)) {
     throw Object.assign(new Error('bad set name'), { status: 400 });
   }
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
@@ -543,15 +551,17 @@ async function apiDuplicateSet(req: IncomingMessage, res: ServerResponse): Promi
   return json(res, { ok: true, name: newName });
 }
 
+/** Regenerable per-set dirs that a duplicate must not drag along (a big set's
+ * export/ + .webp-cache/ can be hundreds of MB of derivable data). */
+const COPY_SKIP = new Set(['export', '_export', '_ab', '.webp-cache', '.git']);
+
 /** Recursive directory copy for set duplication. */
 async function copyDir(src: string, dst: string): Promise<void> {
-  await mkdir(dst, { recursive: true });
-  for (const entry of await readdir(src, { withFileTypes: true })) {
-    const s = join(src, entry.name);
-    const d = join(dst, entry.name);
-    if (entry.isDirectory()) await copyDir(s, d);
-    else await writeFile(d, await readFile(s));
-  }
+  await cp(src, dst, {
+    recursive: true,
+    // s === src: never filter the root itself (a set could be named "export")
+    filter: (s) => s === src || !COPY_SKIP.has(basename(s)),
+  });
 }
 
 /**
