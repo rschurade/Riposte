@@ -130,13 +130,14 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/bench' && req.method === 'POST') return apiBench(req, res);
   if (path === '/api/open' && req.method === 'POST') return apiOpen(req, res);
   if (path === '/runtime.js') return file(res, runtimeJs);
+  // /bench works in both modes (in dev / is also the bench; the editor's Bench button uses this)
+  if (path === '/bench') return file(res, join(publicDir, 'index.html'));
   if (path.startsWith('/examples/')) return file(res, safeJoin(examplesDir, path.slice('/examples/'.length)));
   if (path.startsWith('/projects/')) return file(res, safeJoin(projectsDir, path.slice('/projects/'.length)));
 
   if (editorDist) {
     // packaged: the built editor owns / (its bundles live under /assets/); bench keeps working at /bench
     if (path === '/' || path === '/index.html') return file(res, join(editorDist, 'index.html'));
-    if (path === '/bench') return file(res, join(publicDir, 'index.html'));
     if (path.startsWith('/assets/')) return file(res, safeJoin(editorDist, path.slice(1)));
   }
 

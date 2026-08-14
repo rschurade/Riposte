@@ -155,6 +155,7 @@
     <button class="primary" onclick={() => ed.save()} disabled={!ed.dirty} title="Ctrl+S">Save</button>
     <button onclick={() => { ed.exportDialogOpen = true; }} disabled={!ed.setRef} title="Build templates into a chosen directory (incremental)">Export</button>
     <button onclick={() => ed.deploySet()} disabled={!ed.setRef} title="Export + copy changed files into the CasparCG template directory">Deploy</button>
+    <button onclick={() => window.open('/bench', 'riposte-bench')} title="Open the preview bench (play scenes with test data, no controller needed)">Bench</button>
     <button onclick={() => window.open('/playout.html', 'riposte-playout')} title="Open the virtual CasparCG output (ControlCenter connects to ports 6250/6251)">Playout</button>
   </header>
   <div class="main" style="grid-template-columns:{leftW}px 5px 1fr 5px {rightW}px">

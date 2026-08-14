@@ -37,6 +37,7 @@ export default defineConfig({
       '/runtime.js': proxied(),
       '/playout.html': proxied(),
       '/playout.js': proxied(),
+      '/bench': proxied(), // prefix also covers /bench.js
     },
   },
 });
