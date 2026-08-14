@@ -31,6 +31,10 @@ TypeScript ESM monorepo (npm workspaces, Node ≥ 24 — server/importer/mcp run
 
 `projects/` is its own git repo tracking scenes + `set.json` + assets (uploaded assets have no other source). Its `export/`, `_export/`, `_ab/` are ignored. **Never track user data in this (code) repo.** Pushing Riposte-Sets after set-editing days is encouraged — it's data backup, the "don't push untested code" etiquette does not apply to it.
 
+### Set transport (.set archives)
+
+For moving sets between machines without git: a `.set` file is a zip of the set folder (set.json at the archive root, regenerable dirs excluded). Sidebar: **open** button imports one into `projects/` (collision → overwrite-or-rename dialog; overwrite replaces the folder, never merges; rename also patches set.json's name); the per-set **⤓** hover icon saves one to a chosen path (last folder remembered as `setFileDir` in riposte.config.json). API: `POST /api/set/save-file {root,name,targetPath}`, `POST /api/set/open-file?filename=&mode=&newName=` (409 `{exists}` without mode). Zip via fflate; archive paths are validated (zip-slip rejected). A scene-level variant (`.rip`) was discussed but deliberately deferred.
+
 ## Commands
 
 ```bash
@@ -54,7 +58,7 @@ CLIs (package bins): `riposte-import <set-dir> <file.loo>`, `riposte-import-html
 
 ### Machine config: riposte.config.json
 
-One machine-level config file next to the server (`packages/server/` in dev, the dist root packaged), created on first boot: `port` (HTTP, 5720), `amcpPort`/`amcpPreviewPort` (6250/6251, 0 disables), `projectsDir`/`examplesDir` (null = default roots), `deployDir` (CasparCG template dir, written on every deploy), `contractDir` (ControlCenter graphics_sets folder), `exportDirs` (per-set export targets keyed `<root>/<name>`; absent = `<set>/export`). Precedence: **env var > config file > default** (`RIPOSTE_PORT`, `RIPOSTE_AMCP_PORT`, `RIPOSTE_AMCP_PREVIEW_PORT`, `RIPOSTE_PROJECTS_DIR`, `RIPOSTE_EXAMPLES_DIR` are one-off overrides). `GET /api/config` reads it; writes happen through the specific actions (deploy, export, playout HUD port change, contract-config) or by hand-editing + restart. Absorbed the pre-0.7.1 dotfiles `.amcp-ports.json`/`.contract-config.json` (migrated + deleted on first boot). Deploy/export target dirs live here, NOT in browser localStorage — they survive browser switches and the dev(:5719)/packaged(:5720) origin split. Code: `packages/server/src/config.ts`.
+One machine-level config file next to the server (`packages/server/` in dev, the dist root packaged), created on first boot: `port` (HTTP, 5720), `amcpPort`/`amcpPreviewPort` (6250/6251, 0 disables), `projectsDir`/`examplesDir` (null = default roots), `deployDir` (CasparCG template dir, written on every deploy), `contractDir` (ControlCenter graphics_sets folder), `exportDirs` (per-set export targets keyed `<root>/<name>`; absent = `<set>/export`), `setFileDir` (last .set save folder). Precedence: **env var > config file > default** (`RIPOSTE_PORT`, `RIPOSTE_AMCP_PORT`, `RIPOSTE_AMCP_PREVIEW_PORT`, `RIPOSTE_PROJECTS_DIR`, `RIPOSTE_EXAMPLES_DIR` are one-off overrides). `GET /api/config` reads it; writes happen through the specific actions (deploy, export, playout HUD port change, contract-config) or by hand-editing + restart. Absorbed the pre-0.7.1 dotfiles `.amcp-ports.json`/`.contract-config.json` (migrated + deleted on first boot). Deploy/export target dirs live here, NOT in browser localStorage — they survive browser switches and the dev(:5719)/packaged(:5720) origin split. Code: `packages/server/src/config.ts`.
 
 ### Dev server rules
 

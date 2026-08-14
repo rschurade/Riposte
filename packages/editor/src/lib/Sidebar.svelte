@@ -213,14 +213,21 @@
     if (img.naturalWidth) previewDim = `${img.naturalWidth}×${img.naturalHeight}`;
   }
 
-  // ---- file pickers (new set from .loo, asset upload) ------------------------
+  // ---- file pickers (new set from .loo, .set archive, asset upload) ----------
   let looInput = $state<HTMLInputElement>();
+  let setInput = $state<HTMLInputElement>();
   let assetInput = $state<HTMLInputElement>();
 
   function pickedLoo(): void {
     const files = [...(looInput?.files ?? [])];
     if (looInput) looInput.value = '';
     void ed.importLooFiles(files);
+  }
+
+  function pickedSet(): void {
+    const files = [...(setInput?.files ?? [])];
+    if (setInput) setInput.value = '';
+    void ed.openSetFiles(files);
   }
 
   function pickedAssets(): void {
@@ -244,10 +251,12 @@
 
 <aside>
   <input class="ghost" type="file" multiple accept=".loo" bind:this={looInput} onchange={pickedLoo} />
+  <input class="ghost" type="file" multiple accept=".set" bind:this={setInput} onchange={pickedSet} />
   <input class="ghost" type="file" multiple accept="image/*,.png,.jpg,.jpeg,.webp,.svg,.gif,.ttf,.otf,.woff,.woff2" bind:this={assetInput} onchange={pickedAssets} />
 
   <h2 class="hrow">
     <button class="linkish" onclick={() => toggle('sets')}>{collapsed.sets ? '▸' : '▾'} Sets</button>
+    <button class="hbtn wide" title="Open a .set archive — import a set saved from another machine" onclick={() => setInput?.click()}>open</button>
     <button class="hbtn wide" title="Import Loopic .loo project files into a new or existing set" onclick={() => looInput?.click()}>+ .loo</button>
     <button class="hbtn" title="New empty set" onclick={() => ed.createSet()}>+</button>
   </h2>
@@ -265,6 +274,7 @@
             <span class="dim">{s.root === 'examples' ? 'demo' : ''}</span>
           </button>
           {#if s.root === 'projects'}
+            <button class="rowbtn" title="Save as .set archive — portable single file for another machine" onclick={(e) => { e.stopPropagation(); void ed.saveSetFile(s); }}>⤓</button>
             <button class="rowbtn" title="Duplicate set" onclick={(e) => { e.stopPropagation(); void ed.duplicateSet(s); }}>⧉</button>
             <button class="rowbtn remove" title="Delete set" onclick={(e) => { e.stopPropagation(); void ed.deleteSet(s); }}>✕</button>
           {/if}

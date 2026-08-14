@@ -23,6 +23,7 @@ import { exportSet, syncDir, checkContract, type ContractReport } from '@riposte
 import { importLoo } from '@riposte/importer';
 import { startAmcp, getAmcpState, setAmcpPorts } from './amcp.ts';
 import { loadConfig, getConfig, saveConfig } from './config.ts';
+import { zipSync, unzipSync } from 'fflate';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /**
@@ -115,6 +116,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/set/import-loo' && req.method === 'POST') return apiImportLoo(url, req, res);
   if (path === '/api/set/delete' && req.method === 'POST') return apiDeleteSet(req, res);
   if (path === '/api/set/duplicate' && req.method === 'POST') return apiDuplicateSet(req, res);
+  if (path === '/api/set/save-file' && req.method === 'POST') return apiSaveSetFile(req, res);
+  if (path === '/api/set/open-file' && req.method === 'POST') return apiOpenSetFile(url, req, res);
   if (path === '/api/assets/upload' && req.method === 'POST') return apiUploadAsset(url, req, res);
   if (path === '/api/scene' && req.method === 'PUT') return apiSaveScene(req, res);
   if (path === '/api/scene/create' && req.method === 'POST') return apiCreateScene(req, res);
@@ -578,6 +581,128 @@ async function copyDir(src: string, dst: string): Promise<void> {
     // s === src: never filter the root itself (a set could be named "export")
     filter: (s) => s === src || !COPY_SKIP.has(basename(s)),
   });
+}
+
+// ---- .set archives (whole-set transport between machines) ---------------------
+// A .set file is a zip of the set folder (set.json at the archive root), minus
+// the regenerable COPY_SKIP dirs. Import merges nothing: it lands as a fresh
+// set folder in projects/ (overwrite = replace, never merge).
+
+/** No recompression for formats that are already compressed. */
+const STORED_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.woff', '.woff2', '.mp4']);
+
+/** Zip a .set file and write it to a caller-chosen path (folder remembered). */
+async function apiSaveSetFile(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const body = (await readBody(req)) as { root: string; name: string; targetPath: string };
+  const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
+  const setDir = setDirOf(url);
+  let target = resolve(repoRoot, (body.targetPath ?? '').trim());
+  if (!body.targetPath?.trim()) throw Object.assign(new Error('targetPath required'), { status: 400 });
+  try {
+    if ((await stat(target)).isDirectory()) target = join(target, `${body.name}.set`);
+  } catch {
+    // not an existing dir — treat as a file path
+  }
+  if (!target.toLowerCase().endsWith('.set')) target += '.set';
+  try {
+    if (!(await stat(dirname(target))).isDirectory()) throw new Error();
+  } catch {
+    throw Object.assign(new Error(`target folder does not exist: ${dirname(target)}`), { status: 400 });
+  }
+
+  const entries: Record<string, [Uint8Array, { level: 0 | 6 }]> = {};
+  let files = 0;
+  const walk = async (rel: string): Promise<void> => {
+    for (const e of await readdir(join(setDir, rel), { withFileTypes: true })) {
+      const relPath = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) {
+        if (!COPY_SKIP.has(e.name)) await walk(relPath);
+      } else if (e.isFile()) {
+        entries[relPath] = [await readFile(join(setDir, relPath)), { level: STORED_EXT.has(extname(e.name).toLowerCase()) ? 0 : 6 }];
+        files++;
+      }
+    }
+  };
+  await walk('');
+  const bytes = zipSync(entries);
+  await writeFile(target, bytes);
+  saveConfig({ setFileDir: dirname(target) }); // seed the next save prompt
+  return json(res, { ok: true, file: target, files, bytes: bytes.length });
+}
+
+/** Zip entry names must stay strictly inside the target set folder. */
+const SET_ENTRY_RE = /^[\w .()-]+(\/[\w .()-]+)*$/;
+
+/**
+ * Import an uploaded .set archive as a new set in projects/
+ * (?filename=&mode=&newName=). Collision without mode → 409 {exists} and the
+ * editor asks; mode=overwrite replaces the folder, mode=rename uses newName.
+ */
+async function apiOpenSetFile(url: URL, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const bytes = await readRawBody(req);
+  if (bytes.length === 0) throw Object.assign(new Error('empty upload'), { status: 400 });
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(bytes);
+  } catch {
+    throw Object.assign(new Error('not a .set archive (unzip failed)'), { status: 400 });
+  }
+  // tolerate an archive that wraps the set in a single top-level folder
+  if (!entries['set.json']) {
+    const tops = new Set(Object.keys(entries).map((k) => k.split('/')[0]));
+    const top = tops.size === 1 ? [...tops][0] : null;
+    if (top && entries[`${top}/set.json`]) {
+      const inner: Record<string, Uint8Array> = {};
+      for (const [k, v] of Object.entries(entries)) inner[k.slice(top.length + 1)] = v;
+      entries = inner;
+    } else {
+      throw Object.assign(new Error('archive has no set.json — not a .set file'), { status: 400 });
+    }
+  }
+
+  let setDoc: { name?: unknown };
+  try {
+    setDoc = JSON.parse(Buffer.from(entries['set.json']!).toString('utf8')) as { name?: unknown };
+  } catch {
+    throw Object.assign(new Error('set.json in the archive is not valid JSON'), { status: 400 });
+  }
+  const upload = basename(url.searchParams.get('filename') ?? '').replace(/\.set$/i, '');
+  const originalName = typeof setDoc.name === 'string' && validSetName(setDoc.name) ? setDoc.name : upload;
+  const mode = url.searchParams.get('mode'); // '' | 'overwrite' | 'rename'
+  const name = mode === 'rename' ? (url.searchParams.get('newName') ?? '').trim() : originalName;
+  if (!validSetName(name)) throw Object.assign(new Error('bad set name'), { status: 400 });
+
+  const dir = join(projectsDir, name);
+  const exists = existsSync(join(dir, 'set.json'));
+  if (exists && mode !== 'overwrite') {
+    if (mode === 'rename') throw Object.assign(new Error(`set "${name}" already exists`), { status: 409 });
+    res.writeHead(409, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ exists: true, name }));
+    return;
+  }
+
+  // validate every path BEFORE touching the disk (zip-slip: "../", absolute, drive letters)
+  const files = Object.entries(entries).filter(([k]) => !k.endsWith('/'));
+  for (const [k] of files) {
+    if (!SET_ENTRY_RE.test(k) || k.split('/').some((seg) => seg === '..' || /^[ .]+$/.test(seg))) {
+      throw Object.assign(new Error(`unsafe path in archive: ${k}`), { status: 400 });
+    }
+  }
+
+  if (exists) await rm(dir, { recursive: true, force: true }); // overwrite = replace, never merge
+  for (const [k, v] of files) {
+    if (COPY_SKIP.has(k.split('/')[0]!)) continue; // stale export/ etc. in a hand-made zip
+    await mkdir(dirname(join(dir, k)), { recursive: true });
+    await writeFile(join(dir, k), v);
+  }
+  if (name !== originalName) {
+    // renamed on import — keep set.json's name in sync with the folder
+    const set = JSON.parse(await readFile(join(dir, 'set.json'), 'utf8')) as { name: string };
+    set.name = name;
+    await writeFile(join(dir, 'set.json'), JSON.stringify(set, null, 2) + '\n', 'utf8');
+  }
+  broadcast('set-created', { root: 'projects', name });
+  return json(res, { ok: true, name, files: files.length, overwritten: exists });
 }
 
 /**

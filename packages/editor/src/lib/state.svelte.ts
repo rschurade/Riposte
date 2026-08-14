@@ -657,6 +657,65 @@ class EditorState {
     }
   }
 
+  /** Save a set as a portable .set archive at a user-chosen path (the server
+   * zips and writes it; the last folder is remembered in riposte.config.json). */
+  async saveSetFile(s: SetRef): Promise<void> {
+    let seed = `${s.name}.set`;
+    try {
+      const cfg = (await (await fetch('/api/config')).json()) as { setFileDir?: string | null };
+      if (cfg.setFileDir) seed = `${cfg.setFileDir}\\${s.name}.set`;
+    } catch {
+      // config unreachable — seed without a folder
+    }
+    const targetPath = prompt('Save set as (.set file, full path or folder):', seed)?.trim();
+    if (!targetPath) return;
+    try {
+      const res = await fetch('/api/set/save-file', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ root: s.root, name: s.name, targetPath }),
+      });
+      const r = (await res.json()) as Record<string, unknown>;
+      if (!res.ok) throw new Error(String(r['error'] ?? res.status));
+      const mb = ((r['bytes'] as number) / 1048576).toFixed(1);
+      this.flash(`saved ${r['files']} files (${mb} MB) → ${r['file']}`);
+    } catch (err) {
+      this.flash(`SAVE FAILED: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  /** Import .set archives into projects/ (collision → overwrite or rename). */
+  async openSetFiles(files: File[]): Promise<void> {
+    let lastName: string | null = null;
+    for (const f of files) {
+      this.status = `importing ${f.name}…`;
+      try {
+        const q = `filename=${encodeURIComponent(f.name)}`;
+        let res = await fetch(`/api/set/open-file?${q}`, { method: 'POST', body: f });
+        if (res.status === 409) {
+          const { name } = (await res.json()) as { name: string };
+          if (confirm(`Set "${name}" already exists. Overwrite it?\n(Cancel to import under a different name.)`)) {
+            res = await fetch(`/api/set/open-file?${q}&mode=overwrite`, { method: 'POST', body: f });
+          } else {
+            const newName = prompt('Import as:', `${name}-2`)?.trim();
+            if (!newName) continue;
+            res = await fetch(`/api/set/open-file?${q}&mode=rename&newName=${encodeURIComponent(newName)}`, { method: 'POST', body: f });
+          }
+        }
+        const r = (await res.json()) as Record<string, unknown>;
+        if (!res.ok) throw new Error(String(r['error'] ?? res.status));
+        lastName = r['name'] as string;
+        this.flash(`${r['overwritten'] ? 'replaced' : 'imported'} set "${lastName}" (${r['files']} files)`);
+      } catch (err) {
+        this.flash(`OPEN SET FAILED ${f.name}: ${err instanceof Error ? err.message : err}`);
+        return;
+      }
+    }
+    await this.loadSets();
+    const ref = this.sets.find((s) => s.root === 'projects' && s.name === lastName);
+    if (ref) await this.openSet(ref, { openFirst: false });
+  }
+
   /** Upload .loo files into an existing or new set; the server-side importer
    * does the real work (shared asset pool, script migration). */
   async importLooFiles(files: File[]): Promise<void> {

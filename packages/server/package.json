@@ -11,6 +11,7 @@
   "dependencies": {
     "@riposte/exporter": "*",
     "@riposte/importer": "*",
-    "@riposte/shared": "*"
+    "@riposte/shared": "*",
+    "fflate": "^0.8.3"
   }
 }

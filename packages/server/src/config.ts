@@ -33,6 +33,8 @@ export interface RiposteConfig {
   contractDir: string | null;
   /** Per-set export target overrides, keyed "<root>/<setName>"; absent = <set>/export. */
   exportDirs: Record<string, string>;
+  /** Last folder a .set archive was saved to (seeds the next save prompt). */
+  setFileDir: string | null;
 }
 
 const DEFAULTS: RiposteConfig = {
@@ -44,6 +46,7 @@ const DEFAULTS: RiposteConfig = {
   deployDir: null,
   contractDir: null,
   exportDirs: {},
+  setFileDir: null,
 };
 
 let configPath = '';
