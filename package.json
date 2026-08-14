@@ -1,7 +1,7 @@
 {
   "name": "riposte",
   "private": true,
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Riposte — local template studio for CasparCG HTML graphics",
   "license": "MIT",
   "type": "module",

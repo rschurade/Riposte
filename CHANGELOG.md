@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.2 — 2026-08-14
+
+### Added
+- **`.set` archives** — move whole sets between machines as a single
+  file. The sidebar's **open** button imports one (name collision asks:
+  overwrite or import under a new name); each set's hover row gained a
+  **⤓ save-as** icon that writes the archive to a folder of your choice
+  (remembered for next time). The archive is a zip of the set folder —
+  scenes, components, assets, fonts, presets — without the regenerable
+  export/cache folders.
+
 ## 0.7.1 — 2026-08-14
 
 ### Added
