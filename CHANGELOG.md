@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.1 — 2026-08-14
+
+### Added
+- **`riposte.config.json`** — one machine-level config file next to the
+  server (`packages/server/` in dev, the dist root in the packaged app),
+  created on first start: HTTP port, AMCP ports, projects/examples
+  folders, the CasparCG deploy directory, per-set export targets and the
+  ControlCenter contract folder. Env vars (`RIPOSTE_PORT`,
+  `RIPOSTE_AMCP_PORT`, …) act as one-off overrides for a single run.
+  The old `.amcp-ports.json` / `.contract-config.json` dotfiles are
+  migrated in and removed automatically.
+- Deploy and export target directories are now remembered **server-side**
+  in that config file instead of browser localStorage — they survive
+  switching browsers and the dev/packaged origin split.
+- **Bench button** in the editor header (next to Playout) — the preview
+  bench was invisible in the packaged app unless you knew the URL.
+  `/bench` now works in dev too.
+
 ## 0.7.0 — 2026-08-10
 
 SPX and OGraf export contributed by Markus Nygård (@markusnygard).
