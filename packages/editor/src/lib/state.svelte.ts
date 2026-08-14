@@ -1656,11 +1656,7 @@ class EditorState {
           `${r.assetsCopied} assets copied (${r.assetsUpToDate} up to date, ${mb} MB total)`,
       );
       if (r.warnings?.length) console.warn('export warnings', r.warnings);
-      // remember the target per set (a global key would leak one set's dir into
-      // every other set); an empty target forgets it → back to <set>/export
-      const dirKey = `riposte.exportDir.${this.setRef.name}`;
-      if (outDir) localStorage.setItem(dirKey, outDir);
-      else localStorage.removeItem(dirKey);
+      // the server remembers the target per set (riposte.config.json)
       this.exportDialogOpen = false;
       this.reportContract(r.contract);
     } catch (err) {
@@ -1713,7 +1709,6 @@ class EditorState {
       });
       const r = await res.json();
       if (!res.ok) throw new Error(r.error ?? `server responded ${res.status}`);
-      localStorage.setItem('riposte.deployDir', targetDir.trim());
       const mb = (r.synced.copiedBytes / 1048576).toFixed(1);
       this.flash(
         `deployed → ${r.targetDir}: ${r.synced.copied} files copied (${mb} MB), ` +

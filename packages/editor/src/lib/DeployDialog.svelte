@@ -4,11 +4,18 @@
   let targetDir = $state('');
   let force = $state(false);
 
-  // re-seed whenever the dialog opens: last used path, force always off
+  // re-seed whenever the dialog opens: last used path (server-side config —
+  // survives browser switches; localStorage only as pre-0.7.1 fallback), force off
   $effect(() => {
     if (!ed.deployDialogOpen) return;
-    targetDir = localStorage.getItem('riposte.deployDir') ?? localStorage.getItem('riposte.exportDir') ?? '';
+    targetDir = localStorage.getItem('riposte.deployDir') ?? '';
     force = false;
+    void fetch('/api/config')
+      .then((r) => r.json())
+      .then((cfg: { deployDir?: string | null }) => {
+        if (ed.deployDialogOpen && cfg.deployDir) targetDir = cfg.deployDir;
+      })
+      .catch(() => {});
   });
 
   function deploy(): void {

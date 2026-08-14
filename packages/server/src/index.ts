@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import { exportSet, syncDir, checkContract, type ContractReport } from '@riposte/exporter';
 import { importLoo } from '@riposte/importer';
 import { startAmcp, getAmcpState, setAmcpPorts } from './amcp.ts';
+import { loadConfig, getConfig, saveConfig } from './config.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 /**
@@ -35,8 +36,10 @@ const packaged = existsSync(join(here, 'public'));
 const serverRoot = packaged ? here : resolve(here, '..');
 const repoRoot = packaged ? here : resolve(serverRoot, '..', '..');
 const publicDir = join(serverRoot, 'public');
-const examplesDir = process.env['RIPOSTE_EXAMPLES_DIR'] ?? join(repoRoot, 'examples');
-const projectsDir = process.env['RIPOSTE_PROJECTS_DIR'] ?? join(repoRoot, 'projects');
+// riposte.config.json next to the server — env vars override it per run
+const cfg = loadConfig(serverRoot);
+const examplesDir = process.env['RIPOSTE_EXAMPLES_DIR'] ?? cfg.examplesDir ?? join(repoRoot, 'examples');
+const projectsDir = process.env['RIPOSTE_PROJECTS_DIR'] ?? cfg.projectsDir ?? join(repoRoot, 'projects');
 const runtimeJs = packaged ? join(here, 'runtime', 'riposte.js') : join(repoRoot, 'packages', 'runtime', 'dist', 'riposte.js');
 const editorDist = packaged ? join(here, 'editor') : null;
 
@@ -54,7 +57,7 @@ const MIME: Record<string, string> = {
   '.otf': 'font/otf',
 };
 
-const port = Number(process.env['PORT'] ?? 5720);
+const port = Number(process.env['RIPOSTE_PORT'] ?? cfg.port);
 
 const httpServer = createServer((req, res) => {
   void handle(req, res).catch((err: Error & { status?: number }) => {
@@ -88,7 +91,13 @@ void startAmcp({
   listSets: async () => [...(await listSets(examplesDir, 'examples')), ...(await listSets(projectsDir, 'projects'))],
   broadcast,
   log: (msg) => console.log(msg),
-  persistPath: join(serverRoot, '.amcp-ports.json'),
+  ports: {
+    main: Number(process.env['RIPOSTE_AMCP_PORT'] ?? cfg.amcpPort),
+    preview: Number(process.env['RIPOSTE_AMCP_PREVIEW_PORT'] ?? cfg.amcpPreviewPort),
+  },
+  persistPorts: (p) => {
+    saveConfig({ amcpPort: p['main'] ?? cfg.amcpPort, amcpPreviewPort: p['preview'] ?? cfg.amcpPreviewPort });
+  },
 });
 
 const ROOTS: Record<string, string> = { examples: '', projects: '' };
@@ -125,6 +134,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (path === '/api/amcp' && req.method === 'POST') return json(res, await setAmcpPorts((await readBody(req)) as Record<string, unknown>));
   if (path === '/api/amcp') return json(res, getAmcpState());
   if (path === '/api/contract-config' && req.method === 'POST') return apiContractConfig(req, res);
+  if (path === '/api/config') return json(res, getConfig()); // read-only; writes go through the specific actions or the file itself
   if (path === '/api/contract') return apiContract(url, res);
   if (path === '/api/set/settings' && req.method === 'POST') return apiSetSettings(req, res);
   if (path === '/api/bench' && req.method === 'POST') return apiBench(req, res);
@@ -354,27 +364,26 @@ async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<voi
   const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(setDir, 'export');
   // mode/ografAssets are per-export overrides (undefined = the set's settings)
   const result = await exportSet(setDir, outDir, { mode: body.mode, ografAssets: body.ografAssets, spxFields: body.spxFields, spxScene: body.spxScene });
+  // remember the target per set (survives browser switches, unlike localStorage);
+  // an explicit empty target forgets it → back to <set>/export
+  const dirs = { ...getConfig().exportDirs };
+  if (body.outDir?.trim()) dirs[`${body.root}/${body.name}`] = body.outDir.trim();
+  else delete dirs[`${body.root}/${body.name}`];
+  saveConfig({ exportDirs: dirs });
   return json(res, { ...result, contract: await runContractChecks(setDir) });
 }
 
 // ---- mapping-contract check ---------------------------------------------------
-// The ControlCenter graphics_sets folder is per-machine config, persisted like
-// the AMCP ports. Every export/deploy re-checks the contract and the editor
-// surfaces dead mappings — a break shows on air as a silently blank field.
-const contractConfigPath = join(serverRoot, '.contract-config.json');
-
-async function getContractDir(): Promise<string | null> {
-  try {
-    const cfg = JSON.parse(await readFile(contractConfigPath, 'utf8')) as { dir?: string };
-    return cfg.dir ?? null;
-  } catch {
-    return null;
-  }
+// The ControlCenter graphics_sets folder is per-machine config (in
+// riposte.config.json). Every export/deploy re-checks the contract and the
+// editor surfaces dead mappings — a break shows on air as a silently blank field.
+function getContractDir(): string | null {
+  return getConfig().contractDir;
 }
 
 /** Run the contract check against every graphics-set config in the folder. */
 async function runContractChecks(setDir: string): Promise<ContractReport[] | null> {
-  const dir = await getContractDir();
+  const dir = getContractDir();
   if (!dir) return null;
   const reports: ContractReport[] = [];
   try {
@@ -395,7 +404,7 @@ async function runContractChecks(setDir: string): Promise<ContractReport[] | nul
 
 async function apiContract(url: URL, res: ServerResponse): Promise<void> {
   const setDir = setDirOf(url);
-  const dir = await getContractDir();
+  const dir = getContractDir();
   return json(res, { dir, reports: await runContractChecks(setDir) });
 }
 
@@ -409,7 +418,7 @@ async function apiContractConfig(req: IncomingMessage, res: ServerResponse): Pro
       throw Object.assign(new Error(`not a folder: ${dir}`), { status: 400 });
     }
   }
-  await writeFile(contractConfigPath, JSON.stringify({ dir: dir || null }, null, 2) + '\n', 'utf8');
+  saveConfig({ contractDir: dir || null });
   return json(res, { dir: dir || null });
 }
 
@@ -432,6 +441,7 @@ async function apiDeploy(req: IncomingMessage, res: ServerResponse): Promise<voi
   const exportDir = join(setDir, 'export');
   const exported = await exportSet(setDir, exportDir, body.mode ? { mode: body.mode } : {});
   const synced = await syncDir(exportDir, targetDir, body.force === true);
+  saveConfig({ deployDir: body.targetDir.trim() }); // seed for the next Deploy dialog, any browser
   return json(res, { exported, synced, targetDir, contract: await runContractChecks(setDir) });
 }
 

@@ -11,15 +11,14 @@
  * address family. Point ControlCenter at these ports in its Settings tab.
  *
  * Ports are runtime-configurable (playout HUD → POST /api/amcp) and persisted
- * across restarts; RIPOSTE_AMCP_PORT / RIPOSTE_AMCP_PREVIEW_PORT provide the
- * first-run defaults. A failed bind is a warning, not a crash.
+ * across restarts via the persistPorts callback (riposte.config.json — env
+ * resolution lives in index.ts). A failed bind is a warning, not a crash.
  *
  * Understood: CG ADD/UPDATE/PLAY/STOP/NEXT/REMOVE/INVOKE/CLEAR. Everything
  * else (PLAY/MIXER/CLEAR for the portrait media layers, queries) is
  * acknowledged with 202 and surfaced to the playout console as-is.
  */
 import { createServer as createTcpServer, type Server, type Socket } from 'node:net';
-import { readFile, writeFile } from 'node:fs/promises';
 
 export interface AmcpSetInfo {
   root: string;
@@ -33,8 +32,10 @@ export interface AmcpOptions {
   listSets: () => Promise<AmcpSetInfo[]>;
   broadcast: (event: string, payload: unknown) => void;
   log?: (msg: string) => void;
-  /** JSON file the configured ports survive restarts in. */
-  persistPath?: string;
+  /** Initial listener ports per feed (0 disables). */
+  ports: Record<string, number>;
+  /** Called with the current ports whenever they change, so they survive restarts. */
+  persistPorts?: (ports: Record<string, number>) => void;
 }
 
 export interface FeedState {
@@ -263,26 +264,20 @@ export async function setAmcpPorts(ports: Record<string, unknown>): Promise<Reco
     if (port !== cur.port || !cur.listening) await bindFeed(feed, port);
   }
   const state = getAmcpState();
-  if (amcpOpts?.persistPath) {
-    const persisted: Record<string, number> = {};
-    for (const [f, s] of Object.entries(state)) persisted[f] = s.port;
-    await writeFile(amcpOpts.persistPath, JSON.stringify(persisted, null, 2) + '\n', 'utf8').catch(() => {});
+  const persisted: Record<string, number> = {};
+  for (const [f, s] of Object.entries(state)) persisted[f] = s.port;
+  try {
+    amcpOpts?.persistPorts?.(persisted);
+  } catch {
+    // persistence failure must not kill a successful rebind
   }
   amcpOpts?.broadcast('amcp', { kind: 'ports', state });
   return state;
 }
 
-/** Start the MAIN + PREVIEW listeners (persisted ports win over env defaults). */
+/** Start the MAIN + PREVIEW listeners on the caller-resolved ports. */
 export async function startAmcp(opts: AmcpOptions): Promise<void> {
   amcpOpts = opts;
-  let saved: Record<string, number> = {};
-  if (opts.persistPath) {
-    try {
-      saved = JSON.parse(await readFile(opts.persistPath, 'utf8')) as Record<string, number>;
-    } catch {
-      // first run — no persisted ports yet
-    }
-  }
-  await bindFeed('main', saved['main'] ?? Number(process.env['RIPOSTE_AMCP_PORT'] ?? 6250));
-  await bindFeed('preview', saved['preview'] ?? Number(process.env['RIPOSTE_AMCP_PREVIEW_PORT'] ?? 6251));
+  await bindFeed('main', opts.ports['main'] ?? 6250);
+  await bindFeed('preview', opts.ports['preview'] ?? 6251);
 }

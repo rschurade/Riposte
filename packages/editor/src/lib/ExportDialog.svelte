@@ -21,14 +21,21 @@
   // Seed the form when the dialog opens. Must NOT read expMode — reading it
   // would make this effect depend on it, and every dropdown change would
   // re-fire this effect and reset the user's selection back to the saved mode.
-  // The remembered target dir is PER SET — a global key would leak one set's
-  // target (e.g. a Caspar template dir) into every other set's export.
+  // The remembered target dir is PER SET (server-side riposte.config.json —
+  // a global key would leak one set's target into every other set's export).
   $effect(() => {
     if (!ed.exportDialogOpen) return;
-    outDir = localStorage.getItem(`riposte.exportDir.${ed.setRef?.name ?? ''}`) ?? '';
+    outDir = '';
     busy = false;
     expMode = ed.setRef?.export?.mode ?? 'external';
     ografAssets = ed.setRef?.export?.ografAssets ?? 'shared';
+    const dirKey = `${ed.setRef?.root}/${ed.setRef?.name}`;
+    void fetch('/api/config')
+      .then((r) => r.json())
+      .then((cfg: { exportDirs?: Record<string, string> }) => {
+        if (ed.exportDialogOpen && cfg.exportDirs?.[dirKey]) outDir = cfg.exportDirs[dirKey];
+      })
+      .catch(() => {});
   });
 
   // React to mode dropdown changes (fires for the initial seed too).

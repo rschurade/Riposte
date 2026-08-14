@@ -93,6 +93,9 @@ Playout:  http://localhost:5720/playout.html
           at this machine, ports 6250 (main) / 6251 (preview).
           The port is shown in the page header; click it to change it.
 
+Config:   riposte.config.json appears next to server.js on first start -
+          ports and folders; edit it and restart the server.
+
 Sets:     copy set folders into projects\\ - they appear in the editor.
 Deploy:   the editor's Deploy button exports templates and copies them
           into your CasparCG template directory.

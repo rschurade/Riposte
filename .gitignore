@@ -5,9 +5,9 @@ dist/
 /projects/
 /examples/*/export/
 *.local
-# per-machine virtual-CasparCG port config (POST /api/amcp)
+# per-machine config (ports, dirs — created on first boot; absorbs the two legacy dotfiles below)
+packages/server/riposte.config.json
 packages/server/.amcp-ports.json
-# per-machine ControlCenter graphics_sets folder (POST /api/contract-config)
 packages/server/.contract-config.json
 .DS_Store
 Thumbs.db
