@@ -9,6 +9,7 @@
   },
   "scripts": {
     "check": "tsc -p .",
+    "test": "node --test \"test/*.test.ts\"",
     "test:spx": "node test/spx-template.mjs",
     "test:ograf": "node test/ograf-lifecycle.mjs"
   },

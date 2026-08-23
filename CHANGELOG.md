@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- HTML exports can optionally scale the authored composition uniformly to the
+  browser viewport, matching Loopic's `fitToWindow()` behavior. The Export
+  dialog exposes the per-set checkbox and remembers it for later exports and
+  deploys.
+
 ## 0.7.2 — 2026-08-14
 
 ### Added

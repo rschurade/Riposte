@@ -5,6 +5,7 @@
   let busy = $state(false);
   let expMode = $state<'external' | 'baked' | 'spx' | 'ograf'>('external');
   let ografAssets = $state<'shared' | 'bundled'>('shared');
+  let fitToWindow = $state(false);
 
   // SPX field configuration
   interface SpxFieldRow {
@@ -29,6 +30,7 @@
     busy = false;
     expMode = ed.setRef?.export?.mode ?? 'external';
     ografAssets = ed.setRef?.export?.ografAssets ?? 'shared';
+    fitToWindow = ed.setRef?.export?.fitToWindow ?? false;
     const dirKey = `${ed.setRef?.root}/${ed.setRef?.name}`;
     void fetch('/api/config')
       .then((r) => r.json())
@@ -74,10 +76,17 @@
     // Empty target = the classic workflow: <set-dir>/export (server default);
     // Deploy remains the way changes reach the CasparCG template dir.
     if (showSpxFields) ed.saveSpxFields(spxFields);
+    // Unlike mode/layout (deliberate one-off overrides), viewport fitting is
+    // a useful property of the set, so remember the checkbox for Export and
+    // Deploy while still passing it explicitly to this export.
+    if (expMode !== 'ograf' && fitToWindow !== (ed.setRef?.export?.fitToWindow ?? false)) {
+      await ed.saveSetSettings({ fitToWindow });
+    }
     await ed.exportSet({
       outDir: outDir.trim() || undefined,
       mode: expMode,
       ografAssets: expMode === 'ograf' ? ografAssets : undefined,
+      fitToWindow: expMode === 'ograf' ? undefined : fitToWindow,
       spxFields: showSpxFields ? spxFields : undefined,
     });
   }
@@ -140,6 +149,16 @@
         spellcheck="false"
         disabled={busy}
       />
+
+      {#if expMode !== 'ograf'}
+        <label class="fit-option" title="Uniformly scale the authored composition to the browser viewport, matching Loopic's fitToWindow behavior">
+          <input type="checkbox" bind:checked={fitToWindow} disabled={busy} />
+          <span>
+            Fit composition to output window
+            <small>Scale uniformly from the top-left; useful when the authored resolution differs from the CasparCG channel.</small>
+          </span>
+        </label>
+      {/if}
 
       {#if showSpxFields}
         <div class="spx-section">
@@ -252,6 +271,10 @@
     padding: 6px 8px;
     font-size: 12px;
   }
+  .fit-option { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; color: #c5c8cf; font-size: 12px; cursor: pointer; }
+  .fit-option input { margin: 2px 0 0; }
+  .fit-option span { display: flex; flex-direction: column; gap: 2px; }
+  .fit-option small { color: #8a8f98; font-size: 10px; line-height: 1.4; }
   .spx-section { margin-top: 14px; border-top: 1px solid #383c46; padding-top: 12px; }
   .spx-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; color: #aab; }
   .spx-table { display: flex; flex-direction: column; gap: 4px; }

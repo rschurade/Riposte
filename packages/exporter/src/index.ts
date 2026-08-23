@@ -26,6 +26,8 @@ export { exportOgraf, type OgrafExportResult } from './ograf-export.ts';
 
 export interface ExportOptions {
   mode?: 'external' | 'baked' | 'ograf' | 'spx';
+  /** Override Loopic-style scaling of HTML templates to the browser viewport. */
+  fitToWindow?: boolean;
   /** Path to the runtime IIFE; defaults to the workspace build. */
   runtimeJs?: string;
   /** Pre-configured SPX DataFields (user-edited); bypasses auto-detection —
@@ -146,6 +148,7 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
   const set = JSON.parse(await readFile(join(setDir, 'set.json'), 'utf8')) as SetDoc;
   const mode = opts.mode ?? set.export?.mode ?? 'external';
   const preloadAssets = set.export?.preloadAssets ?? true;
+  const fitToWindow = opts.fitToWindow ?? set.export?.fitToWindow ?? false;
   const runtimeJs = await readFile(opts.runtimeJs ?? DEFAULT_RUNTIME, 'utf8');
 
   // PNG→WebP re-encoding: exported copies only, references rewritten in the
@@ -280,6 +283,7 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
         outro,
         intro,
         components,
+        fitToWindow,
         // configured fields apply only to their own scene; others auto-detect
         name === opts.spxScene ? opts.spxFields : undefined,
       );
@@ -292,9 +296,10 @@ export async function exportSet(setDir: string, outDir: string, opts: ExportOpti
         preloadAssets ? [...assets].map(renameRef) : [],
         outro,
         intro,
+        fitToWindow,
       );
     } else {
-      html = await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null, outro, intro);
+      html = await bakedShell(name, doc, sceneComponents, set, setDir, runtimeJs, warnings, webpOn ? { quality: webpQuality, stats: webpStats } : null, outro, intro, fitToWindow);
     }
 
     if (await writeIfChanged(join(outDir, `${name}.html`), html)) scenesUpdated.push(name);
@@ -377,7 +382,28 @@ function inlineJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-function shellHtml(name: string, width: number, height: number, runtimeTag: string, bootScript: string, headExtra = '', bodyPre = ''): string {
+function fitToWindowScript(width: number, height: number): string {
+  // Keep the authored composition anchored at the browser's top-left, exactly
+  // like Loopic's exported fitToWindow(). The negative offsets cancel the
+  // default center transform-origin while the uniform scale preserves aspect.
+  return `function fitToWindow() {
+  const width = ${width};
+  const height = ${height};
+  const scale = Math.min(window.innerWidth / width, window.innerHeight / height);
+  const offsetX = (width - width * scale) / 2;
+  const offsetY = (height - height * scale) / 2;
+  const stage = document.body;
+  stage.style.transformOrigin = 'center center';
+  stage.style.transform = 'scale(' + scale + ')';
+  stage.style.position = 'fixed';
+  stage.style.left = -offsetX + 'px';
+  stage.style.top = -offsetY + 'px';
+}
+window.addEventListener('resize', fitToWindow);
+fitToWindow();`;
+}
+
+function shellHtml(name: string, width: number, height: number, runtimeTag: string, bootScript: string, fitToWindow = false, headExtra = '', bodyPre = ''): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>${name}</title>
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:${width}px;height:${height}px}</style>
@@ -385,6 +411,7 @@ ${headExtra}</head><body>
 ${bodyPre}${runtimeTag}
 <script>
 ${bootScript}
+${fitToWindow ? fitToWindowScript(width, height) : ''}
 </script>
 </body></html>
 `;
@@ -417,6 +444,7 @@ function externalShell(
   preload: string[],
   outro: OutroPreset | null,
   intro: OutroPreset | null,
+  fitToWindow: boolean,
 ): string {
   const fonts = (set.fonts ?? []).map((f) => ({ family: f.family, url: f.file }));
   return shellHtml(
@@ -425,6 +453,7 @@ function externalShell(
     scene.composition.height,
     '<script src="assets/riposte.js"></script>',
     bootScript(scene, components, fonts, preload, outro, intro),
+    fitToWindow,
   );
 }
 
@@ -437,6 +466,7 @@ function spxShell(
   outro: OutroPreset | null,
   intro: OutroPreset | null,
   allComponents: Record<string, SceneDoc>,
+  fitToWindow: boolean,
   spxFields?: { field?: string; ftype: string; title?: string; value?: string }[],
 ): string {
   const fonts = (set.fonts ?? []).map((f) => ({ family: f.family, url: f.file }));
@@ -457,6 +487,7 @@ function spxShell(
     scene.composition.height,
     '<script src="assets/riposte.js"></script>',
     base + spxBridge,
+    fitToWindow,
     spxDefScript(def),
   );
 }
@@ -472,6 +503,7 @@ async function bakedShell(
   webp: { quality: number | 'lossless'; stats: WebpStats } | null = null,
   outro: OutroPreset | null = null,
   intro: OutroPreset | null = null,
+  fitToWindow = false,
 ): Promise<string> {
   const dataUris = new Map<string, string>();
   const toDataUri = async (rel: string): Promise<string> => {
@@ -519,5 +551,6 @@ async function bakedShell(
     scene.composition.height,
     `<script>${runtimeJs}</script>`,
     bootScript(bakedScene, bakedComponents, fonts, [], outro, intro),
+    fitToWindow,
   );
 }

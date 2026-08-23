@@ -4,6 +4,7 @@
   const e = $derived(ed.setRef?.export ?? {});
   let mode = $state<'external' | 'baked' | 'ograf' | 'spx'>('external');
   let preload = $state(true);
+  let fitToWindow = $state(false);
   let imageFormat = $state<'png' | 'webp'>('png');
   let webpQuality = $state<string>('92');
 
@@ -12,6 +13,7 @@
     if (!ed.setOptionsOpen) return;
     mode = e.mode ?? 'external';
     preload = e.preloadAssets ?? true;
+    fitToWindow = e.fitToWindow ?? false;
     imageFormat = e.imageFormat ?? 'png';
     webpQuality = String(e.webpQuality ?? 92);
   });
@@ -20,6 +22,7 @@
     await ed.saveSetSettings({
       mode,
       preloadAssets: preload,
+      fitToWindow,
       imageFormat,
       webpQuality: webpQuality === 'lossless' ? 'lossless' : Number(webpQuality),
     });
@@ -50,6 +53,9 @@
 
         <label for="so-preload">Preload assets</label>
         <input id="so-preload" type="checkbox" bind:checked={preload} title="Fetch all assets at template load — prevents first-ADD flash" />
+
+        <label for="so-fit-window">Fit to output window</label>
+        <input id="so-fit-window" type="checkbox" bind:checked={fitToWindow} title="Scale HTML exports to the browser viewport, matching Loopic's fitToWindow behavior" />
 
         <label for="so-format">Images</label>
         <select id="so-format" bind:value={imageFormat}>

@@ -20,6 +20,7 @@ export interface SetRef {
 export interface SetExportSettings {
   mode?: 'external' | 'baked' | 'ograf' | 'spx';
   preloadAssets?: boolean;
+  fitToWindow?: boolean;
   imageFormat?: 'png' | 'webp';
   webpQuality?: number | 'lossless';
   ografAssets?: 'shared' | 'bundled';
@@ -1684,6 +1685,7 @@ class EditorState {
     outDir?: string;
     mode?: 'external' | 'baked' | 'ograf' | 'spx';
     ografAssets?: 'shared' | 'bundled';
+    fitToWindow?: boolean;
     spxFields?: { field?: string; ftype: string; title?: string; value?: string }[];
   } = {}): Promise<void> {
     if (!this.setRef) return;
@@ -1696,6 +1698,7 @@ class EditorState {
       if (outDir) body['outDir'] = outDir;
       if (o.mode) body['mode'] = o.mode;
       if (o.ografAssets) body['ografAssets'] = o.ografAssets;
+      if (o.fitToWindow !== undefined) body['fitToWindow'] = o.fitToWindow;
       if (spxFields) {
         body['spxFields'] = spxFields;
         // fields were configured against the OPEN scene — they apply only to it,

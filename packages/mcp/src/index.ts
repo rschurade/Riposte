@@ -767,11 +767,12 @@ server.tool(
   'set_export_settings',
   "Change a set's export settings: mode (external = shells + shared assets / baked = single-file / " +
     'spx = external + embedded SPXGCTemplateDefinition / ograf = EBU manifest + graphic.mjs per scene), ' +
-    'asset preloading, image format (png / webp) and WebP quality (number or "lossless").',
+    'asset preloading, fit-to-window scaling, image format (png / webp) and WebP quality (number or "lossless").',
   {
     set: z.string(),
     mode: z.enum(['external', 'baked', 'spx', 'ograf']).optional(),
     preloadAssets: z.boolean().optional(),
+    fitToWindow: z.boolean().optional(),
     imageFormat: z.enum(['png', 'webp']).optional(),
     webpQuality: z.union([z.number(), z.literal('lossless')]).optional(),
   },

@@ -43,6 +43,12 @@ export interface ExportSettings {
    * prevents asset-load flash on the first ADD after a server restart.
    */
   preloadAssets: boolean;
+  /**
+   * Scale the authored composition uniformly to fit the browser viewport.
+   * Matches Loopic's fitToWindow export behavior; disabled by default so
+   * existing templates keep their authored pixel dimensions.
+   */
+  fitToWindow?: boolean;
   /** Last used output directory (absolute; machine-local convenience). */
   outputDir?: string;
   /**

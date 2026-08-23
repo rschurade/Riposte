@@ -59,6 +59,9 @@ cloud, no accounts. Its core ideas:
 ### Export & deploy
 - Incremental export: tiny per-scene HTML shells + one shared `assets/`
   folder and runtime; only changed files are written.
+- Optional Loopic-style **fit to output window** scaling for HTML exports;
+  useful when an authored composition is wider or taller than the CasparCG
+  channel raster.
 - Optional PNG→WebP re-encoding on export (cached, lossy/lossless race
   per image; the set on disk stays PNG) — real-world set: 213 MB → 27 MB.
 - One-click deploy into a CasparCG template directory — additive and

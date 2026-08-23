@@ -360,13 +360,16 @@ async function apiDeletePreset(req: IncomingMessage, res: ServerResponse): Promi
 
 /** Export a set to CasparCG templates. Default target: <set-dir>/export. */
 async function apiExport(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked' | 'ograf' | 'spx'; outDir?: string; spxFields?: { field?: string; ftype: string; title?: string; value?: string }[]; spxScene?: string; ografAssets?: 'shared' | 'bundled' };
+  const body = (await readBody(req)) as { root: string; name: string; mode?: 'external' | 'baked' | 'ograf' | 'spx'; outDir?: string; spxFields?: { field?: string; ftype: string; title?: string; value?: string }[]; spxScene?: string; ografAssets?: 'shared' | 'bundled'; fitToWindow?: boolean };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const setDir = setDirOf(url);
   // relative paths resolve against the repo root, not the server CWD
   const outDir = body.outDir?.trim() ? resolve(repoRoot, body.outDir.trim()) : join(setDir, 'export');
-  // mode/ografAssets are per-export overrides (undefined = the set's settings)
-  const result = await exportSet(setDir, outDir, { mode: body.mode, ografAssets: body.ografAssets, spxFields: body.spxFields, spxScene: body.spxScene });
+  if (body.fitToWindow !== undefined && typeof body.fitToWindow !== 'boolean') {
+    throw Object.assign(new Error('fitToWindow must be boolean'), { status: 400 });
+  }
+  // mode/ografAssets/fitToWindow are per-export overrides (undefined = the set's settings)
+  const result = await exportSet(setDir, outDir, { mode: body.mode, ografAssets: body.ografAssets, fitToWindow: body.fitToWindow, spxFields: body.spxFields, spxScene: body.spxScene });
   // remember the target per set (survives browser switches, unlike localStorage);
   // an explicit empty target forgets it → back to <set>/export
   const dirs = { ...getConfig().exportDirs };
@@ -467,7 +470,7 @@ async function apiSetSettings(req: IncomingMessage, res: ServerResponse): Promis
   const body = (await readBody(req)) as {
     root: string;
     name: string;
-    export?: { mode?: string; preloadAssets?: boolean; imageFormat?: string; webpQuality?: number | string; ografAssets?: string };
+    export?: { mode?: string; preloadAssets?: boolean; fitToWindow?: boolean; imageFormat?: string; webpQuality?: number | string; ografAssets?: string };
   };
   const url = new URL(`/?root=${encodeURIComponent(body.root)}&name=${encodeURIComponent(body.name)}`, 'http://x');
   const dir = setDirOf(url);
@@ -478,6 +481,10 @@ async function apiSetSettings(req: IncomingMessage, res: ServerResponse): Promis
     patch['mode'] = e.mode;
   }
   if (e.preloadAssets !== undefined) patch['preloadAssets'] = !!e.preloadAssets;
+  if (e.fitToWindow !== undefined) {
+    if (typeof e.fitToWindow !== 'boolean') throw Object.assign(new Error('fitToWindow must be boolean'), { status: 400 });
+    patch['fitToWindow'] = e.fitToWindow;
+  }
   if (e.imageFormat !== undefined) {
     if (e.imageFormat !== 'png' && e.imageFormat !== 'webp') throw Object.assign(new Error('bad imageFormat'), { status: 400 });
     patch['imageFormat'] = e.imageFormat;
