@@ -190,10 +190,11 @@
     if (from !== current) ed.moveKeyframe(targetKey, prop, from, current);
   }
 
-  function kfDisplayFrame(row: PropRow, frame: number): number {
-    return dragKf && dragKf.targetKey === row.targetKey && dragKf.prop === row.prop && dragKf.from === frame
-      ? dragKf.current
-      : frame;
+  function kfDisplayFrame(row: PropRow, frame: number, layerId: string): number {
+    if (dragKf && dragKf.targetKey === row.targetKey && dragKf.prop === row.prop && dragKf.from === frame) {
+      return dragKf.current;
+    }
+    return layerKfDisplayFrame(layerId, frame);
   }
 
   function isSelectedKf(row: PropRow, frame: number): boolean {
@@ -274,14 +275,22 @@
 
   function barUp(): void {
     if (!dragBar) return;
-    const { id, orig, cur } = dragBar;
+    const { id, mode, orig, cur } = dragBar;
     dragBar = null;
-    if (cur.start !== orig.start || cur.dur !== orig.dur) ed.setLayerSpan(id, cur.start, cur.dur);
+    if (cur.start !== orig.start || cur.dur !== orig.dur) {
+      ed.setLayerSpan(id, cur.start, cur.dur, mode === 'move');
+    }
   }
 
   /** Bar geometry with live drag feedback. */
   function barSpan(layer: Layer): { start: number; dur: number } {
     return dragBar?.id === layer.id ? dragBar.cur : { start: layer.startFrame, dur: layer.duration };
+  }
+
+  /** Whole-bar drags preview the same frame delta on every keyframe diamond. */
+  function layerKfDisplayFrame(layerId: string, frame: number): number {
+    if (dragBar?.id !== layerId || dragBar.mode !== 'move') return frame;
+    return frame + dragBar.cur.start - dragBar.orig.start;
   }
 
   // ---- layer rename -------------------------------------------------------------
@@ -530,7 +539,7 @@
                 class="bar"
                 class:dragging={dragBar?.id === layer.id}
                 style="left:{fx(span.start)}px;width:{span.dur * pxPerFrame}px"
-                title="{span.start} – {span.start + span.dur} (drag to move, edges to trim)"
+                title="{span.start} – {span.start + span.dur} (drag to move with keyframes, edges to trim)"
                 onpointerdown={(ev) => barDown(ev, layer, 'move')}
                 onpointermove={barMove}
                 onpointerup={barUp}
@@ -546,7 +555,7 @@
                 <div class="handle r" onpointerdown={(ev) => barDown(ev, layer, 'right')} onpointermove={barMove} onpointerup={barUp}></div>
               </div>
               {#each kfFrames as f (f)}
-                <span class="kfmark" style="left:{fx(f)}px"></span>
+                <span class="kfmark" style="left:{fx(layerKfDisplayFrame(layer.id, f))}px"></span>
               {/each}
               <span class="playhead faint" style="left:{fx(ed.frame)}px"></span>
             </div>
@@ -609,8 +618,8 @@
                         <span
                           class="kf"
                           class:selkf={isSelectedKf(row, f)}
-                          style="left:{fx(kfDisplayFrame(row, f))}px"
-                          title="{row.label} @{kfDisplayFrame(row, f)}"
+                          style="left:{fx(kfDisplayFrame(row, f, layer.id))}px"
+                          title="{row.label} @{kfDisplayFrame(row, f, layer.id)}"
                           onpointerdown={(ev) => kfDown(ev, row, f, layer.id)}
                         ></span>
                       {/each}

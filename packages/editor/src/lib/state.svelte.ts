@@ -6,7 +6,8 @@
  * construction). `version` bumps trigger a Stage rebuild.
  */
 
-import { trimToContent, type BezierEasing, type ElementStyle, type Keyframe, type Layer, type OutroPreset, type SceneDoc, type StyleProperty } from '@riposte/shared';
+import { trimToContent, type BezierEasing, type Keyframe, type Layer, type OutroPreset, type SceneDoc, type StyleProperty } from '@riposte/shared';
+import { shiftLayerKeyframeFrames } from './timeline-ops';
 
 export interface SetRef {
   root: string;
@@ -1323,14 +1324,20 @@ class EditorState {
     else if (!key) this.flash(`key ${old} removed — element is no longer data-bound`);
   }
 
-  /** Move/trim a layer's visible span (timeline bar drag). */
-  setLayerSpan(id: string, startFrame: number, duration: number): void {
+  /** Move/trim a layer's visible span. Whole-bar moves carry every keyframe. */
+  setLayerSpan(id: string, startFrame: number, duration: number, shiftKeyframes = false): void {
+    let frameDelta = 0;
     this.mutate('layer span', (scene) => {
       const l = scene.composition.layers.find((x) => x.id === id);
       if (!l) return;
+      frameDelta = startFrame - l.startFrame;
+      if (shiftKeyframes) shiftLayerKeyframeFrames(l, frameDelta);
       l.startFrame = startFrame;
       l.duration = duration;
     });
+    if (shiftKeyframes && frameDelta !== 0 && this.selectedKf) {
+      this.selectedKf = { ...this.selectedKf, frame: this.selectedKf.frame + frameDelta };
+    }
   }
 
   /** Create an image layer from an asset (drag & drop) — topmost, full span. */
