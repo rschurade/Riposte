@@ -76,12 +76,9 @@
     // Empty target = the classic workflow: <set-dir>/export (server default);
     // Deploy remains the way changes reach the CasparCG template dir.
     if (showSpxFields) ed.saveSpxFields(spxFields);
-    // Unlike mode/layout (deliberate one-off overrides), viewport fitting is
-    // a useful property of the set, so remember the checkbox for Export and
-    // Deploy while still passing it explicitly to this export.
-    if (expMode !== 'ograf' && fitToWindow !== (ed.setRef?.export?.fitToWindow ?? false)) {
-      await ed.saveSetSettings({ fitToWindow });
-    }
+    // fitToWindow follows the same rule: a per-export override, seeded from
+    // Set Options. Deploy reads the set's saved value, so persisting a test
+    // export's checkbox here would change what the next Deploy ships on air.
     await ed.exportSet({
       outDir: outDir.trim() || undefined,
       mode: expMode,
