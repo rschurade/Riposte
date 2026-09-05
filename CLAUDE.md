@@ -16,7 +16,7 @@ TypeScript ESM monorepo (npm workspaces, Node ≥ 24 — server/importer/mcp run
 
 | Path | Purpose |
 |---|---|
-| `packages/shared` | Scene/set format types (`src/scene.ts`, `src/set.ts`), `trimToContent` |
+| `packages/shared` | Scene/set format types (`src/scene.ts`, `src/set.ts`), pure scene ops: `trimToContent`, `shiftLayerKeyframeFrames` |
 | `packages/runtime` | The rendering engine — zero deps, esbuild → `dist/riposte.js` (IIFE) |
 | `packages/importer` | Loopic `.loo` (primary) + Loopic HTML-export (fallback) → set projects; script→binding migrator |
 | `packages/exporter` | Set project → CasparCG templates (`external` default / `baked` fallback) + SPX (CasparCG HTML with embedded SPXGCTemplateDefinition) + OGraf (EBU manifest + graphic.mjs); `syncDir` for deploy |
@@ -39,7 +39,7 @@ For moving sets between machines without git: a `.set` file is a zip of the set 
 
 ```bash
 npm run check     # typecheck all packages (tsc -p . each)
-npm test          # node:test — runtime + importer only
+npm test          # node:test — shared + runtime + importer + exporter (browser drivers are opt-in, see OGraf)
 npm run build     # runtime IIFE (packages/runtime/dist/riposte.js) + editor vite build + server bundle
 npm run server    # node --watch server on :5720
 npm run dev       # vite editor on :5719
@@ -70,7 +70,7 @@ One machine-level config file next to the server (`packages/server/` in dev, the
 Registered via `.mcp.json` (here relative, in TV-Grafik absolute+gitignored). Requires the HTTP server on :5720 (`RIPOSTE_URL` overrides; `RIPOSTE_BROWSER` sets the headless browser for renders). 48 tools — the full authoring surface; a blank-scene-to-finished-graphic build is possible over MCP alone (proven: demo/GreenBar + RedSphere):
 
 - **Inspect**: `list_sets`, `list_scenes` (the update() input surface: content keys + switches), `get_scene`, `list_assets` (sequences collapsed to `###` patterns), `list_presets` (with per-scene usage), `contract_check`, `playout_status` (AMCP ports/connections).
-- **Sets**: `create_set` (stock presets seeded), `import_loo` (local .loo path → existing set), `set_export_settings` (mode/preload/webp).
+- **Sets**: `create_set` (stock presets seeded), `import_loo` (local .loo path → existing set), `set_export_settings` (mode/preload/fitToWindow/webp).
 - **Scenes/components**: `create_scene` (kind scene|component, donor canvas defaults), `duplicate_scene`, `rename_scene` (rewrites embed refs), `remove_scene` (embed-guarded; `deleteFile` opt-in), `convert_scene` (scene⇄component), `set_composition` (canvas/fps/duration — no rescaling), `set_scene_action`, `set_preview_data`, `extract_to_component` (elements → new component, replaced by an instance), `move_to_component` (→ existing component).
 - **Layers/elements**: `add_layer` (image/text/rectangle/ellipse/component/imageLoader/imageSequence via `###` pattern), `delete_layer`, `duplicate_layer` (key auto-suffixed), `reorder_layer` (front/back/forward/backward or above/below), `set_layer_span`, `set_element` (geometry, text incl. weight/transform/squeeze/tabularNums/autoSize/padding, fill/borderRadius, loader fit/placeholder, image asset swap, data `key`, layer name/hidden/locked/isGuide), `set_keyframes` (absolute frames, easing presets or bezier; `mask` targets a mask), `set_mask` (add/edit/remove, inverted, radius), `set_visibility_binding`, `set_loop`, `set_markers` (full-list replace).
 - **Effect presets**: `save_preset` / `delete_preset` / `add_stock_presets`, `set_scene_effects` (assign intro/outro, validated against the pools).
@@ -91,13 +91,13 @@ The server doubles as a fake CasparCG: AMCP TCP listeners on **6250 (main)** and
 Types in `packages/shared/src/scene.ts` + `set.ts`. `SceneDoc { formatVersion, name, previewData?, composition }`.
 
 - `Composition { width, height, fps, duration, markers[], layers[], action? }`. Markers are **first-class**: `pause`, `outro` (≤1), `loop`, `action` — not code snippets.
-- `Layer { id, name?, startFrame, duration, isGuide?, hidden?, loop?, masks?, element }`. Keyframes are stored in absolute scene frames (imported .loo keyframes are LAYER-LOCAL and get offset by `startFrame` at import).
+- `Layer { id, name?, startFrame, duration, isGuide?, hidden?, loop?, masks?, element }`. Keyframes are stored in absolute scene frames (imported .loo keyframes are LAYER-LOCAL and get offset by `startFrame` at import). **Moving a layer's span carries its keyframes along** (timeline bar drag; MCP `set_layer_span` with `shiftKeyframes`, default true) — trimming the edges does not. Helper: `shiftLayerKeyframeFrames` in `@riposte/shared`.
 - `layer.loop = { start, end, exitFade? }` (layer-local): cycles on its own clock while the scene holds at a pause, fades in place over `exitFade` (default 15) in sync with the outro. Works at every nesting level — the parent forwards its hold clock into embedded components (`forwardClock` in dom.ts), and `hasLoops` detection is recursive.
 - Elements: `text`, `image`, `imageSequence` (`frames[]`), `imageLoader` (`fit`, `placeholder` — design-time stand-in asset), `rectangle`, `ellipse`, `path`, `composition` (`compositionId` → component file; nested comps render recursively, child playhead = parent − startFrame, clamped). The type set is open.
 - `ElementStyle`: **x/y are the box center** (Loopic convention). `StyleProperty { value, unit?, keyframes[] }` — when keyframes exist the static value is ignored.
 - `element.visibility = { bindKey, showWhen?/hideWhen? (default hideWhen ["0"]), initial? }` — shows/hides from an `update()` value via CSS `visibility`, composing with layer span (display) and opacity fades. This replaced Loopic-era show/hide scripts (`riposte-migrate` converts them). Binding state is a pure function of the last update value.
 - `previewData`: design-time sample update payload for bench/editor; never shipped.
-- Text `tabularNums`: fixed-advance digits so score/clock fields don't jitter on update. Rectangle `sizeBind { sourceId, axis, padX/padY, grow }`: the bar re-measures its source text on build and every update() — the "background always fits the name" pattern (demo: `examples/demo/scenes/BoundBar.json`). `SceneDoc.guides` + `Layer.locked` are editor-only design aids (renderers/exports ignore them).
+- Text `tabularNums`: fixed-advance digits so score/clock fields don't jitter on update. Rectangle `sizeBind { sourceId, axis, padX/padY, grow }`: the bar re-measures its source text on build and every update() — the "background always fits the name" pattern. `SceneDoc.guides` + `Layer.locked` are editor-only design aids (renderers/exports ignore them).
 - Hidden layer semantics (Loopic parity): hidden = CSS **visibility**, not display; a binding on a hidden layer's element toggles the wrapper, respecting span + fades. Data-shown "white light" layers rely on this.
 - Actions (`composition.action`, action markers) are the escape hatch for genuinely dynamic behavior (e.g. Schedule's row relayout). Scope: `useOnPlay/useOnUpdate/useOnStop/useOnNext/useOnInvoke`, `find(key)`, `riposte`; `loopic`/`runtime` are deprecated aliases. **The editor deliberately does not execute actions or bindings — design view shows everything.**
 - `set.json`: `{ formatVersion, name, scenes[], components?, fonts?, export? }` — `components` are nested-composition-only scenes, not exported as templates. Optional fields vary across real files.
@@ -141,8 +141,8 @@ OGraf (EBU standard) exports are per-scene folders containing a manifest and a b
 
 The Export button in the header opens a dialog (instead of exporting immediately). The dialog shows:
 
-- **Export mode** + OGraf asset-layout dropdowns — **per-export overrides**, seeded from Set Options but NEVER written back to the set (trying an OGraf export must not silently rewrite a set's on-air settings; Set Options is where defaults change deliberately).
-- **Target directory** — optional. Empty (the default) = the classic workflow: incremental export into the set's own `export/` folder; **Deploy stays the only path into the CasparCG template dir**. A non-empty dir is remembered **per set** (`riposte.exportDir.<set>` — never a global key, so one set's target can't leak into another's); clearing the field forgets it.
+- **Export mode** + OGraf asset-layout dropdowns + **Fit composition to output window** checkbox — all **per-export overrides**, seeded from Set Options but NEVER written back to the set (trying an OGraf export must not silently rewrite a set's on-air settings, and Deploy reads the saved settings; Set Options is where defaults change deliberately). Fit-to-window (`export.fitToWindow`, off by default) adds a Loopic-style `fitToWindow()` script to external/baked/SPX shells that scales `<body>` uniformly to the viewport, anchored top-left — for compositions authored at a different raster than the channel. Not applied to OGraf (the host sizes the graphic). The runtime's text probes measure via `offsetWidth`, so `sizeBind`/`tabularNums` are unaffected by the transform.
+- **Target directory** — optional. Empty (the default) = the classic workflow: incremental export into the set's own `export/` folder; **Deploy stays the only path into the CasparCG template dir**. A non-empty dir is remembered **per set** server-side (`exportDirs` in riposte.config.json — never a global key, so one set's target can't leak into another's); clearing the field forgets it.
 - In SPX mode, a per-scene **DataFields configurator** (see SPX Export above).
 - On confirm: `POST /api/export` (with `outDir` only when set) → server resolves empty to `<set>/export`.
 - Code: `packages/editor/src/lib/ExportDialog.svelte`.

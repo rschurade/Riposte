@@ -3,10 +3,18 @@
 ## Unreleased
 
 ### Added
-- HTML exports can optionally scale the authored composition uniformly to the
-  browser viewport, matching Loopic's `fitToWindow()` behavior. The Export
-  dialog exposes the per-set checkbox and remembers it for later exports and
-  deploys.
+- **Fit to output window** (contributed by @tissot-tristan): HTML exports can
+  optionally scale the authored composition uniformly to the browser
+  viewport, anchored top-left — Loopic's `fitToWindow()` behavior, for
+  compositions authored at a different raster than the CasparCG channel.
+  Off by default; the per-set setting lives in Set Options, and the Export
+  dialog's checkbox is a per-export override like mode and layout.
+- **Timeline: moving a layer bar moves its keyframes** (contributed by
+  @ShadowDust99): dragging a whole bar now carries every element and mask
+  keyframe along — the After Effects / Loopic behavior — with the diamonds
+  previewing live during the drag. Trimming the edges leaves keyframes in
+  place. The MCP `set_layer_span` tool does the same (`shiftKeyframes`,
+  default true).
 
 ## 0.7.2 — 2026-08-14
 

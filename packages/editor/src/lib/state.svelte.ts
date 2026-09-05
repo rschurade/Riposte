@@ -6,8 +6,7 @@
  * construction). `version` bumps trigger a Stage rebuild.
  */
 
-import { trimToContent, type BezierEasing, type Keyframe, type Layer, type OutroPreset, type SceneDoc, type StyleProperty } from '@riposte/shared';
-import { shiftLayerKeyframeFrames } from './timeline-ops';
+import { shiftLayerKeyframeFrames, trimToContent, type BezierEasing, type Keyframe, type Layer, type OutroPreset, type SceneDoc, type StyleProperty } from '@riposte/shared';
 
 export interface SetRef {
   root: string;

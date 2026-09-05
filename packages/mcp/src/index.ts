@@ -21,7 +21,7 @@ import { basename, join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import type { Layer, SceneDoc, SceneElement } from '@riposte/shared';
+import { shiftLayerKeyframeFrames, type Layer, type SceneDoc, type SceneElement } from '@riposte/shared';
 
 const BASE = process.env['RIPOSTE_URL'] ?? 'http://localhost:5720';
 
@@ -1197,16 +1197,27 @@ server.tool(
 server.tool(
   'set_layer_span',
   'Set a layer\'s visible span on the timeline (the bar): startFrame + duration in scene frames. ' +
-    'Keyframes are stored in ABSOLUTE frames and do not move with the span.',
-  { set: z.string(), scene: z.string(), element: z.string(), startFrame: z.number(), duration: z.number() },
-  async ({ set, scene, element, startFrame, duration }) => {
+    'Keyframes are stored in ABSOLUTE frames; by default they move with the span (like the editor\'s bar drag) — ' +
+    'shiftKeyframes: false trims/moves the span only and leaves the animation where it is.',
+  {
+    set: z.string(),
+    scene: z.string(),
+    element: z.string(),
+    startFrame: z.number(),
+    duration: z.number(),
+    shiftKeyframes: z.boolean().optional().describe('Default true: carry element + mask keyframes along by the start delta'),
+  },
+  async ({ set, scene, element, startFrame, duration, shiftKeyframes }) => {
     if (duration < 1) throw new Error('duration must be >= 1');
     const { info, file, doc } = await sceneDoc(set, scene);
     const layer = findLayer(doc, element);
-    layer.startFrame = Math.max(0, Math.round(startFrame));
+    const newStart = Math.max(0, Math.round(startFrame));
+    const delta = newStart - layer.startFrame;
+    if (shiftKeyframes !== false) shiftLayerKeyframeFrames(layer, delta);
+    layer.startFrame = newStart;
     layer.duration = Math.round(duration);
     await saveDoc(info, file, doc);
-    return text({ element, startFrame: layer.startFrame, duration: layer.duration });
+    return text({ element, startFrame: layer.startFrame, duration: layer.duration, keyframesShiftedBy: shiftKeyframes !== false ? delta : 0 });
   },
 );
 

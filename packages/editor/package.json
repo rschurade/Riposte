@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@riposte/runtime": "*",

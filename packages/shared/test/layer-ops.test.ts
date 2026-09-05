@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Layer } from '@riposte/shared';
-import { shiftLayerKeyframeFrames } from '../src/lib/timeline-ops.ts';
+import { shiftLayerKeyframeFrames } from '../src/index.ts';
 
 test('moving a layer shifts element and mask keyframes without changing values', () => {
   const layer = {

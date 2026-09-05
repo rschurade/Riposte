@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "check": "tsc -p ."
+    "check": "tsc -p .",
+    "test": "node --test \"test/*.test.ts\""
   }
 }
