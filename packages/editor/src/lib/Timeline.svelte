@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import type { ElementStyle, Layer } from '@riposte/shared';
   import {
     ed,
@@ -19,10 +20,110 @@
    * frame-0 diamond in half). fx() is the shared frame→px mapping.
    */
   const TRACK_PAD = 10;
-  const fx = (frame: number) => TRACK_PAD + frame * pxPerFrame;
+  const fx = (frame: number) => TRACK_PAD + frame * pxPerFrame - sx;
+  /** Inverse of fx() for a pointer over a track element. */
+  const frameAt = (clientX: number, track: Element) =>
+    Math.round((clientX - track.getBoundingClientRect().left - TRACK_PAD + sx) / pxPerFrame);
 
   const comp = $derived(ed.scene?.composition ?? null);
-  const pxPerFrame = $derived(comp ? Math.max(1.5, trackWidth / comp.duration) : 2);
+
+  // ---- zoom + horizontal pan ---------------------------------------------------
+  // zoom 1 = "fit": the whole duration spans the track (no px floor — a long
+  // scene used to hit a 1.5px/frame minimum and silently clip everything past
+  // the panel edge, unreachable). zoom > 1 magnifies; scrollX pans the view.
+  const MAX_PX_PER_FRAME = 40;
+  let zoom = $state(1);
+  let scrollX = $state(0);
+  const fitPx = $derived(comp ? trackWidth / Math.max(comp.duration, 1) : 2);
+  const maxZoom = $derived(Math.max(1, MAX_PX_PER_FRAME / fitPx));
+  const pxPerFrame = $derived(fitPx * Math.min(zoom, maxZoom));
+  const maxScroll = $derived(comp ? Math.max(0, comp.duration * pxPerFrame - trackWidth) : 0);
+  /** The effective (clamped) pan offset in px. */
+  const sx = $derived(Math.min(Math.max(scrollX, 0), maxScroll));
+
+  /**
+   * Zoom by `factor` anchored on the playhead: it keeps its screen position
+   * (buttons and Ctrl+wheel alike). A playhead outside the view gets centered.
+   */
+  function zoomBy(factor: number): void {
+    if (!comp) return;
+    const fAnchor = ed.frame;
+    const px = fx(fAnchor);
+    const anchorX = px >= TRACK_PAD && px <= TRACK_PAD + trackWidth ? px : TRACK_PAD + trackWidth / 2;
+    zoom = Math.min(Math.max(Math.min(zoom, maxZoom) * factor, 1), maxZoom);
+    const ppf = fitPx * zoom;
+    scrollX = Math.min(Math.max(fAnchor * ppf - (anchorX - TRACK_PAD), 0), Math.max(0, comp.duration * ppf - trackWidth));
+  }
+
+  function zoomFit(): void {
+    zoom = 1;
+    scrollX = 0;
+  }
+
+  // a different scene starts at fit
+  $effect(() => {
+    void ed.sceneFile;
+    untrack(zoomFit);
+  });
+
+  // keep the playhead in view (playback, CG sim, keyboard stepping) — page the
+  // view so it lands near the left edge rather than creeping along the border
+  // (tracks ed.frame ONLY — zooming/panning away from the playhead is allowed)
+  $effect(() => {
+    const frame = ed.frame;
+    untrack(() => {
+      const x = TRACK_PAD + frame * pxPerFrame;
+      if (x - sx < TRACK_PAD || x - sx > TRACK_PAD + trackWidth) {
+        scrollX = Math.max(0, x - TRACK_PAD - trackWidth * 0.1);
+      }
+    });
+  });
+
+  // Ctrl+wheel zooms (playhead-anchored); Shift+wheel / horizontal wheel pans.
+  // Non-passive listener: preventDefault must stop the browser's page zoom.
+  $effect(() => {
+    const el = rowsEl;
+    if (!el) return;
+    const onWheel = (ev: WheelEvent) => {
+      if (ev.ctrlKey || ev.metaKey) {
+        ev.preventDefault();
+        zoomBy(Math.pow(1.0015, -ev.deltaY));
+      } else if (ev.shiftKey || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) {
+        if (maxScroll <= 0) return;
+        ev.preventDefault();
+        scrollX = Math.min(Math.max(sx + (ev.shiftKey ? ev.deltaY || ev.deltaX : ev.deltaX), 0), maxScroll);
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  });
+
+  // Custom horizontal scrollbar under the tracks. NOT a native overflow-x
+  // scroller: its spacer (track width + maxScroll) widened the section, which
+  // widened trackWidth, which widened the spacer — a runaway layout loop
+  // (146 000px section, "fit" stuck at max zoom). The thumb is pure geometry.
+  let hbarWidth = $state(0);
+  const contentW = $derived(trackWidth + maxScroll);
+  const thumbW = $derived(Math.max(24, (hbarWidth * trackWidth) / contentW));
+  const thumbX = $derived(maxScroll > 0 ? ((hbarWidth - thumbW) * sx) / maxScroll : 0);
+  let thumbDrag: { downX: number; sx: number } | null = null;
+
+  function thumbDown(ev: PointerEvent): void {
+    ev.stopPropagation();
+    thumbDrag = { downX: ev.clientX, sx };
+    (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId);
+  }
+  function thumbMove(ev: PointerEvent): void {
+    if (!thumbDrag || hbarWidth <= thumbW) return;
+    const perPx = maxScroll / (hbarWidth - thumbW);
+    scrollX = Math.min(Math.max(thumbDrag.sx + (ev.clientX - thumbDrag.downX) * perPx, 0), maxScroll);
+  }
+  /** Click on the bar beside the thumb: center the view there. */
+  function hbarDown(ev: PointerEvent): void {
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    const frac = (ev.clientX - r.left - thumbW / 2) / Math.max(1, hbarWidth - thumbW);
+    scrollX = Math.min(Math.max(frac * maxScroll, 0), maxScroll);
+  }
 
   $effect(() => {
     // Measure the SCROLL container (its clientWidth excludes the vertical
@@ -178,8 +279,7 @@
     if (!dragKf || !comp) return;
     const track = (ev.currentTarget as HTMLElement).closest('.track');
     if (!track) return;
-    const r = track.getBoundingClientRect();
-    const f = Math.round((ev.clientX - r.left - TRACK_PAD) / pxPerFrame);
+    const f = frameAt(ev.clientX, track);
     dragKf.current = Math.min(Math.max(f, 0), comp.duration - 1);
   }
 
@@ -216,8 +316,7 @@
     if (!dragMarker || !comp) return;
     const track = (ev.currentTarget as HTMLElement).closest('.track');
     if (!track) return;
-    const r = track.getBoundingClientRect();
-    const f = Math.round((ev.clientX - r.left - TRACK_PAD) / pxPerFrame);
+    const f = frameAt(ev.clientX, track);
     dragMarker.frame = Math.min(Math.max(f, 0), comp.duration - 1);
   }
 
@@ -327,9 +426,7 @@
 
   function seek(ev: PointerEvent): void {
     if (!comp) return;
-    const target = ev.currentTarget as HTMLElement;
-    const r = target.getBoundingClientRect();
-    const f = Math.round((ev.clientX - r.left - TRACK_PAD) / pxPerFrame);
+    const f = frameAt(ev.clientX, ev.currentTarget as HTMLElement);
     ed.frame = Math.min(Math.max(f, 0), comp.duration - 1);
     ed.playing = false;
     ed.cgOff();
@@ -346,13 +443,19 @@
     if (scrubbing) seek(ev);
   }
 
+  /** Adaptive tick spacing (labels ≥ ~44px apart), only the visible range. */
   const ticks = $derived.by(() => {
     if (!comp) return [] as number[];
-    const step = comp.duration > 400 ? 50 : 25;
+    const steps = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+    const step = steps.find((s) => s * pxPerFrame >= 44) ?? steps[steps.length - 1];
+    const first = Math.max(0, Math.floor((sx - TRACK_PAD) / pxPerFrame / step) * step);
+    const last = Math.min(comp.duration, (sx + trackWidth + TRACK_PAD * 2) / pxPerFrame);
     const out: number[] = [];
-    for (let f = 0; f <= comp.duration; f += step) out.push(f);
+    for (let f = first; f <= last; f += step) out.push(f);
     return out;
   });
+
+  const visibleFrames = $derived(Math.round(trackWidth / pxPerFrame));
 </script>
 
 <section>
@@ -372,6 +475,13 @@
       <button class="cg" disabled={!ed.cg.active} title="CasparCG STOP — jump to the outro" onclick={() => ed.cgStop()}>CG ⏹</button>
       <span class="frame">{ed.frame} / {comp.duration - 1}</span>
       <span class="dim">{comp.fps} fps</span>
+      <span class="tsep"></span>
+      <span class="zoom" title="Timeline zoom (anchored on the playhead) — Ctrl+wheel zooms, Shift+wheel pans">
+        <button title="Zoom out" disabled={zoom <= 1} onclick={() => zoomBy(1 / 2)}>−</button>
+        <button title="Fit the whole scene" class:on={zoom <= 1} onclick={zoomFit}>fit</button>
+        <button title="Zoom in" disabled={zoom >= maxZoom} onclick={() => zoomBy(2)}>+</button>
+        <span class="dim">{visibleFrames} fr</span>
+      </span>
       <span class="spacer"></span>
       <span class="dim">add:</span>
       <button title="Add text element" onclick={() => ed.addElementLayer('text')}>T text</button>
@@ -408,7 +518,7 @@
         {/if}
       {/if}
     </div>
-    <div class="rows" bind:this={rowsEl}>
+    <div class="rows" id="timeline" bind:this={rowsEl}>
       <div class="row head">
         <div class="label dim">timeline</div>
         <div
@@ -632,6 +742,29 @@
           {/if}
         {/each}
       </div>
+      {#if maxScroll > 0}
+        <div class="row hrow">
+          <div class="label"></div>
+          <div
+            class="hbar"
+            role="scrollbar"
+            aria-controls="timeline"
+            aria-valuenow={Math.round(sx)}
+            tabindex="-1"
+            bind:clientWidth={hbarWidth}
+            onpointerdown={hbarDown}
+          >
+            <div
+              class="thumb"
+              role="presentation"
+              style="left:{thumbX}px;width:{thumbW}px"
+              onpointerdown={thumbDown}
+              onpointermove={thumbMove}
+              onpointerup={() => (thumbDrag = null)}
+            ></div>
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 </section>
@@ -661,6 +794,16 @@
     padding: 2px 10px;
     cursor: pointer;
   }
+  .zoom { display: flex; align-items: center; gap: 3px; }
+  .transport .zoom button { padding: 2px 7px; }
+  .transport .zoom button.on { color: #d9a441; border-color: #5a4a2a; }
+  .transport button:disabled { opacity: 0.4; cursor: default; }
+  .row.hrow { height: 14px; border-top: 1px solid #23262e; }
+  .row.hrow .label { padding: 0; }
+  /* right margin mirrors trackWidth's 24px so the thumb spans the track area */
+  .hbar { position: relative; flex: 1; min-width: 0; margin: 3px 24px 3px 0; background: #1d2026; border-radius: 4px; cursor: pointer; }
+  .hbar .thumb { position: absolute; top: 0; bottom: 0; background: #3a3f4a; border-radius: 4px; cursor: grab; }
+  .hbar .thumb:hover { background: #4a505c; }
   .frame { font: 12px Consolas, monospace; color: #d9a441; min-width: 80px; }
   .grip {
     cursor: grab;
